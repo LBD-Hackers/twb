@@ -12,7 +12,8 @@
  *     npm run capture:ontology -w apps/twb-site
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import oxigraph from 'oxigraph';
 
@@ -144,6 +145,7 @@ const modules = MODULES.map(({ id, da }) => {
     };
 });
 
+mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(
     OUT,
     `${JSON.stringify(

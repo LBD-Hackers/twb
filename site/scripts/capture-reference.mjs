@@ -9,7 +9,8 @@
  *     node scripts/capture-reference.mjs
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import oxigraph from 'oxigraph';
 
@@ -260,7 +261,9 @@ const modules = MODULES.map((id) => {
     return { id, iri, title: text(iri, 'dcterms:title'), description: text(iri, 'dcterms:description') };
 });
 
-writeFileSync(OUT, `${JSON.stringify({ version: text('https://w3id.org/twb', 'owl:versionInfo'), modules, terms, shapes }, null, 1)}\n`);
+mkdirSync(dirname(OUT), { recursive: true });
+writeFileSync(
+    OUT, `${JSON.stringify({ version: text('https://w3id.org/twb', 'owl:versionInfo'), modules, terms, shapes }, null, 1)}\n`);
 const count = (k) => terms.filter((t) => t.kind === k).length;
 console.log(
     `reference: ${terms.length} terms (${count('class')} classes, ${count('objectProperty')} object, ${count('datatypeProperty')} datatype, ${count('annotationProperty')} annotation properties, ${count('scheme')} schemes, ${count('individual')} concepts), ${shapes.length} shapes → ${OUT}`
