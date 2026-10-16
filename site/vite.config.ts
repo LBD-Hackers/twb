@@ -80,5 +80,6 @@ export default defineConfig({
             },
         },
     },
-    test: { environment: 'node', include: ['src/**/*.spec.ts'] },
+    // The engine's checks run the rules on the case house: seconds on a CI runner.
+    test: { environment: 'node', include: ['src/**/*.spec.ts'], testTimeout: 60_000 },
 });
