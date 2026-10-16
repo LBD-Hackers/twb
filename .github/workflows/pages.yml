@@ -1,0 +1,48 @@
+# Serves the ontology and the house file's JSON-LD contexts on GitHub Pages, where
+# https://w3id.org/twb sends an RDF client:
+#   /ontology/<file>.ttl     every file of ontology/ (text/turtle)
+#   /context/<n>.jsonld      the house file's context, version n (application/ld+json)
+name: Pages
+
+on:
+    push:
+        branches: [main]
+        paths: ['ontology/**', '.github/workflows/pages.yml']
+    workflow_dispatch:
+
+permissions:
+    contents: read
+    pages: write
+    id-token: write
+
+concurrency:
+    group: pages
+    cancel-in-progress: true
+
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+        environment:
+            name: github-pages
+            url: ${{ steps.deployment.outputs.page_url }}
+        steps:
+            - uses: actions/checkout@v4
+            - name: Lay out the site
+              run: |
+                  mkdir -p _site/ontology _site/context
+                  cp -R ontology/. _site/ontology/
+                  cp ontology/twb-house.context.jsonld _site/context/2.jsonld
+                  cp ontology/twb-house.context.1.jsonld _site/context/1.jsonld
+                  touch _site/.nojekyll
+                  cat > _site/index.html <<'HTML'
+                  <!doctype html>
+                  <meta charset="utf-8">
+                  <title>TWB</title>
+                  <meta http-equiv="refresh" content="0; url=https://twb.madsholten.dk/en/datamodel/">
+                  <p>The TWB ontology: <a href="https://twb.madsholten.dk/en/datamodel/">the data model</a>,
+                  <a href="https://github.com/LBD-Hackers/twb">the source</a>.</p>
+                  HTML
+            - uses: actions/configure-pages@v5
+            - uses: actions/upload-pages-artifact@v3
+            - id: deployment
+              uses: actions/deploy-pages@v4

@@ -9,7 +9,8 @@ the side that faces a room.
 - Website and the data model explained, with an interactive schema and rule checks that run in
   your browser: **<https://twb.madsholten.dk>** (English: <https://twb.madsholten.dk/en/>, data
   model: <https://twb.madsholten.dk/en/datamodel/>)
-- Namespace: `https://w3id.org/twb#` — an RDF client gets Turtle, a browser the data model page.
+- Namespace: `https://w3id.org/twb#` — an RDF client gets the Turtle from this repository (served
+  at <https://lbd-hackers.github.io/twb/ontology/>), a browser the data model page.
 - The method: *Thin-walled blueprints: a building model in which surfaces carry assembly recipes,
   edges carry joint details and zone boundaries carry rules*, submitted to Automation in
   Construction, 2026.

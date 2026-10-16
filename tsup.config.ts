@@ -13,7 +13,7 @@ export default defineConfig({
         'surfacekit/render/index': 'src/surfacekit/render/index.ts',
         cli: 'src/cli.ts',
     },
-    format: ['esm'],
+    format: ['esm', 'cjs'],
     target: 'es2022',
     platform: 'neutral',
     dts: true,

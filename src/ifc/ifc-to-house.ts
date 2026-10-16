@@ -104,6 +104,12 @@ export interface IfcImportReport {
     /** IFC material names no rule knew, with what they were read as. */
     guessedMaterials: string[];
     skipped: SkippedGroup[];
+    /**
+     * The IFC's true north: degrees clockwise in plan from the file's project north (+y) to true
+     * north, from its `IfcGeometricRepresentationContext`. Reported, not applied; null when the
+     * file gives none.
+     */
+    trueNorthDeg: number | null;
     warnings: string[];
 }
 
@@ -747,6 +753,7 @@ class Importer {
             structure,
             guessedMaterials: [...this.guessed].map(([name, as]) => `"${name}" as ${as}`),
             skipped: [...this.skipped.values()],
+            trueNorthDeg: trueNorth,
             warnings: this.warnings,
         };
 

@@ -1,6 +1,6 @@
 {
     "name": "@lbd-hackers/twb",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "TWB (thin-walled blueprints): the ontology, the house file and its JSON-LD context, IFC to TWB, the @surfacekit drawing engine and the <arch-paper-model> viewer",
     "keywords": [
         "twb",
@@ -24,44 +24,98 @@
     "author": "Mads Holten Rasmussen",
     "license": "Apache-2.0 AND CC-BY-4.0",
     "type": "module",
-    "main": "./dist/index.js",
+    "main": "./dist/index.cjs",
     "types": "./dist/index.d.ts",
     "exports": {
         ".": {
-            "types": "./dist/index.d.ts",
-            "import": "./dist/index.js"
+            "import": {
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            },
+            "require": {
+                "types": "./dist/index.d.cts",
+                "default": "./dist/index.cjs"
+            }
         },
         "./house": {
-            "types": "./dist/house/index.d.ts",
-            "import": "./dist/house/index.js"
+            "import": {
+                "types": "./dist/house/index.d.ts",
+                "default": "./dist/house/index.js"
+            },
+            "require": {
+                "types": "./dist/house/index.d.cts",
+                "default": "./dist/house/index.cjs"
+            }
         },
         "./ifc": {
-            "types": "./dist/ifc/index.d.ts",
-            "import": "./dist/ifc/index.js"
+            "import": {
+                "types": "./dist/ifc/index.d.ts",
+                "default": "./dist/ifc/index.js"
+            },
+            "require": {
+                "types": "./dist/ifc/index.d.cts",
+                "default": "./dist/ifc/index.cjs"
+            }
         },
         "./elements": {
-            "types": "./dist/elements/index.d.ts",
-            "import": "./dist/elements/index.js"
+            "import": {
+                "types": "./dist/elements/index.d.ts",
+                "default": "./dist/elements/index.js"
+            },
+            "require": {
+                "types": "./dist/elements/index.d.cts",
+                "default": "./dist/elements/index.cjs"
+            }
         },
         "./surfacekit/core": {
-            "types": "./dist/surfacekit/core/index.d.ts",
-            "import": "./dist/surfacekit/core/index.js"
+            "import": {
+                "types": "./dist/surfacekit/core/index.d.ts",
+                "default": "./dist/surfacekit/core/index.js"
+            },
+            "require": {
+                "types": "./dist/surfacekit/core/index.d.cts",
+                "default": "./dist/surfacekit/core/index.cjs"
+            }
         },
         "./surfacekit/grid": {
-            "types": "./dist/surfacekit/grid/index.d.ts",
-            "import": "./dist/surfacekit/grid/index.js"
+            "import": {
+                "types": "./dist/surfacekit/grid/index.d.ts",
+                "default": "./dist/surfacekit/grid/index.js"
+            },
+            "require": {
+                "types": "./dist/surfacekit/grid/index.d.cts",
+                "default": "./dist/surfacekit/grid/index.cjs"
+            }
         },
         "./surfacekit/model": {
-            "types": "./dist/surfacekit/model/index.d.ts",
-            "import": "./dist/surfacekit/model/index.js"
+            "import": {
+                "types": "./dist/surfacekit/model/index.d.ts",
+                "default": "./dist/surfacekit/model/index.js"
+            },
+            "require": {
+                "types": "./dist/surfacekit/model/index.d.cts",
+                "default": "./dist/surfacekit/model/index.cjs"
+            }
         },
         "./surfacekit/interaction": {
-            "types": "./dist/surfacekit/interaction/index.d.ts",
-            "import": "./dist/surfacekit/interaction/index.js"
+            "import": {
+                "types": "./dist/surfacekit/interaction/index.d.ts",
+                "default": "./dist/surfacekit/interaction/index.js"
+            },
+            "require": {
+                "types": "./dist/surfacekit/interaction/index.d.cts",
+                "default": "./dist/surfacekit/interaction/index.cjs"
+            }
         },
         "./surfacekit/render": {
-            "types": "./dist/surfacekit/render/index.d.ts",
-            "import": "./dist/surfacekit/render/index.js"
+            "import": {
+                "types": "./dist/surfacekit/render/index.d.ts",
+                "default": "./dist/surfacekit/render/index.js"
+            },
+            "require": {
+                "types": "./dist/surfacekit/render/index.d.cts",
+                "default": "./dist/surfacekit/render/index.cjs"
+            }
         },
         "./context.jsonld": "./ontology/twb-house.context.jsonld",
         "./ontology/*": "./ontology/*",
@@ -107,5 +161,34 @@
         "tsup": "^8.5.0",
         "typescript": "~5.9.3",
         "vitest": "^4.0.0"
+    },
+    "module": "./dist/index.js",
+    "typesVersions": {
+        "*": {
+            "house": [
+                "dist/house/index.d.ts"
+            ],
+            "ifc": [
+                "dist/ifc/index.d.ts"
+            ],
+            "elements": [
+                "dist/elements/index.d.ts"
+            ],
+            "surfacekit/core": [
+                "dist/surfacekit/core/index.d.ts"
+            ],
+            "surfacekit/grid": [
+                "dist/surfacekit/grid/index.d.ts"
+            ],
+            "surfacekit/model": [
+                "dist/surfacekit/model/index.d.ts"
+            ],
+            "surfacekit/interaction": [
+                "dist/surfacekit/interaction/index.d.ts"
+            ],
+            "surfacekit/render": [
+                "dist/surfacekit/render/index.d.ts"
+            ]
+        }
     }
 }
