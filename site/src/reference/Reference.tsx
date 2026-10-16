@@ -359,7 +359,9 @@ function ShapeCard({ shape }: { shape: Shape }) {
 function useHashJump(): void {
     useEffect(() => {
         if (!location.hash) return;
-        const el = document.getElementById(decodeURIComponent(location.hash.slice(1)));
+        const hash = decodeURIComponent(location.hash.slice(1));
+        // A shape's IRI, https://w3id.org/twb/shapes#SurfaceShape, arrives as #SurfaceShape.
+        const el = document.getElementById(hash) ?? document.getElementById(`shape-${hash}`);
         el?.scrollIntoView({ block: 'start' });
         el?.classList.add('is-target');
     }, []);
