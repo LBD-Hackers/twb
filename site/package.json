@@ -9,7 +9,7 @@
         "dev": "npm run ontology && vite",
         "build": "npm run ontology && tsc --noEmit && vite build",
         "preview": "vite preview",
-        "test": "vitest run"
+        "test": "npm run ontology && vitest run"
     },
     "dependencies": {
         "d3-force": "^3.0.0",
