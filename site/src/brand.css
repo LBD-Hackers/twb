@@ -1,0 +1,44 @@
+/*
+ * The design tokens the pages and the styles read: colours, faces, sizes and radii. They come from
+ * the tool TWB was written for (arch), so the data model's figures look the same in both places.
+ */
+
+:root {
+    /* Surfaces: a cool off-white ground, white panels, one hairline colour. */
+    --we-bg: #f7f7f5;
+    --we-panel: #ffffff;
+    --we-line: #dcdcd6;
+    --we-line-strong: #b9b9b1;
+
+    /* Ink: near-black for text and the marks, one grey for everything secondary. */
+    --we-ink: #1f2328;
+    --we-muted: #6b7280;
+
+    /* The one accent: actions, focus, selection. Nothing decorative. */
+    --we-accent: #3f4e4f;
+    --we-accent-strong: #2c3738;
+    --we-accent-soft: #e7ebeb;
+    /* The accent on an ink ground (the app icon, a dark tile), where the accent is too dark. */
+    --we-accent-on-ink: #9fb1b2;
+
+    /* State. Green is AutoCAD's crossing-box green, which arch already uses. */
+    --we-ok: #1e8e3e;
+    --we-ok-soft: #e6f4ea;
+    --we-warn: #b06000;
+    --we-warn-soft: #fef3e0;
+    --we-bad: #c0392b;
+    --we-bad-soft: #fbe9e7;
+
+    /* Faces: the system UI face for the interface, a mono for every number, id and path. */
+    --we-font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --we-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    /* The wordmark's face. */
+    --we-logo-font: 'Helvetica Neue', Helvetica, Arial, 'Liberation Sans', sans-serif;
+
+    /* Sizes: a dense 13 px tool, controls 28 px tall, a 4 px grid. */
+    --we-text: 13px;
+    --we-text-small: 11px;
+    --we-control: 28px;
+    --we-radius: 4px;
+    --we-radius-lg: 6px;
+}

@@ -1,5 +1,5 @@
-# Serves the ontology and the house file's JSON-LD contexts on GitHub Pages, where
-# https://w3id.org/twb sends an RDF client:
+# The site at https://lbd-hackers.github.io/twb/: the data model (`site/`), its reference and the
+# validator, and beside them what https://w3id.org/twb sends an RDF client to:
 #   /ontology/<file>.ttl     every file of ontology/ (text/turtle)
 #   /context/<n>.jsonld      the house file's context, version n (application/ld+json)
 name: Pages
@@ -7,7 +7,7 @@ name: Pages
 on:
     push:
         branches: [main]
-        paths: ['ontology/**', '.github/workflows/pages.yml']
+        paths: ['ontology/**', 'site/**', 'src/**', '.github/workflows/pages.yml']
     workflow_dispatch:
 
 permissions:
@@ -27,22 +27,24 @@ jobs:
             url: ${{ steps.deployment.outputs.page_url }}
         steps:
             - uses: actions/checkout@v4
-            - name: Lay out the site
-              run: |
-                  mkdir -p _site/ontology _site/context
-                  cp -R ontology/. _site/ontology/
-                  cp ontology/twb-house.context.jsonld _site/context/2.jsonld
-                  cp ontology/twb-house.context.1.jsonld _site/context/1.jsonld
-                  touch _site/.nojekyll
-                  cat > _site/index.html <<'HTML'
-                  <!doctype html>
-                  <meta charset="utf-8">
-                  <title>TWB</title>
-                  <meta http-equiv="refresh" content="0; url=https://twb.madsholten.dk/en/datamodel/">
-                  <p>The TWB ontology: <a href="https://twb.madsholten.dk/en/datamodel/">the data model</a>,
-                  <a href="https://github.com/LBD-Hackers/twb">the source</a>.</p>
-                  HTML
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+                  cache-dependency-path: |
+                      package-lock.json
+                      site/package-lock.json
+            - run: npm ci
+            - run: npm ci
+              working-directory: site
+            - run: npm test
+              working-directory: site
+            - run: npm run build
+              working-directory: site
+            - run: touch site/dist/.nojekyll
             - uses: actions/configure-pages@v5
             - uses: actions/upload-pages-artifact@v3
+              with:
+                  path: site/dist
             - id: deployment
               uses: actions/deploy-pages@v4

@@ -1,7 +1,7 @@
 {
     "name": "@lbd-hackers/twb",
     "version": "0.1.1",
-    "description": "TWB (thin-walled blueprints): the ontology, the house file and its JSON-LD context, IFC to TWB, the @surfacekit drawing engine and the <arch-paper-model> viewer",
+    "description": "TWB (thin-walled blueprints): the ontology, the house file and its JSON-LD context, IFC to TWB, the @surfacekit drawing engine, a validator with SHACL on Oxigraph and the <arch-paper-model> viewer",
     "keywords": [
         "twb",
         "thin-walled blueprints",
@@ -117,6 +117,26 @@
                 "default": "./dist/surfacekit/render/index.cjs"
             }
         },
+        "./validate": {
+            "import": {
+                "types": "./dist/validate/index.d.ts",
+                "default": "./dist/validate/index.js"
+            },
+            "require": {
+                "types": "./dist/validate/index.d.cts",
+                "default": "./dist/validate/index.cjs"
+            }
+        },
+        "./validate/node": {
+            "import": {
+                "types": "./dist/validate/node.d.ts",
+                "default": "./dist/validate/node.js"
+            },
+            "require": {
+                "types": "./dist/validate/node.d.cts",
+                "default": "./dist/validate/node.cjs"
+            }
+        },
         "./context.jsonld": "./ontology/twb-house.context.jsonld",
         "./ontology/*": "./ontology/*",
         "./package.json": "./package.json"
@@ -143,10 +163,14 @@
     },
     "peerDependencies": {
         "lit": "^3.0.0",
+        "oxigraph": "^0.5.11",
         "three": ">=0.160.0"
     },
     "peerDependenciesMeta": {
         "lit": {
+            "optional": true
+        },
+        "oxigraph": {
             "optional": true
         },
         "three": {
@@ -157,6 +181,7 @@
         "@types/node": "^22.0.0",
         "@types/three": "^0.180.0",
         "lit": "^3.3.0",
+        "oxigraph": "^0.5.11",
         "three": "^0.180.0",
         "tsup": "^8.5.0",
         "typescript": "~5.9.3",
@@ -188,6 +213,12 @@
             ],
             "surfacekit/render": [
                 "dist/surfacekit/render/index.d.ts"
+            ],
+            "validate": [
+                "dist/validate/index.d.ts"
+            ],
+            "validate/node": [
+                "dist/validate/node.d.ts"
             ]
         }
     }

@@ -11,6 +11,8 @@ export default defineConfig({
         'surfacekit/model/index': 'src/surfacekit/model/index.ts',
         'surfacekit/interaction/index': 'src/surfacekit/interaction/index.ts',
         'surfacekit/render/index': 'src/surfacekit/render/index.ts',
+        'validate/index': 'src/validate/index.ts',
+        'validate/node': 'src/validate/node.ts',
         cli: 'src/cli.ts',
     },
     format: ['esm', 'cjs'],
@@ -20,5 +22,7 @@ export default defineConfig({
     splitting: true,
     sourcemap: true,
     clean: true,
-    external: ['three', /^three\//, 'lit', /^lit\//, /^node:/],
+    // import.meta.url in the CommonJS build (`validate/node.ts` finds the package's ontology by it).
+    shims: true,
+    external: ['three', /^three\//, 'lit', /^lit\//, 'oxigraph', /^oxigraph\//, /^node:/],
 });

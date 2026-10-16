@@ -54,8 +54,20 @@ export interface LoadedHouse {
     interiorOpenings: number;
 }
 
+export interface LoadHouseOptions {
+    /**
+     * Whether a partition goes onto the module grid on a storey drawn to it (`storeyOnModule`).
+     * Default true, as a modeller opens a house it drew. False keeps every partition where the
+     * file put it: a house read off a drawing that was not drawn to the module.
+     */
+    snapToModule?: boolean;
+}
+
 /** The house file `input` (text or parsed JSON) opened into a store of its own. */
-export function loadHouse(input: string | Record<string, unknown>): LoadedHouse {
+export function loadHouse(
+    input: string | Record<string, unknown>,
+    options: LoadHouseOptions = {}
+): LoadedHouse {
     const parsed = parseHouseFile(input);
     const cleaned = cleanDrawing(parsed.surfaces, parsed.guides);
     const store = new SurfaceStore();
@@ -64,7 +76,8 @@ export function loadHouse(input: string | Record<string, unknown>): LoadedHouse 
         store,
         parsed.interiorWalls,
         parsed.zones,
-        parsed.zoneSeparations
+        parsed.zoneSeparations,
+        options
     );
     const doors = placeInteriorOpenings(store, parsed.interiorOpenings, interior.faceIds);
     const zones = new ZoneStore();
@@ -105,7 +118,8 @@ export function buildInteriorWalls(
     store: SurfaceStore,
     walls: readonly ParsedInteriorWall[],
     zones: readonly Zone[] = [],
-    separations: readonly ZoneSeparation[] = []
+    separations: readonly ZoneSeparation[] = [],
+    options: LoadHouseOptions = {}
 ): { created: number; faceIds: SurfaceId[]; messages: string[] } {
     const messages: string[] = [];
     const storeys = sortStoreys(store.storeys());
@@ -131,7 +145,8 @@ export function buildInteriorWalls(
             messages.push('interior wall: fewer than two distinct points after snapping.');
             continue;
         }
-        const enforceModule = storeyOnModule(store.surfaces(), storey);
+        const enforceModule =
+            options.snapToModule !== false && storeyOnModule(store.surfaces(), storey);
         for (let i = 0; i + 1 < pointsUv.length; i++) {
             const segment = {
                 storey,

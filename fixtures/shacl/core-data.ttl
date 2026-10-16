@@ -1,0 +1,36 @@
+# The data core-shapes.ttl is checked against: one thing that conforms, and things that each break
+# a few constraints.
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/shacl-test#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+ex:Widget rdfs:subClassOf ex:Thing .
+
+ex:good a ex:Thing ;
+    ex:colour ex:Red ; ex:status ex:Approved ; ex:size 5 ; ex:ratio 0.5 ;
+    ex:part ex:p1 ; ex:label "good" ; ex:a 1 .
+ex:p1 a ex:Part ; ex:weight 12 .
+ex:owner1 ex:owns ex:good .
+
+ex:t1 a ex:Widget ;
+    ex:colour ex:Blue, ex:Red ;
+    ex:status ex:Draft ;
+    ex:size 0, 11 ;
+    ex:ratio 1.0, "0.3"^^xsd:double, "abc"^^xsd:decimal ;
+    ex:part ex:p2, [ ex:weight 3 ], ex:p3 ;
+    ex:label "one" ; ex:name "two" ;
+    ex:sub ex:t2 ;
+    ex:alias "not a node" ;
+    ex:forbidden true ;
+    ex:a 1 ; ex:b 2 .
+ex:p2 a ex:Part ; ex:weight "heavy" .
+ex:p3 ex:weight 200 .
+ex:t2 ex:sub ex:t3 .
+ex:t3 a ex:Thing ; ex:sub ex:t4 ; ex:colour "blue" ; ex:label "three" ; ex:b 1 ; ex:size 1 .
+ex:t4 a ex:Thing ; ex:label 4 ; ex:a 0 ; ex:size 2 .
+ex:owner1 ex:owns ex:t4 .
+ex:owner2 ex:owns ex:t4 .
+
+ex:f1 ex:flag true .
+ex:f2 ex:flag false, true .
+ex:f3 ex:flag "yes" .

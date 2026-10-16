@@ -1,0 +1,67 @@
+# SHACL Core features twb-shapes.ttl does not use (yet), so that the parity test of src/validate's
+# engine covers them too: sh:in, sh:hasValue, the range and node-kind constraints, sh:node, the
+# logical constraints, every kind of path and target, sh:deactivated and the severities.
+# Run against core-data.ttl by tools/shacl_expected.py (pyshacl) and src/validate/shacl.spec.ts.
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/shacl-test#> .
+
+ex:ThingShape
+    a sh:NodeShape ;
+    sh:targetClass ex:Thing ;
+    sh:property [ sh:path ex:colour ; sh:in ( ex:Red ex:Green "blue" ) ] ;
+    sh:property [ sh:path ex:status ; sh:hasValue ex:Approved ; sh:severity sh:Info ] ;
+    sh:property [ sh:path ex:size ; sh:minInclusive 1 ; sh:maxInclusive 10 ] ;
+    sh:property [ sh:path ex:ratio ; sh:datatype xsd:decimal ; sh:maxExclusive 1.0 ; sh:minExclusive 0 ] ;
+    sh:property [ sh:path ex:part ; sh:nodeKind sh:IRI ; sh:node ex:PartShape ] ;
+    sh:property [ sh:path ( ex:part ex:weight ) ; sh:minCount 1 ; sh:severity sh:Warning ] ;
+    sh:property [ sh:path [ sh:alternativePath ( ex:label ex:name ) ] ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path [ sh:zeroOrMorePath ex:sub ] ; sh:class ex:Thing ] ;
+    sh:property [ sh:path [ sh:oneOrMorePath ex:sub ] ; sh:maxCount 2 ] ;
+    sh:property [ sh:path [ sh:zeroOrOnePath ex:alias ] ; sh:nodeKind sh:BlankNodeOrIRI ] ;
+    sh:property [ sh:path [ sh:inversePath ex:owns ] ; sh:maxCount 1 ; sh:message "A thing has one owner." ] ;
+    sh:property [ sh:path ex:size ; sh:minCount 5 ; sh:deactivated true ] ;
+    sh:or ( [ sh:path ex:a ; sh:minCount 1 ] [ sh:path ex:b ; sh:minCount 1 ] ) ;
+    sh:and ( [ sh:path ex:size ; sh:maxCount 1 ] [ sh:path ex:colour ; sh:maxCount 1 ] ) ;
+    sh:not [ sh:path ex:forbidden ; sh:minCount 1 ] .
+
+ex:PartShape
+    a sh:NodeShape ;
+    sh:property [ sh:path ex:weight ; sh:minCount 1 ; sh:datatype xsd:integer ] .
+
+ex:TargetNodeShape
+    a sh:NodeShape ;
+    sh:targetNode ex:t1, ex:nowhere ;
+    sh:property [ sh:path ex:size ; sh:minCount 1 ] .
+
+ex:PartObjectsShape
+    a sh:NodeShape ;
+    sh:targetObjectsOf ex:part ;
+    sh:nodeKind sh:IRI ;
+    sh:class ex:Part ;
+    sh:property [ sh:path ex:weight ; sh:maxInclusive 100 ] .
+
+ex:FlagShape
+    a sh:NodeShape ;
+    sh:targetSubjectsOf ex:flag ;
+    sh:severity sh:Warning ;
+    sh:property [ sh:path ex:flag ; sh:datatype xsd:boolean ; sh:maxCount 1 ] ;
+    sh:property [ sh:path ex:flag ; sh:in ( true ) ; sh:severity sh:Info ] .
+
+ex:LiteralShape
+    a sh:NodeShape ;
+    sh:targetObjectsOf ex:label ;
+    sh:nodeKind sh:Literal ;
+    sh:datatype xsd:string .
+
+ex:OffShape
+    a sh:NodeShape ;
+    sh:targetClass ex:Thing ;
+    sh:deactivated true ;
+    sh:property [ sh:path ex:size ; sh:minCount 99 ] .
+
+ex:ValueShape
+    a sh:NodeShape ;
+    sh:targetNode ex:Red ;
+    sh:hasValue ex:Green ;
+    sh:in ( ex:Green ex:Red ) .

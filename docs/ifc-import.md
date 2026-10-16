@@ -16,6 +16,7 @@ console.log(ifcImportSummary(report).join('\n'));
 
 ```bash
 npx twb import-ifc model.ifc -o house.twb.jsonld
+npx twb validate model.ifc     # read it, then check the house file it makes (needs oxigraph)
 ```
 
 The test model is the buildingSMART **Duplex** (Revit 2011, IFC2X3; see

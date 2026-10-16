@@ -9,6 +9,9 @@ the side that faces a room.
 - Website and the data model explained, with an interactive schema and rule checks that run in
   your browser: **<https://twb.madsholten.dk>** (English: <https://twb.madsholten.dk/en/>, data
   model: <https://twb.madsholten.dk/en/datamodel/>)
+- The data model in detail — every class and property, the SHACL shapes, and a validator for
+  house files, IFC models and TWB graphs that runs in your browser:
+  **<https://lbd-hackers.github.io/twb/>** (built from [`site/`](site/)).
 - Namespace: `https://w3id.org/twb#` — an RDF client gets the Turtle from this repository (served
   at <https://lbd-hackers.github.io/twb/ontology/>), a browser the data model page.
 - The method: *Thin-walled blueprints: a building model in which surfaces carry assembly recipes,
@@ -25,7 +28,8 @@ This repository holds the open part of TWB, published on npm as
 | [`src/ifc/`](src/ifc/) | **IFC to TWB**: an IFC2X3 or IFC4 model read into a house file, with a report of what was read, guessed and left out ([docs/ifc-import.md](docs/ifc-import.md)) | Apache-2.0 |
 | [`src/surfacekit/`](src/surfacekit/) | The drawing engine: thin planar surfaces, storeys and zones with a validated store, the module grid, push/pull and the other tools, the three.js viewport | Apache-2.0 |
 | [`src/elements/`](src/elements/) | `<arch-paper-model>`, the viewer of a house file as a web component, read-only or editable | Apache-2.0 |
-| [`src/cli.ts`](src/cli.ts) | `twb`, the command line: IFC to TWB, checking and converting house files | Apache-2.0 |
+| [`src/validate/`](src/validate/) | The validator: a house file, an IFC file or a TWB graph against the ontology, its catalogue and its SHACL shapes, with a SHACL engine on [Oxigraph](https://github.com/oxigraph/oxigraph) that runs in Node and the browser | Apache-2.0 |
+| [`src/cli.ts`](src/cli.ts) | `twb`, the command line: IFC to TWB, checking, validating and converting house files | Apache-2.0 |
 
 The line between open and closed is the one the website draws: **open is what defines a blueprint
 and lets anyone draw, read and exchange it; closed is what turns a blueprint into a building.** The
@@ -44,7 +48,8 @@ Node 20 or later, or any modern browser. The house file, the IFC importer and th
 are pure TypeScript with no dependencies. The viewer and the engine's renderer need
 [`three`](https://www.npmjs.com/package/three) and [`lit`](https://www.npmjs.com/package/lit),
 which are optional peer dependencies: install them if you use `@lbd-hackers/twb/elements` or
-`@lbd-hackers/twb/surfacekit/render`.
+`@lbd-hackers/twb/surfacekit/render`. So is [`oxigraph`](https://www.npmjs.com/package/oxigraph),
+for `@lbd-hackers/twb/validate` and `twb validate`.
 
 ## From the command line
 
@@ -54,6 +59,36 @@ npx @lbd-hackers/twb check house.twb.jsonld                     # open it; list 
 npx @lbd-hackers/twb convert old-house.json -o house.twb.jsonld # arch/1 to twb/1
 npx @lbd-hackers/twb context                                    # the JSON-LD context
 ```
+
+### Validate
+
+`twb validate` checks a house file, an IFC file or a TWB graph against the ontology, its catalogue
+and its SHACL shapes, with the ontology the package ships. It needs
+[`oxigraph`](https://www.npmjs.com/package/oxigraph), an optional peer dependency
+(`npm install oxigraph`), and exits 1 on any finding of severity error.
+
+```bash
+npx @lbd-hackers/twb validate house.twb.jsonld        # a house file, twb/1 or arch/1
+npx @lbd-hackers/twb validate model.ifc               # read into a house file first
+npx @lbd-hackers/twb validate case-house.ttl --rules  # a graph: the rules applied, then every shape
+npx @lbd-hackers/twb validate house.ttl --with rules.ttl --json
+```
+
+A **house file** is checked in levels: `file` (its shape: every corner three numbers, every
+storey named one the file has, each error with its JSON path), `geometry` (opened as a tool opens
+it: faces the store would not take, partitions and doors it could not build; and the house in
+numbers), `vocabulary` (read as JSON-LD, no network: keys the context does not map, `twb:` terms
+no module defines, catalogue values the catalogue does not list). The shapes are not run on a house
+file — they check a blueprint with its derived parts (an opening's perimeter edges, typed layers,
+edges, passages), which a house file does not carry.
+
+A **graph** (Turtle, N-Triples, RDF/XML, JSON-LD) is loaded with BOT, TWB's modules and the
+catalogue; with `--rules` the rules of `ontology/queries/rules/` are applied in order, each
+materialising its triples before the next; then every shape of `twb-shapes.ttl` runs. A
+blueprint's adjacency rules kept beside it as `<name>-rules.ttl` and `<name>-use-rules.ttl` are
+loaded with it, as the case house keeps them; `--with` adds any other file. On the case house,
+`--rules` finds the five zone boundaries towards the bathroom that lack a wet-room lining; without
+the rules there is no `twb:leadsTo`, so the egress shape finds no way out of any room.
 
 ## From code
 
@@ -97,6 +132,29 @@ const quads = await jsonld.toRDF(
     { format: 'application/n-quads', base: 'https://example.org/my-house/' }
 );
 ```
+
+**Validate** — the same in code, in Node or in a browser's Web Worker. The validator is handed
+the Oxigraph module (`oxigraph` in Node, `oxigraph/web.js` once its WASM is initialised in a
+browser) and the ontology's texts; `@lbd-hackers/twb/validate/node` reads them from the package.
+
+```ts
+import * as ox from 'oxigraph';
+import { validate, validateGraph, formatReport } from '@lbd-hackers/twb/validate';
+import { loadOntologySources } from '@lbd-hackers/twb/validate/node';
+
+const ontology = loadOntologySources(); // the package's ontology/: modules, catalogue, BOT, shapes, rules
+const report = validate('house.twb.jsonld', text, ontology, ox); // house file, IFC or graph, by content
+console.log(formatReport(report!)); // or report.levels[i].findings: { level, severity, message, where }
+
+const graph = validateGraph(turtle, 'turtle', ontology, ox, { rules: true, with: [adjacencyRules] });
+```
+
+The SHACL engine (`ShaclValidator`) compiles the shapes graph into SPARQL as it is written:
+targets, paths (inverse, sequence, alternative, `*`, `+`, `?`), the count, class, datatype,
+node-kind, range, `sh:in`, `sh:hasValue`, `sh:node` and logical constraints, and SHACL-SPARQL
+constraints with `$this` pre-bound and their messages filled in. It refuses a shapes graph that
+uses anything else, naming the feature, rather than skip it. Its results are held to pyshacl's on
+the case house and on broken variants of it (`tools/shacl_expected.py`).
 
 **On a web page.**
 
@@ -192,9 +250,10 @@ npm run check:ontology
 | `src/house/` | the house file |
 | `src/ifc/` | IFC to TWB |
 | `src/elements/` | `<arch-paper-model>` |
+| `src/validate/` | the validator and its SHACL engine |
 | `ontology/` | the ontology, shapes, queries and examples |
-| `tools/` | the ontology's checks (Python) |
-| `fixtures/` | house files for the tests; see [`fixtures/README.md`](fixtures/README.md) for the IFC test model |
+| `tools/` | the ontology's checks (Python); `shacl_expected.py` writes pyshacl's results the SHACL engine is held to |
+| `fixtures/` | house files for the tests, and `shacl/` for the SHACL engine's; see [`fixtures/README.md`](fixtures/README.md) for the IFC test model |
 
 Issues and pull requests are welcome at <https://github.com/LBD-Hackers/twb>.
 

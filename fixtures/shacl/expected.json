@@ -1,0 +1,778 @@
+{
+ "generatedBy": "tools/shacl_expected.py",
+ "pyshacl": "0.40.1",
+ "caseHouse": [
+  {
+   "name": "as-exported",
+   "rules": true,
+   "updates": [],
+   "results": [
+    {
+     "focus": "<https://example.org/twb/case-house/zone-boundary/floor/positive/z-bath>",
+     "path": null,
+     "shape": "<https://w3id.org/twb/shapes#CapabilityShape>",
+     "component": "SPARQLConstraintComponent",
+     "severity": "Violation",
+     "value": "<https://example.org/twb/case-house/zone-boundary/floor/positive/z-bath>"
+    },
+    {
+     "focus": "<https://example.org/twb/case-house/zone-boundary/s3/positive/z-bath>",
+     "path": null,
+     "shape": "<https://w3id.org/twb/shapes#CapabilityShape>",
+     "component": "SPARQLConstraintComponent",
+     "severity": "Violation",
+     "value": "<https://example.org/twb/case-house/zone-boundary/s3/positive/z-bath>"
+    },
+    {
+     "focus": "<https://example.org/twb/case-house/zone-boundary/s4/positive/z-bath>",
+     "path": null,
+     "shape": "<https://w3id.org/twb/shapes#CapabilityShape>",
+     "component": "SPARQLConstraintComponent",
+     "severity": "Violation",
+     "value": "<https://example.org/twb/case-house/zone-boundary/s4/positive/z-bath>"
+    },
+    {
+     "focus": "<https://example.org/twb/case-house/zone-boundary/wall-east/negative/z-bath>",
+     "path": null,
+     "shape": "<https://w3id.org/twb/shapes#CapabilityShape>",
+     "component": "SPARQLConstraintComponent",
+     "severity": "Violation",
+     "value": "<https://example.org/twb/case-house/zone-boundary/wall-east/negative/z-bath>"
+    },
+    {
+     "focus": "<https://example.org/twb/case-house/zone-boundary/wall-south/negative/z-bath>",
+     "path": null,
+     "shape": "<https://w3id.org/twb/shapes#CapabilityShape>",
+     "component": "SPARQLConstraintComponent",
+     "severity": "Violation",
+     "value": "<https://example.org/twb/case-house/zone-boundary/wall-south/negative/z-bath>"
+    }
+   ]
+  },
+  {
+   "name": "repaired",
+   "rules": true,
+   "updates": [
+    "# Repair: where a zone boundary requires a wet-room lining that its surface's recipe does not provide on that\n# side, apply the wet-room membrane system as a covering on that boundary — only the part of the surface the\n# wet room faces, not the whole recipe.\nPREFIX twb: <https://w3id.org/twb#>\nINSERT { ?boundary twb:hasCovering <https://example.org/twb/case-house/covering-wet-room-system> . }\nWHERE {\n  ?boundary twb:requires twb:WetRoomLining ; twb:onSide ?side .\n  ?surface twb:positiveSide|twb:negativeSide ?side ; twb:hasRecipe ?recipe .\n  FILTER NOT EXISTS { ?recipe twb:provides twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside true . ?recipe twb:providesInside twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside false . ?recipe twb:providesOutside twb:WetRoomLining }\n}\n"
+   ],
+   "results": []
+  },
+  {
+   "name": "no-rules",
+   "rules": false,
+   "updates": [],
+   "results": [
+    {
+     "focus": "<https://example.org/twb/case-house/zone/z-bath>",
+     "path": null,
+     "shape": "<https://w3id.org/twb/shapes#EgressShape>",
+     "component": "SPARQLConstraintComponent",
+     "severity": "Violation",
+     "value": "<https://example.org/twb/case-house/zone/z-bath>"
+    },
+    {
+     "focus": "<https://example.org/twb/case-house/zone/z-bed1>",
+     "path": null,
+     "shape": "<https://w3id.org/twb/shapes#EgressShape>",
+     "component": "SPARQLConstraintComponent",
+     "severity": "Violation",
+     "value": "<https://example.org/twb/case-house/zone/z-bed1>"
+    },
+    {
+     "focus": "<https://example.org/twb/case-house/zone/z-bed2>",
+     "path": null,
+     "shape": "<https://w3id.org/twb/shapes#EgressShape>",
+     "component": "SPARQLConstraintComponent",
+     "severity": "Violation",
+     "value": "<https://example.org/twb/case-house/zone/z-bed2>"
+    },
+    {
+     "focus": "<https://example.org/twb/case-house/zone/z-living>",
+     "path": null,
+     "shape": "<https://w3id.org/twb/shapes#EgressShape>",
+     "component": "SPARQLConstraintComponent",
+     "severity": "Violation",
+     "value": "<https://example.org/twb/case-house/zone/z-living>"
+    }
+   ]
+  },
+  {
+   "name": "surface-with-two-recipes",
+   "rules": true,
+   "updates": [
+    "# Repair: where a zone boundary requires a wet-room lining that its surface's recipe does not provide on that\n# side, apply the wet-room membrane system as a covering on that boundary — only the part of the surface the\n# wet room faces, not the whole recipe.\nPREFIX twb: <https://w3id.org/twb#>\nINSERT { ?boundary twb:hasCovering <https://example.org/twb/case-house/covering-wet-room-system> . }\nWHERE {\n  ?boundary twb:requires twb:WetRoomLining ; twb:onSide ?side .\n  ?surface twb:positiveSide|twb:negativeSide ?side ; twb:hasRecipe ?recipe .\n  FILTER NOT EXISTS { ?recipe twb:provides twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside true . ?recipe twb:providesInside twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside false . ?recipe twb:providesOutside twb:WetRoomLining }\n}\n",
+    "PREFIX twb: <https://w3id.org/twb#>\nPREFIX bot: <https://w3id.org/bot#>\nPREFIX inst: <https://example.org/twb/case-house/>\nINSERT DATA { <https://example.org/twb/case-house/surface/s1> twb:hasRecipe <https://example.org/twb/case-house/recipe/exteriorWall> }"
+   ],
+   "results": [
+    {
+     "focus": "<https://example.org/twb/case-house/surface/s1>",
+     "path": "<https://w3id.org/twb#hasRecipe>",
+     "shape": "<https://w3id.org/twb/shapes#SurfaceShape>",
+     "component": "MaxCountConstraintComponent",
+     "severity": "Violation",
+     "value": null
+    }
+   ]
+  },
+  {
+   "name": "surface-without-recipe",
+   "rules": true,
+   "updates": [
+    "# Repair: where a zone boundary requires a wet-room lining that its surface's recipe does not provide on that\n# side, apply the wet-room membrane system as a covering on that boundary — only the part of the surface the\n# wet room faces, not the whole recipe.\nPREFIX twb: <https://w3id.org/twb#>\nINSERT { ?boundary twb:hasCovering <https://example.org/twb/case-house/covering-wet-room-system> . }\nWHERE {\n  ?boundary twb:requires twb:WetRoomLining ; twb:onSide ?side .\n  ?surface twb:positiveSide|twb:negativeSide ?side ; twb:hasRecipe ?recipe .\n  FILTER NOT EXISTS { ?recipe twb:provides twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside true . ?recipe twb:providesInside twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside false . ?recipe twb:providesOutside twb:WetRoomLining }\n}\n",
+    "PREFIX twb: <https://w3id.org/twb#>\nPREFIX bot: <https://w3id.org/bot#>\nPREFIX inst: <https://example.org/twb/case-house/>\nDELETE WHERE { <https://example.org/twb/case-house/surface/s2> twb:hasRecipe ?r }"
+   ],
+   "results": [
+    {
+     "focus": "<https://example.org/twb/case-house/surface/s2>",
+     "path": "<https://w3id.org/twb#hasRecipe>",
+     "shape": "<https://w3id.org/twb/shapes#SurfaceShape>",
+     "component": "MinCountConstraintComponent",
+     "severity": "Warning",
+     "value": null
+    }
+   ]
+  },
+  {
+   "name": "layer-without-material",
+   "rules": true,
+   "updates": [
+    "# Repair: where a zone boundary requires a wet-room lining that its surface's recipe does not provide on that\n# side, apply the wet-room membrane system as a covering on that boundary — only the part of the surface the\n# wet room faces, not the whole recipe.\nPREFIX twb: <https://w3id.org/twb#>\nINSERT { ?boundary twb:hasCovering <https://example.org/twb/case-house/covering-wet-room-system> . }\nWHERE {\n  ?boundary twb:requires twb:WetRoomLining ; twb:onSide ?side .\n  ?surface twb:positiveSide|twb:negativeSide ?side ; twb:hasRecipe ?recipe .\n  FILTER NOT EXISTS { ?recipe twb:provides twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside true . ?recipe twb:providesInside twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside false . ?recipe twb:providesOutside twb:WetRoomLining }\n}\n",
+    "PREFIX twb: <https://w3id.org/twb#>\nPREFIX bot: <https://w3id.org/bot#>\nPREFIX inst: <https://example.org/twb/case-house/>\nDELETE WHERE { <https://example.org/twb/case-house/recipe/ceiling/layer/0> twb:material ?m }"
+   ],
+   "results": [
+    {
+     "focus": "<https://example.org/twb/case-house/recipe/ceiling/layer/0>",
+     "path": "<https://w3id.org/twb#material>",
+     "shape": "<https://w3id.org/twb/shapes#LayerShape>",
+     "component": "MinCountConstraintComponent",
+     "severity": "Violation",
+     "value": null
+    }
+   ]
+  },
+  {
+   "name": "layer-thickness-negative-and-integer",
+   "rules": true,
+   "updates": [
+    "# Repair: where a zone boundary requires a wet-room lining that its surface's recipe does not provide on that\n# side, apply the wet-room membrane system as a covering on that boundary — only the part of the surface the\n# wet room faces, not the whole recipe.\nPREFIX twb: <https://w3id.org/twb#>\nINSERT { ?boundary twb:hasCovering <https://example.org/twb/case-house/covering-wet-room-system> . }\nWHERE {\n  ?boundary twb:requires twb:WetRoomLining ; twb:onSide ?side .\n  ?surface twb:positiveSide|twb:negativeSide ?side ; twb:hasRecipe ?recipe .\n  FILTER NOT EXISTS { ?recipe twb:provides twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside true . ?recipe twb:providesInside twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside false . ?recipe twb:providesOutside twb:WetRoomLining }\n}\n",
+    "PREFIX twb: <https://w3id.org/twb#>\nPREFIX bot: <https://w3id.org/bot#>\nPREFIX inst: <https://example.org/twb/case-house/>\nDELETE { ?l twb:thickness ?t } INSERT { ?l twb:thickness ?n } WHERE {\n            VALUES (?l ?n) { (<https://example.org/twb/case-house/recipe/ceiling/layer/1> \"-5.0\"^^<http://www.w3.org/2001/XMLSchema#decimal>) (<https://example.org/twb/case-house/recipe/ceiling/layer/2> 50) }\n            ?l twb:thickness ?t }"
+   ],
+   "results": [
+    {
+     "focus": "<https://example.org/twb/case-house/recipe/ceiling/layer/2>",
+     "path": "<https://w3id.org/twb#thickness>",
+     "shape": "<https://w3id.org/twb/shapes#LayerShape>",
+     "component": "DatatypeConstraintComponent",
+     "severity": "Violation",
+     "value": "\"50\""
+    },
+    {
+     "focus": "<https://example.org/twb/case-house/recipe/ceiling/layer/1>",
+     "path": "<https://w3id.org/twb#thickness>",
+     "shape": "<https://w3id.org/twb/shapes#LayerShape>",
+     "component": "MinInclusiveConstraintComponent",
+     "severity": "Violation",
+     "value": "\"-5\""
+    }
+   ]
+  },
+  {
+   "name": "recipe-with-two-cores-and-a-shared-index",
+   "rules": true,
+   "updates": [
+    "# Repair: where a zone boundary requires a wet-room lining that its surface's recipe does not provide on that\n# side, apply the wet-room membrane system as a covering on that boundary — only the part of the surface the\n# wet room faces, not the whole recipe.\nPREFIX twb: <https://w3id.org/twb#>\nINSERT { ?boundary twb:hasCovering <https://example.org/twb/case-house/covering-wet-room-system> . }\nWHERE {\n  ?boundary twb:requires twb:WetRoomLining ; twb:onSide ?side .\n  ?surface twb:positiveSide|twb:negativeSide ?side ; twb:hasRecipe ?recipe .\n  FILTER NOT EXISTS { ?recipe twb:provides twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside true . ?recipe twb:providesInside twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside false . ?recipe twb:providesOutside twb:WetRoomLining }\n}\n",
+    "PREFIX twb: <https://w3id.org/twb#>\nPREFIX bot: <https://w3id.org/bot#>\nPREFIX inst: <https://example.org/twb/case-house/>\nDELETE { <https://example.org/twb/case-house/recipe/ceiling/layer/0> twb:isCore false . <https://example.org/twb/case-house/recipe/atticRoof/layer/1> twb:layerIndex 1 }\n        INSERT { <https://example.org/twb/case-house/recipe/ceiling/layer/0> twb:isCore true . <https://example.org/twb/case-house/recipe/atticRoof/layer/1> twb:layerIndex 0 }\n        WHERE {}"
+   ],
+   "results": [
+    {
+     "focus": "<https://example.org/twb/case-house/recipe/atticRoof>",
+     "path": null,
+     "shape": "<https://w3id.org/twb/shapes#RecipeShape>",
+     "component": "SPARQLConstraintComponent",
+     "severity": "Violation",
+     "value": "<https://example.org/twb/case-house/recipe/atticRoof>"
+    },
+    {
+     "focus": "<https://example.org/twb/case-house/recipe/ceiling>",
+     "path": null,
+     "shape": "<https://w3id.org/twb/shapes#RecipeShape>",
+     "component": "SPARQLConstraintComponent",
+     "severity": "Violation",
+     "value": "<https://example.org/twb/case-house/recipe/ceiling>"
+    }
+   ]
+  },
+  {
+   "name": "passage-with-one-zone",
+   "rules": true,
+   "updates": [
+    "# Repair: where a zone boundary requires a wet-room lining that its surface's recipe does not provide on that\n# side, apply the wet-room membrane system as a covering on that boundary — only the part of the surface the\n# wet room faces, not the whole recipe.\nPREFIX twb: <https://w3id.org/twb#>\nINSERT { ?boundary twb:hasCovering <https://example.org/twb/case-house/covering-wet-room-system> . }\nWHERE {\n  ?boundary twb:requires twb:WetRoomLining ; twb:onSide ?side .\n  ?surface twb:positiveSide|twb:negativeSide ?side ; twb:hasRecipe ?recipe .\n  FILTER NOT EXISTS { ?recipe twb:provides twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside true . ?recipe twb:providesInside twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside false . ?recipe twb:providesOutside twb:WetRoomLining }\n}\n",
+    "PREFIX twb: <https://w3id.org/twb#>\nPREFIX bot: <https://w3id.org/bot#>\nPREFIX inst: <https://example.org/twb/case-house/>\nDELETE DATA { <https://example.org/twb/case-house/passage/s1-s1h1> twb:connectsZone <https://example.org/twb/case-house/zone/z-bed2> }"
+   ],
+   "results": [
+    {
+     "focus": "<https://example.org/twb/case-house/passage/s1-s1h1>",
+     "path": "<https://w3id.org/twb#connectsZone>",
+     "shape": "<https://w3id.org/twb/shapes#PassageShape>",
+     "component": "MinCountConstraintComponent",
+     "severity": "Violation",
+     "value": null
+    }
+   ]
+  },
+  {
+   "name": "door-openable-from-a-zone-it-does-not-connect",
+   "rules": true,
+   "updates": [
+    "# Repair: where a zone boundary requires a wet-room lining that its surface's recipe does not provide on that\n# side, apply the wet-room membrane system as a covering on that boundary — only the part of the surface the\n# wet room faces, not the whole recipe.\nPREFIX twb: <https://w3id.org/twb#>\nINSERT { ?boundary twb:hasCovering <https://example.org/twb/case-house/covering-wet-room-system> . }\nWHERE {\n  ?boundary twb:requires twb:WetRoomLining ; twb:onSide ?side .\n  ?surface twb:positiveSide|twb:negativeSide ?side ; twb:hasRecipe ?recipe .\n  FILTER NOT EXISTS { ?recipe twb:provides twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside true . ?recipe twb:providesInside twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside false . ?recipe twb:providesOutside twb:WetRoomLining }\n}\n",
+    "PREFIX twb: <https://w3id.org/twb#>\nPREFIX bot: <https://w3id.org/bot#>\nPREFIX inst: <https://example.org/twb/case-house/>\nINSERT DATA { <https://example.org/twb/case-house/passage/s3-s3h1> twb:openableFrom <https://example.org/twb/case-house/zone/z-bed2> }"
+   ],
+   "results": [
+    {
+     "focus": "<https://example.org/twb/case-house/passage/s3-s3h1>",
+     "path": null,
+     "shape": "<https://w3id.org/twb/shapes#PassageShape>",
+     "component": "SPARQLConstraintComponent",
+     "severity": "Violation",
+     "value": "<https://example.org/twb/case-house/passage/s3-s3h1>"
+    }
+   ]
+  },
+  {
+   "name": "side-inside-not-boolean",
+   "rules": true,
+   "updates": [
+    "# Repair: where a zone boundary requires a wet-room lining that its surface's recipe does not provide on that\n# side, apply the wet-room membrane system as a covering on that boundary — only the part of the surface the\n# wet room faces, not the whole recipe.\nPREFIX twb: <https://w3id.org/twb#>\nINSERT { ?boundary twb:hasCovering <https://example.org/twb/case-house/covering-wet-room-system> . }\nWHERE {\n  ?boundary twb:requires twb:WetRoomLining ; twb:onSide ?side .\n  ?surface twb:positiveSide|twb:negativeSide ?side ; twb:hasRecipe ?recipe .\n  FILTER NOT EXISTS { ?recipe twb:provides twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside true . ?recipe twb:providesInside twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside false . ?recipe twb:providesOutside twb:WetRoomLining }\n}\n",
+    "PREFIX twb: <https://w3id.org/twb#>\nPREFIX bot: <https://w3id.org/bot#>\nPREFIX inst: <https://example.org/twb/case-house/>\nINSERT DATA { <https://example.org/twb/case-house/surface/floor/positive> twb:isInside \"yes\" }"
+   ],
+   "results": [
+    {
+     "focus": "<https://example.org/twb/case-house/surface/floor/positive>",
+     "path": "<https://w3id.org/twb#isInside>",
+     "shape": "<https://w3id.org/twb/shapes#SurfaceSideShape>",
+     "component": "DatatypeConstraintComponent",
+     "severity": "Violation",
+     "value": "\"yes\""
+    },
+    {
+     "focus": "<https://example.org/twb/case-house/surface/floor/positive>",
+     "path": "<https://w3id.org/twb#isInside>",
+     "shape": "<https://w3id.org/twb/shapes#SurfaceSideShape>",
+     "component": "MaxCountConstraintComponent",
+     "severity": "Violation",
+     "value": null
+    }
+   ]
+  },
+  {
+   "name": "surface-sides-the-same",
+   "rules": true,
+   "updates": [
+    "# Repair: where a zone boundary requires a wet-room lining that its surface's recipe does not provide on that\n# side, apply the wet-room membrane system as a covering on that boundary — only the part of the surface the\n# wet room faces, not the whole recipe.\nPREFIX twb: <https://w3id.org/twb#>\nINSERT { ?boundary twb:hasCovering <https://example.org/twb/case-house/covering-wet-room-system> . }\nWHERE {\n  ?boundary twb:requires twb:WetRoomLining ; twb:onSide ?side .\n  ?surface twb:positiveSide|twb:negativeSide ?side ; twb:hasRecipe ?recipe .\n  FILTER NOT EXISTS { ?recipe twb:provides twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside true . ?recipe twb:providesInside twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside false . ?recipe twb:providesOutside twb:WetRoomLining }\n}\n",
+    "PREFIX twb: <https://w3id.org/twb#>\nPREFIX bot: <https://w3id.org/bot#>\nPREFIX inst: <https://example.org/twb/case-house/>\nDELETE { <https://example.org/twb/case-house/surface/s4> twb:negativeSide ?n } INSERT { <https://example.org/twb/case-house/surface/s4> twb:negativeSide ?p }\n        WHERE { <https://example.org/twb/case-house/surface/s4> twb:negativeSide ?n ; twb:positiveSide ?p }"
+   ],
+   "results": [
+    {
+     "focus": "<https://example.org/twb/case-house/surface/s4>",
+     "path": null,
+     "shape": "<https://w3id.org/twb/shapes#SurfaceShape>",
+     "component": "SPARQLConstraintComponent",
+     "severity": "Violation",
+     "value": "<https://example.org/twb/case-house/surface/s4>"
+    },
+    {
+     "focus": "<https://example.org/twb/case-house/surface/s4>",
+     "path": null,
+     "shape": "<https://w3id.org/twb/shapes#SurfaceShape>",
+     "component": "SPARQLConstraintComponent",
+     "severity": "Violation",
+     "value": "<https://example.org/twb/case-house/surface/s4>"
+    }
+   ]
+  },
+  {
+   "name": "edge-broken",
+   "rules": true,
+   "updates": [
+    "# Repair: where a zone boundary requires a wet-room lining that its surface's recipe does not provide on that\n# side, apply the wet-room membrane system as a covering on that boundary — only the part of the surface the\n# wet room faces, not the whole recipe.\nPREFIX twb: <https://w3id.org/twb#>\nINSERT { ?boundary twb:hasCovering <https://example.org/twb/case-house/covering-wet-room-system> . }\nWHERE {\n  ?boundary twb:requires twb:WetRoomLining ; twb:onSide ?side .\n  ?surface twb:positiveSide|twb:negativeSide ?side ; twb:hasRecipe ?recipe .\n  FILTER NOT EXISTS { ?recipe twb:provides twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside true . ?recipe twb:providesInside twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside false . ?recipe twb:providesOutside twb:WetRoomLining }\n}\n",
+    "PREFIX twb: <https://w3id.org/twb#>\nPREFIX bot: <https://w3id.org/bot#>\nPREFIX inst: <https://example.org/twb/case-house/>\nDELETE { <https://example.org/twb/case-house/edge/floor%7Cwall-east> twb:length ?l . <https://example.org/twb/case-house/edge/floor%7Cwall-south> twb:edgeType ?t }\n        INSERT {\n            <https://example.org/twb/case-house/edge/floor%7Cwall-east> twb:length 0.0 .\n            <https://example.org/twb/case-house/edge/floor%7Cwall-south> twb:edgeType twb:mitre .\n            <https://example.org/twb/case-house/edge/floor%7Cwall-north> twb:edgeOf <https://example.org/twb/case-house/surface/wall-south> }\n        WHERE { <https://example.org/twb/case-house/edge/floor%7Cwall-east> twb:length ?l . <https://example.org/twb/case-house/edge/floor%7Cwall-south> twb:edgeType ?t }"
+   ],
+   "results": [
+    {
+     "focus": "<https://example.org/twb/case-house/edge/floor%7Cwall-south>",
+     "path": "<https://w3id.org/twb#edgeType>",
+     "shape": "<https://w3id.org/twb/shapes#EdgeShape>",
+     "component": "ClassConstraintComponent",
+     "severity": "Violation",
+     "value": "<https://w3id.org/twb#mitre>"
+    },
+    {
+     "focus": "<https://example.org/twb/case-house/edge/floor%7Cwall-north>",
+     "path": "<https://w3id.org/twb#edgeOf>",
+     "shape": "<https://w3id.org/twb/shapes#EdgeShape>",
+     "component": "MaxCountConstraintComponent",
+     "severity": "Violation",
+     "value": null
+    },
+    {
+     "focus": "<https://example.org/twb/case-house/edge/floor%7Cwall-east>",
+     "path": "<https://w3id.org/twb#length>",
+     "shape": "<https://w3id.org/twb/shapes#EdgeShape>",
+     "component": "MinExclusiveConstraintComponent",
+     "severity": "Violation",
+     "value": "\"0\""
+    }
+   ]
+  },
+  {
+   "name": "opening-hosted-twice-without-u",
+   "rules": true,
+   "updates": [
+    "# Repair: where a zone boundary requires a wet-room lining that its surface's recipe does not provide on that\n# side, apply the wet-room membrane system as a covering on that boundary — only the part of the surface the\n# wet room faces, not the whole recipe.\nPREFIX twb: <https://w3id.org/twb#>\nINSERT { ?boundary twb:hasCovering <https://example.org/twb/case-house/covering-wet-room-system> . }\nWHERE {\n  ?boundary twb:requires twb:WetRoomLining ; twb:onSide ?side .\n  ?surface twb:positiveSide|twb:negativeSide ?side ; twb:hasRecipe ?recipe .\n  FILTER NOT EXISTS { ?recipe twb:provides twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside true . ?recipe twb:providesInside twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside false . ?recipe twb:providesOutside twb:WetRoomLining }\n}\n",
+    "PREFIX twb: <https://w3id.org/twb#>\nPREFIX bot: <https://w3id.org/bot#>\nPREFIX inst: <https://example.org/twb/case-house/>\nDELETE { <https://example.org/twb/case-house/opening/wall-east/wall-easth1> twb:u ?u }\n        INSERT { <https://example.org/twb/case-house/surface/s1> bot:hostsElement <https://example.org/twb/case-house/opening/wall-south/wall-southh1> }\n        WHERE { <https://example.org/twb/case-house/opening/wall-east/wall-easth1> twb:u ?u }"
+   ],
+   "results": [
+    {
+     "focus": "<https://example.org/twb/case-house/opening/wall-south/wall-southh1>",
+     "path": "^<https://w3id.org/bot#hostsElement>",
+     "shape": "<https://w3id.org/twb/shapes#OpeningShape>",
+     "component": "MaxCountConstraintComponent",
+     "severity": "Violation",
+     "value": null
+    },
+    {
+     "focus": "<https://example.org/twb/case-house/opening/wall-east/wall-easth1>",
+     "path": "<https://w3id.org/twb#u>",
+     "shape": "<https://w3id.org/twb/shapes#OpeningShape>",
+     "component": "MinCountConstraintComponent",
+     "severity": "Violation",
+     "value": null
+    }
+   ]
+  },
+  {
+   "name": "layer-terminations-of-surface-and-role-or-neither",
+   "rules": true,
+   "updates": [
+    "# Repair: where a zone boundary requires a wet-room lining that its surface's recipe does not provide on that\n# side, apply the wet-room membrane system as a covering on that boundary — only the part of the surface the\n# wet room faces, not the whole recipe.\nPREFIX twb: <https://w3id.org/twb#>\nINSERT { ?boundary twb:hasCovering <https://example.org/twb/case-house/covering-wet-room-system> . }\nWHERE {\n  ?boundary twb:requires twb:WetRoomLining ; twb:onSide ?side .\n  ?surface twb:positiveSide|twb:negativeSide ?side ; twb:hasRecipe ?recipe .\n  FILTER NOT EXISTS { ?recipe twb:provides twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside true . ?recipe twb:providesInside twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside false . ?recipe twb:providesOutside twb:WetRoomLining }\n}\n",
+    "PREFIX twb: <https://w3id.org/twb#>\nPREFIX bot: <https://w3id.org/bot#>\nPREFIX inst: <https://example.org/twb/case-house/>\nDELETE { ?neither twb:ofSurface ?s } INSERT { ?both twb:ofRole twb:FirstRole }\n        WHERE {\n            ?both a twb:LayerTermination ; twb:ofSurface <https://example.org/twb/case-house/surface/wall-west> ; twb:layerIndex 3 .\n            ?neither a twb:LayerTermination ; twb:ofSurface ?s ; twb:layerIndex 4 .\n            FILTER (?s = <https://example.org/twb/case-house/surface/wall-west>) }"
+   ],
+   "results": [
+    {
+     "focus": "[<https://example.org/twb/case-house/joint/wall-south%7Cwall-west> <https://w3id.org/twb#hasLayerTermination> ; <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://w3id.org/twb#LayerTermination> ; <https://w3id.org/twb#cut> <https://w3id.org/twb#mitre> ; <https://w3id.org/twb#layerIndex> \"3\" ; <https://w3id.org/twb#ofRole> <https://w3id.org/twb#FirstRole> ; <https://w3id.org/twb#ofSurface> <https://example.org/twb/case-house/surface/wall-west>]",
+     "path": null,
+     "shape": "<https://w3id.org/twb/shapes#LayerTerminationShape>",
+     "component": "XoneConstraintComponent",
+     "severity": "Violation",
+     "value": "[<https://example.org/twb/case-house/joint/wall-south%7Cwall-west> <https://w3id.org/twb#hasLayerTermination> ; <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://w3id.org/twb#LayerTermination> ; <https://w3id.org/twb#cut> <https://w3id.org/twb#mitre> ; <https://w3id.org/twb#layerIndex> \"3\" ; <https://w3id.org/twb#ofRole> <https://w3id.org/twb#FirstRole> ; <https://w3id.org/twb#ofSurface> <https://example.org/twb/case-house/surface/wall-west>]"
+    },
+    {
+     "focus": "[<https://example.org/twb/case-house/joint/wall-south%7Cwall-west> <https://w3id.org/twb#hasLayerTermination> ; <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://w3id.org/twb#LayerTermination> ; <https://w3id.org/twb#cut> <https://w3id.org/twb#mitre> ; <https://w3id.org/twb#layerIndex> \"4\"]",
+     "path": null,
+     "shape": "<https://w3id.org/twb/shapes#LayerTerminationShape>",
+     "component": "XoneConstraintComponent",
+     "severity": "Violation",
+     "value": "[<https://example.org/twb/case-house/joint/wall-south%7Cwall-west> <https://w3id.org/twb#hasLayerTermination> ; <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://w3id.org/twb#LayerTermination> ; <https://w3id.org/twb#cut> <https://w3id.org/twb#mitre> ; <https://w3id.org/twb#layerIndex> \"4\"]"
+    }
+   ]
+  },
+  {
+   "name": "node-rule-through-another-edge",
+   "rules": true,
+   "updates": [
+    "# Repair: where a zone boundary requires a wet-room lining that its surface's recipe does not provide on that\n# side, apply the wet-room membrane system as a covering on that boundary — only the part of the surface the\n# wet room faces, not the whole recipe.\nPREFIX twb: <https://w3id.org/twb#>\nINSERT { ?boundary twb:hasCovering <https://example.org/twb/case-house/covering-wet-room-system> . }\nWHERE {\n  ?boundary twb:requires twb:WetRoomLining ; twb:onSide ?side .\n  ?surface twb:positiveSide|twb:negativeSide ?side ; twb:hasRecipe ?recipe .\n  FILTER NOT EXISTS { ?recipe twb:provides twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside true . ?recipe twb:providesInside twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside false . ?recipe twb:providesOutside twb:WetRoomLining }\n}\n",
+    "PREFIX twb: <https://w3id.org/twb#>\nPREFIX bot: <https://w3id.org/bot#>\nPREFIX inst: <https://example.org/twb/case-house/>\nDELETE { ?r twb:throughEdge ?e } INSERT { ?r twb:throughEdge <https://example.org/twb/case-house/edge/floor%7Cwall-east> }\n        WHERE { ?r a twb:NodeRule ; twb:throughEdge ?e }"
+   ],
+   "results": [
+    {
+     "focus": "<https://example.org/twb/case-house/node-rule/roof-1%7Cwall-east%20%2B%20roof-1%7Cwall-south~attic>",
+     "path": null,
+     "shape": "<https://w3id.org/twb/shapes#NodeRuleShape>",
+     "component": "SPARQLConstraintComponent",
+     "severity": "Violation",
+     "value": "<https://example.org/twb/case-house/node-rule/roof-1%7Cwall-east%20%2B%20roof-1%7Cwall-south~attic>"
+    }
+   ]
+  },
+  {
+   "name": "attic-not-insulated-fixture-without-kind",
+   "rules": true,
+   "updates": [
+    "# Repair: where a zone boundary requires a wet-room lining that its surface's recipe does not provide on that\n# side, apply the wet-room membrane system as a covering on that boundary — only the part of the surface the\n# wet room faces, not the whole recipe.\nPREFIX twb: <https://w3id.org/twb#>\nINSERT { ?boundary twb:hasCovering <https://example.org/twb/case-house/covering-wet-room-system> . }\nWHERE {\n  ?boundary twb:requires twb:WetRoomLining ; twb:onSide ?side .\n  ?surface twb:positiveSide|twb:negativeSide ?side ; twb:hasRecipe ?recipe .\n  FILTER NOT EXISTS { ?recipe twb:provides twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside true . ?recipe twb:providesInside twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside false . ?recipe twb:providesOutside twb:WetRoomLining }\n}\n",
+    "PREFIX twb: <https://w3id.org/twb#>\nPREFIX bot: <https://w3id.org/bot#>\nPREFIX inst: <https://example.org/twb/case-house/>\nDELETE { <https://example.org/twb/case-house/zone/attic%3Afloor~ceiling> twb:insulatedAt ?i }\n        INSERT { <https://example.org/twb/case-house/fixture/f1> a twb:Fixture ; twb:pointMm \"[1000, 1000]\" ; twb:onStorey <https://example.org/twb/case-house/storey/st1>, <https://example.org/twb/case-house/storey/st2> }\n        WHERE { <https://example.org/twb/case-house/zone/attic%3Afloor~ceiling> twb:insulatedAt ?i }"
+   ],
+   "results": [
+    {
+     "focus": "<https://example.org/twb/case-house/fixture/f1>",
+     "path": "<https://w3id.org/twb#onStorey>",
+     "shape": "<https://w3id.org/twb/shapes#FixtureShape>",
+     "component": "ClassConstraintComponent",
+     "severity": "Violation",
+     "value": "<https://example.org/twb/case-house/storey/st2>"
+    },
+    {
+     "focus": "<https://example.org/twb/case-house/fixture/f1>",
+     "path": "<https://w3id.org/twb#onStorey>",
+     "shape": "<https://w3id.org/twb/shapes#FixtureShape>",
+     "component": "MaxCountConstraintComponent",
+     "severity": "Violation",
+     "value": null
+    },
+    {
+     "focus": "<https://example.org/twb/case-house/fixture/f1>",
+     "path": "<https://w3id.org/twb#fixtureKind>",
+     "shape": "<https://w3id.org/twb/shapes#FixtureShape>",
+     "component": "MinCountConstraintComponent",
+     "severity": "Violation",
+     "value": null
+    },
+    {
+     "focus": "<https://example.org/twb/case-house/zone/attic%3Afloor~ceiling>",
+     "path": "<https://w3id.org/twb#insulatedAt>",
+     "shape": "<https://w3id.org/twb/shapes#AtticShape>",
+     "component": "MinCountConstraintComponent",
+     "severity": "Violation",
+     "value": null
+    }
+   ]
+  },
+  {
+   "name": "u-value-exceeded",
+   "rules": true,
+   "updates": [
+    "# Repair: where a zone boundary requires a wet-room lining that its surface's recipe does not provide on that\n# side, apply the wet-room membrane system as a covering on that boundary — only the part of the surface the\n# wet room faces, not the whole recipe.\nPREFIX twb: <https://w3id.org/twb#>\nINSERT { ?boundary twb:hasCovering <https://example.org/twb/case-house/covering-wet-room-system> . }\nWHERE {\n  ?boundary twb:requires twb:WetRoomLining ; twb:onSide ?side .\n  ?surface twb:positiveSide|twb:negativeSide ?side ; twb:hasRecipe ?recipe .\n  FILTER NOT EXISTS { ?recipe twb:provides twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside true . ?recipe twb:providesInside twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside false . ?recipe twb:providesOutside twb:WetRoomLining }\n}\n",
+    "PREFIX twb: <https://w3id.org/twb#>\nPREFIX bot: <https://w3id.org/bot#>\nPREFIX inst: <https://example.org/twb/case-house/>\nDELETE { <https://example.org/twb/case-house/recipe/exteriorWall> twb:uValue ?u } INSERT { <https://example.org/twb/case-house/recipe/exteriorWall> twb:uValue 0.9 }\n        WHERE { <https://example.org/twb/case-house/recipe/exteriorWall> twb:uValue ?u }"
+   ],
+   "results": [
+    {
+     "focus": "<https://example.org/twb/case-house/surface/wall-east>",
+     "path": null,
+     "shape": "<https://w3id.org/twb/shapes#UValueShape>",
+     "component": "SPARQLConstraintComponent",
+     "severity": "Violation",
+     "value": "<https://example.org/twb/case-house/surface/wall-east>"
+    },
+    {
+     "focus": "<https://example.org/twb/case-house/surface/wall-north>",
+     "path": null,
+     "shape": "<https://w3id.org/twb/shapes#UValueShape>",
+     "component": "SPARQLConstraintComponent",
+     "severity": "Violation",
+     "value": "<https://example.org/twb/case-house/surface/wall-north>"
+    },
+    {
+     "focus": "<https://example.org/twb/case-house/surface/wall-south>",
+     "path": null,
+     "shape": "<https://w3id.org/twb/shapes#UValueShape>",
+     "component": "SPARQLConstraintComponent",
+     "severity": "Violation",
+     "value": "<https://example.org/twb/case-house/surface/wall-south>"
+    },
+    {
+     "focus": "<https://example.org/twb/case-house/surface/wall-west>",
+     "path": null,
+     "shape": "<https://w3id.org/twb/shapes#UValueShape>",
+     "component": "SPARQLConstraintComponent",
+     "severity": "Violation",
+     "value": "<https://example.org/twb/case-house/surface/wall-west>"
+    }
+   ]
+  },
+  {
+   "name": "room-with-no-way-out",
+   "rules": true,
+   "updates": [
+    "# Repair: where a zone boundary requires a wet-room lining that its surface's recipe does not provide on that\n# side, apply the wet-room membrane system as a covering on that boundary — only the part of the surface the\n# wet room faces, not the whole recipe.\nPREFIX twb: <https://w3id.org/twb#>\nINSERT { ?boundary twb:hasCovering <https://example.org/twb/case-house/covering-wet-room-system> . }\nWHERE {\n  ?boundary twb:requires twb:WetRoomLining ; twb:onSide ?side .\n  ?surface twb:positiveSide|twb:negativeSide ?side ; twb:hasRecipe ?recipe .\n  FILTER NOT EXISTS { ?recipe twb:provides twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside true . ?recipe twb:providesInside twb:WetRoomLining }\n  FILTER NOT EXISTS { ?side twb:isInside false . ?recipe twb:providesOutside twb:WetRoomLining }\n}\n",
+    "PREFIX twb: <https://w3id.org/twb#>\nPREFIX bot: <https://w3id.org/bot#>\nPREFIX inst: <https://example.org/twb/case-house/>\nDELETE WHERE { <https://example.org/twb/case-house/zone/z-bed1> twb:leadsTo ?z }"
+   ],
+   "results": [
+    {
+     "focus": "<https://example.org/twb/case-house/zone/z-bed1>",
+     "path": null,
+     "shape": "<https://w3id.org/twb/shapes#EgressShape>",
+     "component": "SPARQLConstraintComponent",
+     "severity": "Violation",
+     "value": "<https://example.org/twb/case-house/zone/z-bed1>"
+    }
+   ]
+  }
+ ],
+ "coreFeatures": {
+  "shapes": "fixtures/shacl/core-shapes.ttl",
+  "data": "fixtures/shacl/core-data.ttl",
+  "results": [
+   {
+    "focus": "<https://example.org/shacl-test#t1>",
+    "path": null,
+    "shape": "<https://example.org/shacl-test#ThingShape>",
+    "component": "AndConstraintComponent",
+    "severity": "Violation",
+    "value": "<https://example.org/shacl-test#t1>"
+   },
+   {
+    "focus": "<https://example.org/shacl-test#p3>",
+    "path": null,
+    "shape": "<https://example.org/shacl-test#PartObjectsShape>",
+    "component": "ClassConstraintComponent",
+    "severity": "Violation",
+    "value": "<https://example.org/shacl-test#p3>"
+   },
+   {
+    "focus": "<https://example.org/shacl-test#t1>",
+    "path": "(<https://example.org/shacl-test#sub>)*",
+    "shape": "<https://example.org/shacl-test#ThingShape>",
+    "component": "ClassConstraintComponent",
+    "severity": "Violation",
+    "value": "<https://example.org/shacl-test#t2>"
+   },
+   {
+    "focus": "[<https://example.org/shacl-test#t1> <https://example.org/shacl-test#part> ; <https://example.org/shacl-test#weight> \"3\"]",
+    "path": null,
+    "shape": "<https://example.org/shacl-test#PartObjectsShape>",
+    "component": "ClassConstraintComponent",
+    "severity": "Violation",
+    "value": "[<https://example.org/shacl-test#t1> <https://example.org/shacl-test#part> ; <https://example.org/shacl-test#weight> \"3\"]"
+   },
+   {
+    "focus": "<https://example.org/shacl-test#f3>",
+    "path": "<https://example.org/shacl-test#flag>",
+    "shape": "<https://example.org/shacl-test#FlagShape>",
+    "component": "DatatypeConstraintComponent",
+    "severity": "Violation",
+    "value": "\"yes\""
+   },
+   {
+    "focus": "<https://example.org/shacl-test#t1>",
+    "path": "<https://example.org/shacl-test#ratio>",
+    "shape": "<https://example.org/shacl-test#ThingShape>",
+    "component": "DatatypeConstraintComponent",
+    "severity": "Violation",
+    "value": "\"0.3\""
+   },
+   {
+    "focus": "<https://example.org/shacl-test#t1>",
+    "path": "<https://example.org/shacl-test#ratio>",
+    "shape": "<https://example.org/shacl-test#ThingShape>",
+    "component": "DatatypeConstraintComponent",
+    "severity": "Violation",
+    "value": "\"abc\""
+   },
+   {
+    "focus": "\"4\"",
+    "path": null,
+    "shape": "<https://example.org/shacl-test#LiteralShape>",
+    "component": "DatatypeConstraintComponent",
+    "severity": "Violation",
+    "value": "\"4\""
+   },
+   {
+    "focus": "<https://example.org/shacl-test#Red>",
+    "path": null,
+    "shape": "<https://example.org/shacl-test#ValueShape>",
+    "component": "HasValueConstraintComponent",
+    "severity": "Violation",
+    "value": null
+   },
+   {
+    "focus": "<https://example.org/shacl-test#t1>",
+    "path": "<https://example.org/shacl-test#status>",
+    "shape": "<https://example.org/shacl-test#ThingShape>",
+    "component": "HasValueConstraintComponent",
+    "severity": "Info",
+    "value": null
+   },
+   {
+    "focus": "<https://example.org/shacl-test#t3>",
+    "path": "<https://example.org/shacl-test#status>",
+    "shape": "<https://example.org/shacl-test#ThingShape>",
+    "component": "HasValueConstraintComponent",
+    "severity": "Info",
+    "value": null
+   },
+   {
+    "focus": "<https://example.org/shacl-test#t4>",
+    "path": "<https://example.org/shacl-test#status>",
+    "shape": "<https://example.org/shacl-test#ThingShape>",
+    "component": "HasValueConstraintComponent",
+    "severity": "Info",
+    "value": null
+   },
+   {
+    "focus": "<https://example.org/shacl-test#f2>",
+    "path": "<https://example.org/shacl-test#flag>",
+    "shape": "<https://example.org/shacl-test#FlagShape>",
+    "component": "InConstraintComponent",
+    "severity": "Info",
+    "value": "\"false\""
+   },
+   {
+    "focus": "<https://example.org/shacl-test#f3>",
+    "path": "<https://example.org/shacl-test#flag>",
+    "shape": "<https://example.org/shacl-test#FlagShape>",
+    "component": "InConstraintComponent",
+    "severity": "Info",
+    "value": "\"yes\""
+   },
+   {
+    "focus": "<https://example.org/shacl-test#t1>",
+    "path": "<https://example.org/shacl-test#colour>",
+    "shape": "<https://example.org/shacl-test#ThingShape>",
+    "component": "InConstraintComponent",
+    "severity": "Violation",
+    "value": "<https://example.org/shacl-test#Blue>"
+   },
+   {
+    "focus": "<https://example.org/shacl-test#f2>",
+    "path": "<https://example.org/shacl-test#flag>",
+    "shape": "<https://example.org/shacl-test#FlagShape>",
+    "component": "MaxCountConstraintComponent",
+    "severity": "Violation",
+    "value": null
+   },
+   {
+    "focus": "<https://example.org/shacl-test#t1>",
+    "path": "(<https://example.org/shacl-test#label>|<https://example.org/shacl-test#name>)",
+    "shape": "<https://example.org/shacl-test#ThingShape>",
+    "component": "MaxCountConstraintComponent",
+    "severity": "Violation",
+    "value": null
+   },
+   {
+    "focus": "<https://example.org/shacl-test#t1>",
+    "path": "(<https://example.org/shacl-test#sub>)+",
+    "shape": "<https://example.org/shacl-test#ThingShape>",
+    "component": "MaxCountConstraintComponent",
+    "severity": "Violation",
+    "value": null
+   },
+   {
+    "focus": "<https://example.org/shacl-test#t4>",
+    "path": "^<https://example.org/shacl-test#owns>",
+    "shape": "<https://example.org/shacl-test#ThingShape>",
+    "component": "MaxCountConstraintComponent",
+    "severity": "Violation",
+    "value": null
+   },
+   {
+    "focus": "<https://example.org/shacl-test#t1>",
+    "path": "<https://example.org/shacl-test#ratio>",
+    "shape": "<https://example.org/shacl-test#ThingShape>",
+    "component": "MaxExclusiveConstraintComponent",
+    "severity": "Violation",
+    "value": "\"1\""
+   },
+   {
+    "focus": "<https://example.org/shacl-test#t1>",
+    "path": "<https://example.org/shacl-test#ratio>",
+    "shape": "<https://example.org/shacl-test#ThingShape>",
+    "component": "MaxExclusiveConstraintComponent",
+    "severity": "Violation",
+    "value": "\"abc\""
+   },
+   {
+    "focus": "<https://example.org/shacl-test#p2>",
+    "path": "<https://example.org/shacl-test#weight>",
+    "shape": "<https://example.org/shacl-test#PartObjectsShape>",
+    "component": "MaxInclusiveConstraintComponent",
+    "severity": "Violation",
+    "value": "\"heavy\""
+   },
+   {
+    "focus": "<https://example.org/shacl-test#p3>",
+    "path": "<https://example.org/shacl-test#weight>",
+    "shape": "<https://example.org/shacl-test#PartObjectsShape>",
+    "component": "MaxInclusiveConstraintComponent",
+    "severity": "Violation",
+    "value": "\"200\""
+   },
+   {
+    "focus": "<https://example.org/shacl-test#t1>",
+    "path": "<https://example.org/shacl-test#size>",
+    "shape": "<https://example.org/shacl-test#ThingShape>",
+    "component": "MaxInclusiveConstraintComponent",
+    "severity": "Violation",
+    "value": "\"11\""
+   },
+   {
+    "focus": "<https://example.org/shacl-test#nowhere>",
+    "path": "<https://example.org/shacl-test#size>",
+    "shape": "<https://example.org/shacl-test#TargetNodeShape>",
+    "component": "MinCountConstraintComponent",
+    "severity": "Violation",
+    "value": null
+   },
+   {
+    "focus": "<https://example.org/shacl-test#t3>",
+    "path": "(<https://example.org/shacl-test#part>/<https://example.org/shacl-test#weight>)",
+    "shape": "<https://example.org/shacl-test#ThingShape>",
+    "component": "MinCountConstraintComponent",
+    "severity": "Warning",
+    "value": null
+   },
+   {
+    "focus": "<https://example.org/shacl-test#t4>",
+    "path": "(<https://example.org/shacl-test#part>/<https://example.org/shacl-test#weight>)",
+    "shape": "<https://example.org/shacl-test#ThingShape>",
+    "component": "MinCountConstraintComponent",
+    "severity": "Warning",
+    "value": null
+   },
+   {
+    "focus": "<https://example.org/shacl-test#t1>",
+    "path": "<https://example.org/shacl-test#ratio>",
+    "shape": "<https://example.org/shacl-test#ThingShape>",
+    "component": "MinExclusiveConstraintComponent",
+    "severity": "Violation",
+    "value": "\"abc\""
+   },
+   {
+    "focus": "<https://example.org/shacl-test#t1>",
+    "path": "<https://example.org/shacl-test#size>",
+    "shape": "<https://example.org/shacl-test#ThingShape>",
+    "component": "MinInclusiveConstraintComponent",
+    "severity": "Violation",
+    "value": "\"0\""
+   },
+   {
+    "focus": "<https://example.org/shacl-test#t1>",
+    "path": "<https://example.org/shacl-test#part>",
+    "shape": "<https://example.org/shacl-test#ThingShape>",
+    "component": "NodeConstraintComponent",
+    "severity": "Violation",
+    "value": "<https://example.org/shacl-test#p2>"
+   },
+   {
+    "focus": "<https://example.org/shacl-test#t1>",
+    "path": "(<https://example.org/shacl-test#alias>)?",
+    "shape": "<https://example.org/shacl-test#ThingShape>",
+    "component": "NodeKindConstraintComponent",
+    "severity": "Violation",
+    "value": "\"not a node\""
+   },
+   {
+    "focus": "<https://example.org/shacl-test#t1>",
+    "path": "<https://example.org/shacl-test#part>",
+    "shape": "<https://example.org/shacl-test#ThingShape>",
+    "component": "NodeKindConstraintComponent",
+    "severity": "Violation",
+    "value": "[<https://example.org/shacl-test#t1> <https://example.org/shacl-test#part> ; <https://example.org/shacl-test#weight> \"3\"]"
+   },
+   {
+    "focus": "[<https://example.org/shacl-test#t1> <https://example.org/shacl-test#part> ; <https://example.org/shacl-test#weight> \"3\"]",
+    "path": null,
+    "shape": "<https://example.org/shacl-test#PartObjectsShape>",
+    "component": "NodeKindConstraintComponent",
+    "severity": "Violation",
+    "value": "[<https://example.org/shacl-test#t1> <https://example.org/shacl-test#part> ; <https://example.org/shacl-test#weight> \"3\"]"
+   },
+   {
+    "focus": "<https://example.org/shacl-test#t1>",
+    "path": null,
+    "shape": "<https://example.org/shacl-test#ThingShape>",
+    "component": "NotConstraintComponent",
+    "severity": "Violation",
+    "value": "<https://example.org/shacl-test#t1>"
+   }
+  ]
+ }
+}
