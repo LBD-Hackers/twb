@@ -1,0 +1,9 @@
+# Rule 41: through a passage one walks from either zone into the other, unless the passage says from
+# which zones its door can be opened (twb:openableFrom): then only from those.
+PREFIX twb: <https://w3id.org/twb#>
+CONSTRUCT { ?from twb:leadsTo ?to . }
+WHERE {
+  ?p a twb:Passage ; twb:connectsZone ?from, ?to .
+  FILTER (?from != ?to)
+  FILTER (NOT EXISTS { ?p twb:openableFrom ?any } || EXISTS { ?p twb:openableFrom ?from })
+}

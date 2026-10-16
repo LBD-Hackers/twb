@@ -1,0 +1,62 @@
+# U-value rules of the building use "dwelling" (arch 5cc0b38, envelope/building-use.ts), as TWB adjacency rules.
+@prefix twb:  <https://w3id.org/twb#> .
+@prefix twbc: <https://w3id.org/twb/catalogue/arch#> .
+@prefix inst: <https://example.org/twb/case-house/> .
+@prefix bot:  <https://w3id.org/bot#> .
+@prefix geo:  <http://www.opengis.net/ont/geosparql#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+<https://example.org/twb/case-house/rule/dwelling-u-exteriorWall>
+    a twb:AdjacencyRule ;
+    rdfs:label "Year-round house: exteriorWall U-value" ;
+    twb:appliesToSurfaceClass twb:WallSurface ;
+    twb:whenThisSideFaces [ a twb:ZoneCondition ; twb:matchesHeated true ] ;
+    twb:whenOtherSideFaces [ a twb:ZoneCondition ; twb:matchesZone twb:OutdoorAir ] ;
+    twb:thenRequiresMaxUValue 0.3 ;
+    twb:basis "BR18 § 257, tabel 1" .
+
+<https://example.org/twb/case-house/rule/dwelling-u-interiorWall>
+    a twb:AdjacencyRule ;
+    rdfs:label "Year-round house: interiorWall U-value" ;
+    twb:appliesToSurfaceClass twb:WallSurface ;
+    twb:whenThisSideFaces [ a twb:ZoneCondition ; twb:matchesHeated true ] ;
+    twb:whenOtherSideFaces [ a twb:ZoneCondition ; twb:matchesZone twb:UnheatedSpace ] ;
+    twb:thenRequiresMaxUValue 0.4 ;
+    twb:basis "BR18 § 257, tabel 1" .
+
+<https://example.org/twb/case-house/rule/dwelling-u-floor>
+    a twb:AdjacencyRule ;
+    rdfs:label "Year-round house: floor U-value" ;
+    twb:appliesToSurfaceClass twb:FloorSurface ;
+    twb:whenThisSideFaces [ a twb:ZoneCondition ; twb:matchesHeated true ] ;
+    twb:whenOtherSideFaces [ a twb:ZoneCondition ; twb:matchesZone twb:CrawlSpace ] ;
+    twb:thenRequiresMaxUValue 0.2 ;
+    twb:basis "BR18 § 257, tabel 1" .
+
+<https://example.org/twb/case-house/rule/dwelling-u-roof>
+    a twb:AdjacencyRule ;
+    rdfs:label "Year-round house: roof U-value" ;
+    twb:appliesToSurfaceClass twb:RoofSurface ;
+    twb:whenThisSideFaces [ a twb:ZoneCondition ; twb:matchesHeated true ] ;
+    twb:whenOtherSideFaces [ a twb:ZoneCondition ; twb:matchesZone twb:OutdoorAir ] ;
+    twb:thenRequiresMaxUValue 0.2 ;
+    twb:basis "BR18 § 257, tabel 1" .
+
+<https://example.org/twb/case-house/rule/dwelling-u-ceiling>
+    a twb:AdjacencyRule ;
+    rdfs:label "Year-round house: ceiling U-value" ;
+    twb:appliesToSurfaceClass twb:CeilingSurface ;
+    twb:whenThisSideFaces [ a twb:ZoneCondition ; twb:matchesHeated true ] ;
+    twb:whenOtherSideFaces [ a twb:ZoneCondition ; twb:matchesHeated false ] ;
+    twb:thenRequiresMaxUValue 0.2 ;
+    twb:basis "BR18 § 257, tabel 1" .
+
+<https://w3id.org/twb/catalogue/arch#use/DK/dwelling>
+    twb:ruleOfUse <https://example.org/twb/case-house/rule/dwelling-u-exteriorWall>, <https://example.org/twb/case-house/rule/dwelling-u-interiorWall>, <https://example.org/twb/case-house/rule/dwelling-u-floor>, <https://example.org/twb/case-house/rule/dwelling-u-roof>, <https://example.org/twb/case-house/rule/dwelling-u-ceiling> .
+
+<https://example.org/twb/case-house/blueprint>
+    twb:hasAdjacencyRule <https://example.org/twb/case-house/rule/dwelling-u-exteriorWall>, <https://example.org/twb/case-house/rule/dwelling-u-interiorWall>, <https://example.org/twb/case-house/rule/dwelling-u-floor>, <https://example.org/twb/case-house/rule/dwelling-u-roof>, <https://example.org/twb/case-house/rule/dwelling-u-ceiling> .

@@ -1,0 +1,4 @@
+# Opening detail resolution, level 1: the opening's own detail.
+PREFIX twb: <https://w3id.org/twb#>
+CONSTRUCT { ?opening twb:resolvedOpeningDetail ?detail ; twb:resolvedBy twb:ResolvedByOwn . }
+WHERE { ?opening twb:hasOwnOpeningDetail ?detail . }

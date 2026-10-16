@@ -1,0 +1,642 @@
+@prefix twb:     <https://w3id.org/twb#> .
+@prefix geo:     <http://www.opengis.net/ont/geosparql#> .
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix skos:    <http://www.w3.org/2004/02/skos/core#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix vann:    <http://purl.org/vocab/vann/> .
+@prefix unit:    <http://qudt.org/vocab/unit/> .
+
+# =================================================================================================
+#  TWB detailing — a module of the Thin-Walled Blueprint ontology (TWB)
+#
+#  How recipes meet: joint details on edges (how every layer of every surface ends, and the trims
+#  along the edge), joint templates per kind of edge and pair of recipes, project standards per
+#  edge type, board seams, opening details and standards, how trims meet at nodes and the node
+#  rules that say so, and the framing rules with the BTLx processings they are milled with.
+#
+#  TWB is modular, as SEAS is: one namespace (twb:, https://w3id.org/twb#) shared by every module,
+#  each module an ontology of its own that imports only the modules it builds on, and every term
+#  stating the module that defines it (rdfs:isDefinedBy). https://w3id.org/twb imports them all.
+#
+#  Working draft, version 0.3.0 (2026-10-13).
+# =================================================================================================
+
+<https://w3id.org/twb/detailing>
+    a owl:Ontology ;
+    dcterms:title "TWB detailing"@en ;
+    dcterms:description """How recipes meet: joint details on edges (how every layer of every
+surface ends, and the trims along the edge), joint templates per kind of edge and pair of recipes, project
+standards per edge type, board seams, opening details and standards, how trims meet at nodes and the node rules
+that say so, and the framing rules with the BTLx processings they are milled with."""@en ;
+    dcterms:creator "Mads Holten Rasmussen" ;
+    dcterms:license <https://creativecommons.org/licenses/by/4.0/> ;
+    dcterms:isPartOf <https://w3id.org/twb> ;
+    vann:preferredNamespacePrefix "twb" ;
+    vann:preferredNamespaceUri "https://w3id.org/twb#" ;
+    owl:imports <https://w3id.org/twb/construction> ;
+    owl:versionInfo "0.3.0" ;
+    owl:versionIRI <https://w3id.org/twb/detailing/0.3.0> ;
+    dcterms:modified "2026-10-13"^^xsd:date .
+
+# =================================================================================================
+#  Opening details
+# =================================================================================================
+
+twb:OpeningDetail
+    a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Opening detail"@en ;
+    rdfs:comment """How the facade is finished around an opening — the pieces added at its head, sill and jambs, and where
+they replace the cladding. Resolved like joints: the opening's own, else its kind's standard, else plain."""@en ;
+    twb:archTerm "OpeningDetailId (envelope/opening-details.ts)" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:PlainOpening a twb:OpeningDetail ; skos:prefLabel "plain"@en ; skos:notation "plain" ;
+    skos:definition "The facade cut square at the frame, nothing added."@en ; skos:inScheme twb:OpeningDetails ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:SillFlashing a twb:OpeningDetail ; skos:prefLabel "sill flashing"@en ; skos:notation "sill-flashing" ;
+    skos:definition "A metal sill under a window, standing proud of the cladding with a drip."@en ; skos:inScheme twb:OpeningDetails ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:FrameBoards a twb:OpeningDetail ; skos:prefLabel "frame boards"@en ; skos:notation "frame-boards" ;
+    skos:definition "Boards on the cladding round the opening, the head board over the jambs' ends."@en ; skos:inScheme twb:OpeningDetails ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:HeadAndSillBoards a twb:OpeningDetail ; skos:prefLabel "head and sill boards"@en ; skos:notation "head-sill-boards" ;
+    skos:definition "One wide board over the opening and one under a window, set into the cladding's plane; nothing at the jambs."@en ;
+    skos:inScheme twb:OpeningDetails ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:OpeningDetails a skos:ConceptScheme ; skos:prefLabel "Opening details"@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+twb:hasOwnOpeningDetail
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "has own opening detail"@en ;
+    rdfs:domain twb:Opening ;
+    rdfs:range twb:OpeningDetail ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+# =================================================================================================
+#  Lintels over openings in brickwork
+# =================================================================================================
+
+twb:Lintel
+    a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Lintel"@en ;
+    rdfs:comment """What carries a facing leaf of brick over a door or a window ("overligger"). Resolved like an opening
+detail: the opening's own, else the house's lintel recipe."""@en ;
+    twb:archTerm "FacingLintelId (recipe/masonry-lintels.ts)" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:ReinforcedBrickBeam a twb:Lintel ; skos:prefLabel "reinforced brick beam"@en ; skos:prefLabel "armeret teglbjælke"@da ;
+    skos:notation "brick-beam" ;
+    skos:definition "A prefabricated beam of facing bricks with steel cast in, laid in the bond and bearing on the piers."@en ;
+    skos:inScheme twb:Lintels ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:ReinforcedBrickwork a twb:Lintel ; skos:prefLabel "reinforced brickwork"@en ; skos:prefLabel "armeret murværk"@da ;
+    skos:notation "reinforced-joints" ;
+    skos:definition "The beam laid on site: bed-joint reinforcement over the opening, anchored in the piers, propped until hard."@en ;
+    skos:inScheme twb:Lintels ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:SoldierCourseOnAngle a twb:Lintel ; skos:prefLabel "soldier course on a steel angle"@en ; skos:prefLabel "rulskifte på vinkeljern"@da ;
+    skos:notation "soldier-angle" ;
+    skos:definition "Bricks standing on end over the opening, carried on a steel angle bearing on the piers."@en ;
+    skos:inScheme twb:Lintels ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:AngleLintel a twb:Lintel ; skos:prefLabel "steel angle under the bond"@en ; skos:prefLabel "vinkeljern"@da ;
+    skos:notation "angle" ;
+    skos:definition "A steel angle over the opening, the bond running on over it."@en ;
+    skos:inScheme twb:Lintels ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:FlatArch a twb:Lintel ; skos:prefLabel "flat arch"@en ; skos:prefLabel "fladstik"@da ;
+    skos:notation "flat-arch" ;
+    skos:definition "Brick alone: bricks on end cut to wedges fanning from a point below, thrusting into the piers on sloping skewbacks."@en ;
+    skos:inScheme twb:Lintels ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:Lintels a skos:ConceptScheme ; skos:prefLabel "Lintels"@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:hasOwnLintel
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "has own lintel"@en ;
+    rdfs:domain twb:Opening ;
+    rdfs:range twb:Lintel ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:OpeningStandard
+    a owl:Class ;
+    rdfs:label "Opening standard"@en ;
+    rdfs:comment "The project's detail for every opening of one class (window, door, garage door) that states none of its own."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:hasOpeningStandard
+    a owl:ObjectProperty ;
+    rdfs:label "has opening standard"@en ;
+    rdfs:domain twb:Blueprint ;
+    rdfs:range twb:OpeningStandard ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:forOpeningClass
+    a owl:ObjectProperty ;
+    rdfs:label "for opening class"@en ;
+    rdfs:comment "The opening class (twb:Window, twb:Door, twb:GarageDoor) a standard applies to."@en ;
+    rdfs:domain twb:OpeningStandard ;
+    rdfs:range owl:Class ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:standardDetail
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "standard detail"@en ;
+    rdfs:domain twb:OpeningStandard ;
+    rdfs:range twb:OpeningDetail ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:resolvedOpeningDetail
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "resolved opening detail"@en ;
+    rdfs:comment "Derived: the detail an opening is finished with after resolution."@en ;
+    rdfs:domain twb:Opening ;
+    rdfs:range twb:OpeningDetail ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+# =================================================================================================
+#  Joint details
+# =================================================================================================
+
+twb:boardSeam
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "board seam"@en ;
+    rdfs:comment """Where two surfaces in one plane meet with the same board cladding — a gable cut at the ceiling, a facade
+drawn as two surfaces — whether the boards run on across the edge as one board or are cut there (0.2.0). Left out,
+they run through."""@en ;
+    rdfs:domain twb:JointDetail ;
+    rdfs:range twb:BoardSeam ;
+    twb:archTerm "EdgeJoint.boards" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:BoardSeam a owl:Class ; rdfs:subClassOf skos:Concept ; rdfs:label "Board seam"@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+twb:BoardSeams a skos:ConceptScheme ; skos:prefLabel "Board seams"@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+twb:BoardsRunThrough a twb:BoardSeam ; skos:prefLabel "boards run through"@en ; skos:notation "through" ; skos:inScheme twb:BoardSeams ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+twb:BoardsBreak a twb:BoardSeam ; skos:prefLabel "boards break"@en ; skos:notation "break" ; skos:inScheme twb:BoardSeams ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+twb:JointDetail
+    a owl:Class ;
+    rdfs:label "Joint detail"@en ;
+    rdfs:comment """How the layers of the surfaces meeting at an edge end: for every layer of every surface, a termination;
+and the trims that run along the edge. A joint detail is stated either for one edge (twb:hasOwnJoint) or as a
+template for every edge of a kind (twb:JointTemplate)."""@en ;
+    twb:archTerm "EdgeJoint" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:hasOwnJoint
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "has own joint"@en ;
+    rdfs:comment "The joint stated for this one edge. It beats any template or standard."@en ;
+    rdfs:domain twb:Edge ;
+    rdfs:range twb:JointDetail ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:hasLayerTermination
+    a owl:ObjectProperty ;
+    rdfs:label "has layer termination"@en ;
+    rdfs:domain twb:JointDetail ;
+    rdfs:range twb:LayerTermination ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:LayerTermination
+    a owl:Class ;
+    rdfs:label "Layer termination"@en ;
+    rdfs:comment """Where one layer of one surface ends at an edge. The layer is identified by its surface (or, in a template,
+by the role of its surface) and its index in that surface's recipe; how it ends is a twb:LayerCut."""@en ;
+    twb:ifcCounterpart "IfcRelConnectsPathElements.RelatingPriorities / RelatedPriorities (a coarse, priority-based analogue)" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:ofSurface
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "of surface"@en ;
+    rdfs:domain twb:LayerTermination ;
+    rdfs:range twb:Surface ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:ofRole
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "of role"@en ;
+    rdfs:comment "In a template: the role the surface plays at the edge (first or second), instead of the surface itself."@en ;
+    rdfs:domain twb:LayerTermination ;
+    rdfs:range twb:JointRole ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:cut
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "cut"@en ;
+    rdfs:domain twb:LayerTermination ;
+    rdfs:range twb:LayerCut ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:LayerCut
+    a owl:Class ;
+    rdfs:label "Layer cut"@en ;
+    rdfs:comment "The plane a layer's end lies on at an edge."@en ;
+    twb:archTerm "LayerCut = 'miter' | 'overhang' | number" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:MitreCut
+    a owl:Class ;
+    rdfs:subClassOf twb:LayerCut ;
+    rdfs:label "Mitre cut"@en ;
+    rdfs:comment """The layer ends on the plane through the joint's two corners — where the surfaces' inside faces meet and
+where their outside faces meet — so every layer meets its partner on the diagonal. The default."""@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:mitre a twb:MitreCut ; rdfs:label "mitre"@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+twb:OverhangCut
+    a owl:Class ;
+    rdfs:subClassOf twb:LayerCut ;
+    rdfs:label "Overhang cut"@en ;
+    rdfs:comment "On a roof edge: the layer runs on past the drawn edge by the edge's overhang, cut square to the roof."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:overhangCut a twb:OverhangCut ; rdfs:label "overhang"@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+twb:BoundaryCut
+    a owl:Class ;
+    rdfs:subClassOf twb:LayerCut ;
+    rdfs:label "Boundary cut"@en ;
+    rdfs:comment """The layer ends on one of the other surface's layer boundaries, counted from 0 on that surface's inside.
+This is how a butt joint is stated — one surface's layers run through to the far boundary of the other's, the
+other's stop against its near boundary — and how anything in between is: a cladding lapped past a corner, a core
+stopped at the other core's cold side."""@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:boundaryIndex
+    a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "boundary index"@en ;
+    rdfs:domain twb:BoundaryCut ;
+    rdfs:range xsd:nonNegativeInteger ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:runOn
+    a owl:DatatypeProperty ;
+    rdfs:label "run on"@en ;
+    rdfs:comment "How far the layer runs on past its cut plane — a facade dropped past the deck it stands on."@en ;
+    rdfs:domain twb:LayerTermination ;
+    rdfs:range xsd:decimal ;
+    twb:unit unit:MilliM ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:Trim
+    a owl:Class ;
+    rdfs:label "Trim"@en ;
+    rdfs:comment """A piece run along the whole length of an edge, given by its material and its cross-section in the edge's
+own frame: a corner board, a strip in an inside corner, a flashing."""@en ;
+    twb:archTerm "EdgeTrim" ;
+    twb:ifcCounterpart "IfcRelConnectsWithRealizingElements (realising IfcCovering / IfcMember)" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:hasTrim
+    a owl:ObjectProperty ;
+    rdfs:label "has trim"@en ;
+    rdfs:domain twb:JointDetail ;
+    rdfs:range twb:Trim ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:profile
+    a owl:DatatypeProperty ;
+    rdfs:label "profile"@en ;
+    rdfs:comment """The trim's cross-section as a closed polygon in the edge frame: x off the first surface past the edge,
+y out of its outside face, from the edge's middle, in millimetres. Encoded as WKT POLYGON."""@en ;
+    rdfs:domain twb:Trim ;
+    rdfs:range geo:wktLiteral ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+# --- Roles, templates and standards -----------------------------------------------------------------
+
+twb:JointRole
+    a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Joint role"@en ;
+    rdfs:comment """Which part a surface plays at an edge of its kind, so a template reads the same wherever it is applied:
+at an outside corner the longer and the shorter wall, at a T the exterior wall and the partition, at an eave or
+verge the roof and the wall, at a wall foot the deck and the wall."""@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:FirstRole a twb:JointRole ; skos:prefLabel "first role"@en ; skos:inScheme twb:JointRoles ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+twb:SecondRole a twb:JointRole ; skos:prefLabel "second role"@en ; skos:inScheme twb:JointRoles ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+twb:JointRoles a skos:ConceptScheme ; skos:prefLabel "Joint roles"@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+twb:JointTemplate
+    a owl:Class ;
+    rdfs:subClassOf twb:JointDetail ;
+    rdfs:label "Joint template"@en ;
+    rdfs:comment """A joint detailed once and kept for every edge of its kind: one edge type, one pair of recipes in their
+roles, inside or outside corner. Its terminations name roles rather than surfaces."""@en ;
+    twb:archTerm "JointTemplate (envelope/joint-templates.ts)" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:hasJointTemplate
+    a owl:ObjectProperty ;
+    rdfs:label "has joint template"@en ;
+    rdfs:domain twb:Blueprint ;
+    rdfs:range twb:JointTemplate ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:forEdgeType
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "for edge type"@en ;
+    rdfs:range twb:EdgeType ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:atInsideCorner
+    a owl:DatatypeProperty ;
+    rdfs:label "at inside corner"@en ;
+    rdfs:domain twb:JointTemplate ;
+    rdfs:range xsd:boolean ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:firstRoleRecipe
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "first role recipe"@en ;
+    rdfs:domain twb:JointTemplate ;
+    rdfs:range twb:Recipe ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:secondRoleRecipe
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "second role recipe"@en ;
+    rdfs:domain twb:JointTemplate ;
+    rdfs:range twb:Recipe ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:playsRole
+    a owl:ObjectProperty ;
+    rdfs:label "plays role"@en ;
+    rdfs:comment "Derived: the role a surface plays at an edge, as a qualified statement on a twb:RoleAssignment."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:RoleAssignment
+    a owl:Class ;
+    rdfs:label "Role assignment"@en ;
+    rdfs:comment "Derived: at one edge, which surface plays which role."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:hasRoleAssignment a owl:ObjectProperty ; rdfs:label "has role assignment"@en ;
+    rdfs:domain twb:Edge ; rdfs:range twb:RoleAssignment ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:role a owl:ObjectProperty, owl:FunctionalProperty ; rdfs:label "role"@en ;
+    rdfs:domain twb:RoleAssignment ; rdfs:range twb:JointRole ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:surface a owl:ObjectProperty, owl:FunctionalProperty ; rdfs:label "surface"@en ;
+    rdfs:domain twb:RoleAssignment ; rdfs:range twb:Surface ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:JointStandard
+    a owl:Class ;
+    rdfs:label "Joint standard"@en ;
+    rdfs:comment """The project's rule for every edge of one type that has neither its own joint nor a template: which role,
+if either, runs through. Running through and stopping against are the whole of what a standard can say."""@en ;
+    twb:archTerm "EnvelopeJointStandards (envelope/joint-standards.ts)" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:hasJointStandard
+    a owl:ObjectProperty ;
+    rdfs:label "has joint standard"@en ;
+    rdfs:domain twb:Blueprint ;
+    rdfs:range twb:JointStandard ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:standardOption
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "standard option"@en ;
+    rdfs:domain twb:JointStandard ;
+    rdfs:range twb:JointStandardOption ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:JointStandardOption
+    a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Joint standard option"@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:throughRole
+    a owl:ObjectProperty ;
+    rdfs:label "through role"@en ;
+    rdfs:comment "The role whose layers run through under this option. None for a mitre."@en ;
+    rdfs:domain twb:JointStandardOption ;
+    rdfs:range twb:JointRole ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:Mitred a twb:JointStandardOption ; skos:prefLabel "mitred"@en ; skos:notation "miter" ; skos:inScheme twb:JointStandardOptions ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+twb:LongerWallThrough a twb:JointStandardOption ; skos:prefLabel "longer wall runs through"@en ; skos:notation "longer-through" ;
+    twb:throughRole twb:FirstRole ; skos:inScheme twb:JointStandardOptions ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:ExteriorWallThrough a twb:JointStandardOption ; skos:prefLabel "exterior wall runs through"@en ; skos:notation "exterior-through" ;
+    twb:throughRole twb:FirstRole ; skos:inScheme twb:JointStandardOptions ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:PartitionThrough a twb:JointStandardOption ; skos:prefLabel "partition runs through"@en ; skos:notation "partition-through" ;
+    twb:throughRole twb:SecondRole ; skos:inScheme twb:JointStandardOptions ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:RoofThrough a twb:JointStandardOption ; skos:prefLabel "roof runs through"@en ; skos:notation "roof-through" ;
+    twb:throughRole twb:FirstRole ; skos:inScheme twb:JointStandardOptions ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:WallThrough a twb:JointStandardOption ; skos:prefLabel "wall runs through"@en ; skos:notation "wall-through" ;
+    twb:throughRole twb:SecondRole ; skos:inScheme twb:JointStandardOptions ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:DeckThrough a twb:JointStandardOption ; skos:prefLabel "deck runs through"@en ; skos:notation "floor-through" ;
+    twb:throughRole twb:FirstRole ; skos:inScheme twb:JointStandardOptions ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:DeckThroughFacadeOver a twb:JointStandardOption ; skos:prefLabel "deck runs through, facade over its edge"@en ;
+    skos:notation "floor-through-facade" ; twb:throughRole twb:FirstRole ; skos:inScheme twb:JointStandardOptions ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:MitredUnderRafters a twb:JointStandardOption ; skos:prefLabel "mitred, facade under the rafters"@en ; skos:notation "miter" ;
+    skos:scopeNote "At an eave or verge: linings and core meet on the diagonal, the facade stops under the rafters flying over it."@en ;
+    skos:inScheme twb:JointStandardOptions ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:Seamless a twb:JointStandardOption ; skos:prefLabel "seamless, facade turns into roof"@en ; skos:notation "seamless" ;
+    skos:definition "Every layer, the cladding included, meets its partner on the diagonal, so the facade carries on as the roof."@en ;
+    skos:inScheme twb:JointStandardOptions ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:Parapet a twb:JointStandardOption ; skos:prefLabel "parapet"@en ; skos:notation "parapet" ;
+    skos:definition "On a flat roof the roof bears on the wall's core and the facade runs on up past the roofing to a kerb and coping."@en ;
+    skos:inScheme twb:JointStandardOptions ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:WallOnJoists a twb:JointStandardOption ; skos:prefLabel "wall on the joists, vapour layer unbroken"@en ; skos:notation "wall-on-joists" ;
+    twb:throughRole twb:FirstRole ;
+    skos:definition "The wall stands on the deck's joists with the deck's vapour layer running on under it; the facade drops past the deck's edge."@en ;
+    skos:inScheme twb:JointStandardOptions ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:JointStandardOptions a skos:ConceptScheme ; skos:prefLabel "Joint standard options"@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+twb:HostRunsThrough
+    a twb:JointStandardOption ;
+    skos:prefLabel "host runs through"@en ;
+    twb:throughRole twb:FirstRole ;
+    skos:definition """The rule for an edge running along the interior of another surface (a T): the host surface is uncut,
+since its face continues past the junction, and every layer of the landing surface stops against the host's near
+side. It follows from the topology, so it is a rule rather than a choice."""@en ;
+    skos:inScheme twb:JointStandardOptions ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+# --- Resolution -------------------------------------------------------------------------------------
+
+twb:resolvedJoint
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "resolved joint"@en ;
+    rdfs:comment "Derived: the joint detail an edge is built with — its own, else its kind's template, else none (standard or mitre)."@en ;
+    rdfs:domain twb:Edge ;
+    rdfs:range twb:JointDetail ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:runsThrough
+    a owl:ObjectProperty ;
+    rdfs:label "runs through"@en ;
+    rdfs:comment "Derived: the surface whose layers run through the edge under the governing standard. None for a mitre."@en ;
+    rdfs:domain twb:Edge ;
+    rdfs:range twb:Surface ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+# =================================================================================================
+#  Framing rules
+# =================================================================================================
+
+twb:RuleTopic
+    a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Rule topic"@en ;
+    rdfs:comment "A situation where members meet, or where the structure must choose how it carries itself, with a menu of known solutions."@en ;
+    twb:archTerm "FramingRuleTopic (recipe/framing-rules.ts)" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:RuleOption
+    a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Rule option"@en ;
+    rdfs:comment "One known solution to a rule topic, with the machining processes it is milled with."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:optionOf
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "option of"@en ;
+    rdfs:domain twb:RuleOption ;
+    rdfs:range twb:RuleTopic ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:millsWith
+    a owl:ObjectProperty ;
+    rdfs:label "mills with"@en ;
+    rdfs:comment "A BTLx processing an option is machined with."@en ;
+    rdfs:domain twb:RuleOption ;
+    rdfs:range twb:Processing ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:isDefaultOption
+    a owl:DatatypeProperty ;
+    rdfs:label "is default option"@en ;
+    rdfs:domain twb:RuleOption ;
+    rdfs:range xsd:boolean ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:RuleChoice
+    a owl:Class ;
+    rdfs:label "Rule choice"@en ;
+    rdfs:comment "The project's chosen option for one rule topic. Only choices that differ from the default need stating."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:hasRuleChoice a owl:ObjectProperty ; rdfs:label "has rule choice"@en ; rdfs:domain twb:Blueprint ; rdfs:range twb:RuleChoice ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+twb:chosenOption a owl:ObjectProperty, owl:FunctionalProperty ; rdfs:label "chosen option"@en ; rdfs:domain twb:RuleChoice ; rdfs:range twb:RuleOption ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+twb:Processing
+    a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Processing"@en ;
+    rdfs:comment "A machining process on a timber member, named as BTLx names its processings (Birdsmouth, Lap, Drilling, ...)."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+# =================================================================================================
+#  Trims at nodes, and node rules
+# =================================================================================================
+
+twb:TrimMeeting
+    a owl:Class ;
+    rdfs:label "Trim meeting"@en ;
+    rdfs:comment "Derived: how the trims of one material on two edges meeting at a node are finished there."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:hasTrimMeeting a owl:ObjectProperty ; rdfs:label "has trim meeting"@en ; rdfs:domain twb:Node ; rdfs:range twb:TrimMeeting ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+twb:meetingKind a owl:ObjectProperty, owl:FunctionalProperty ; rdfs:label "meeting kind"@en ; rdfs:domain twb:TrimMeeting ; rdfs:range twb:MeetingKind ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+twb:MeetingKind a owl:Class ; rdfs:subClassOf skos:Concept ; rdfs:label "Meeting kind"@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+twb:MeetingKinds a skos:ConceptScheme ; skos:prefLabel "Meeting kinds"@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+twb:MitredMeeting a twb:MeetingKind ; skos:prefLabel "mitred"@en ; skos:inScheme twb:MeetingKinds ;
+    skos:definition "Two edges turning a corner: both trims cut on the plane through where their inner and outer faces cross."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:ButtedMeeting a twb:MeetingKind ; skos:prefLabel "butted"@en ; skos:inScheme twb:MeetingKinds ;
+    skos:definition "Two edges running on in one line: both trims square at the node."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:RunOnMeeting a twb:MeetingKind ; skos:prefLabel "run on, end cap"@en ; skos:inScheme twb:MeetingKinds ;
+    skos:definition "A trim with no partner on the other edge runs on flush with the other edge's trims and stops square there."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:ThroughMeeting a twb:MeetingKind ; skos:prefLabel "one runs through"@en ; skos:inScheme twb:MeetingKinds ;
+    skos:definition "Two edges turning a corner, as a node rule says: one edge's trims run on past the node to the far face of their matches, the other's stop square against them (0.2.0)."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:throughEdge
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "through edge"@en ;
+    rdfs:comment "The edge whose trims run through at a node: on a node rule, as stated; on a trim meeting, as resolved."@en ;
+    rdfs:range twb:Edge ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:NodeRule
+    a owl:Class ;
+    rdfs:label "Node rule"@en ;
+    rdfs:comment """The project's own rule for one pair of trimmed edges turning a corner at a node (0.2.0): the edge whose
+trims run through; the other's stop against them. A pair without one is mitred. It is to nodes what an own joint is to
+edges, and is kept by the two edges, so it survives moving or stretching the house."""@en ;
+    twb:archTerm "NodeRules (envelope/trim-nodes.ts), HouseFile.nodeRules" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:hasNodeRule a owl:ObjectProperty ; rdfs:label "has node rule"@en ; rdfs:domain twb:Blueprint ; rdfs:range twb:NodeRule ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+twb:forEdge a owl:ObjectProperty ; rdfs:label "for edge"@en ; rdfs:comment "One of the two edges a node rule is about."@en ;
+    rdfs:domain twb:NodeRule ; rdfs:range twb:Edge ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .
+
+twb:meetingEdge a owl:ObjectProperty ; rdfs:label "meeting edge"@en ; rdfs:comment "One of the two edges whose trims meet."@en ;
+    rdfs:domain twb:TrimMeeting ; rdfs:range twb:Edge ;
+    rdfs:isDefinedBy <https://w3id.org/twb/detailing> .

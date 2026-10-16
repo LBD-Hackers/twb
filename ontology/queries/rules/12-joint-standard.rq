@@ -1,0 +1,16 @@
+# Joint resolution, level 3: the project standard for the edge's type. Where its option names a role,
+# that role's surface runs through and the other stops against it; a mitre-type option (mitre, seamless,
+# parapet) names none, and every layer meets its partner on the diagonal.
+PREFIX twb: <https://w3id.org/twb#>
+CONSTRUCT { ?edge twb:resolvedBy twb:ResolvedByStandard ; twb:governedBy ?standard ; twb:runsThrough ?through . }
+WHERE {
+  ?edge a twb:Edge ; twb:edgeType ?type .
+  ?blueprint twb:hasJointStandard ?standard .
+  ?standard twb:forEdgeType ?type ; twb:standardOption ?option .
+  OPTIONAL {
+    ?option twb:throughRole ?role .
+    ?edge twb:hasRoleAssignment ?ra . ?ra twb:role ?role ; twb:surface ?through .
+  }
+  FILTER NOT EXISTS { ?edge twb:resolvedBy ?any }
+  FILTER NOT EXISTS { ?edge twb:alongInteriorOf ?host }
+}

@@ -1,0 +1,485 @@
+{
+    "@context": {
+        "@version": 1.1,
+        "twb": "https://w3id.org/twb#",
+        "twbc": "https://w3id.org/twb/catalogue/arch#",
+        "arch": "https://w3id.org/twb/arch#",
+        "twbd": "https://w3id.org/twb/doc#",
+        "bot": "https://w3id.org/bot#",
+        "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+        "skos": "http://www.w3.org/2004/02/skos/core#",
+        "dcterms": "http://purl.org/dc/terms/",
+        "id": "@id",
+        "type": "@type",
+        "Blueprint": {
+            "@id": "twb:Blueprint",
+            "@context": {
+                "walls": {
+                    "@id": "arch:walls",
+                    "@type": "@json"
+                },
+                "wallHeightMm": "arch:wallHeightMm",
+                "roof": {
+                    "@id": "arch:roof",
+                    "@type": "@json"
+                },
+                "openings": {
+                    "@id": "arch:planOpenings",
+                    "@type": "@json"
+                }
+            }
+        },
+        "Surface": "twb:Surface",
+        "Window": "twb:Window",
+        "Door": "twb:Door",
+        "GarageDoor": "twb:GarageDoor",
+        "Storey": "bot:Storey",
+        "Room": "twb:Room",
+        "ZoneSeparation": "twb:ZoneSeparation",
+        "Fixture": "twb:Fixture",
+        "Section": {
+            "@id": "twbd:Section",
+            "@context": {
+                "line": {
+                    "@id": "twbd:cutLineMm",
+                    "@type": "@json"
+                }
+            }
+        },
+        "Column": "twb:Column",
+        "Beam": "twb:Beam",
+        "Recipe": "twb:Recipe",
+        "JointDetail": "twb:JointDetail",
+        "JointTemplate": "twb:JointTemplate",
+        "JointStandard": "twb:JointStandard",
+        "OpeningStandard": "twb:OpeningStandard",
+        "NodeRule": "twb:NodeRule",
+        "Expression": "twb:Expression",
+        "format": "dcterms:conformsTo",
+        "notes": "rdfs:comment",
+        "storeys": {
+            "@id": "twb:hasBlueprintPart"
+        },
+        "surfaces": {
+            "@id": "twb:hasBlueprintPart"
+        },
+        "zones": {
+            "@id": "twb:hasBlueprintPart"
+        },
+        "zoneSeparations": {
+            "@id": "twb:hasBlueprintPart"
+        },
+        "fixtures": {
+            "@id": "twb:hasBlueprintPart"
+        },
+        "lines": {
+            "@id": "twb:hasBlueprintPart"
+        },
+        "envelope": {
+            "@id": "twb:hasBlueprintPart",
+            "@container": "@index",
+            "@index": "twb:archTerm"
+        },
+        "edgeJoints": {
+            "@id": "twb:hasBlueprintPart"
+        },
+        "jointTemplates": {
+            "@id": "twb:hasJointTemplate"
+        },
+        "jointStandards": {
+            "@id": "twb:hasJointStandard"
+        },
+        "openingStandards": {
+            "@id": "twb:hasOpeningStandard"
+        },
+        "nodeRules": {
+            "@id": "twb:hasNodeRule"
+        },
+        "expression": {
+            "@id": "twb:hasExpression"
+        },
+        "buildingUse": {
+            "@id": "twb:hasBuildingUse",
+            "@type": "@vocab",
+            "@context": {
+                "@vocab": "https://w3id.org/twb/catalogue/arch#use/DK/"
+            }
+        },
+        "constructionSystem": {
+            "@id": "twb:hasConstructionSystem",
+            "@type": "@vocab",
+            "@context": {
+                "@vocab": "https://w3id.org/twb/catalogue/arch#system/"
+            }
+        },
+        "roofLoad": "twb:roofLoadProfile",
+        "ifcScope": "twb:ifcScope",
+        "sawnGradeId": "twb:sawnTimberGrade",
+        "consequenceClass": "twb:consequenceClass",
+        "structuralLoads": "@nest",
+        "liveKnPerM2": {
+            "@id": "twb:liveLoad",
+            "@nest": "structuralLoads"
+        },
+        "snowKnPerM2": {
+            "@id": "twb:snowLoad",
+            "@nest": "structuralLoads"
+        },
+        "windKnPerM2": {
+            "@id": "twb:windPressure",
+            "@nest": "structuralLoads"
+        },
+        "roofOverhang": "@nest",
+        "eavesMm": {
+            "@id": "twb:defaultEavesOverhang",
+            "@nest": "roofOverhang"
+        },
+        "vergeMm": {
+            "@id": "twb:defaultVergeOverhang",
+            "@nest": "roofOverhang"
+        },
+        "edges": {
+            "@id": "arch:overhangEdges",
+            "@type": "@json",
+            "@nest": "roofOverhang"
+        },
+        "guides": {
+            "@id": "arch:guides",
+            "@type": "@json"
+        },
+        "interiorWalls": {
+            "@id": "arch:interiorWalls",
+            "@type": "@json"
+        },
+        "cabinet": {
+            "@id": "arch:cabinet",
+            "@type": "@json"
+        },
+        "heating": {
+            "@id": "arch:heating",
+            "@type": "@json"
+        },
+        "water": {
+            "@id": "arch:water",
+            "@type": "@json"
+        },
+        "lca": {
+            "@id": "arch:lca",
+            "@type": "@json"
+        },
+        "foundation": {
+            "@id": "arch:foundation",
+            "@type": "@json"
+        },
+        "framingRules": {
+            "@id": "arch:framingRules",
+            "@type": "@json"
+        },
+        "splices": {
+            "@id": "arch:splices",
+            "@type": "@json"
+        },
+        "cutting": {
+            "@id": "arch:cutting",
+            "@type": "@json"
+        },
+        "sections": {
+            "@id": "twbd:hasSection",
+            "@container": "@set"
+        },
+        "inDocumentation": "twbd:inDrawingSet",
+        "underFloorC": "arch:underFloorC",
+        "points": {
+            "@id": "twb:pointsMm",
+            "@type": "@json"
+        },
+        "point": {
+            "@id": "twb:pointMm",
+            "@type": "@json"
+        },
+        "at": {
+            "@id": "twb:pointMm",
+            "@type": "@json"
+        },
+        "holes": {
+            "@id": "twb:holesMm",
+            "@type": "@json"
+        },
+        "spanDirection": {
+            "@id": "twb:spanDirection",
+            "@type": "@json"
+        },
+        "name": "rdfs:label",
+        "elevationMm": "twb:elevation",
+        "heightMm": "twb:storeyHeight",
+        "storey": {
+            "@id": "twb:onStorey",
+            "@type": "@id"
+        },
+        "openings": {
+            "@id": "bot:hostsElement"
+        },
+        "pinnedKind": {
+            "@id": "twb:pinnedKind",
+            "@type": "@vocab",
+            "@context": {
+                "wall": "twb:WallSurface",
+                "floor": "twb:FloorSurface",
+                "roof": "twb:RoofSurface"
+            }
+        },
+        "loadBearing": "twb:loadBearing",
+        "roofGroup": "twb:roofGroupName",
+        "studSection": "twb:pinnedStudSection",
+        "detail": {
+            "@id": "twb:hasOwnOpeningDetail",
+            "@type": "@vocab",
+            "@context": {
+                "@vocab": "https://w3id.org/twb/catalogue/arch#opening-detail/",
+                "plain": "twb:PlainOpening",
+                "sill-flashing": "twb:SillFlashing",
+                "frame-boards": "twb:FrameBoards",
+                "head-sill-boards": "twb:HeadAndSillBoards"
+            }
+        },
+        "glazing": {
+            "@id": "twb:glazingDivision",
+            "@type": "@json"
+        },
+        "hingeAtEnd": "twb:hingeAtEnd",
+        "swingsBack": "twb:swingsBack",
+        "leaves": {
+            "@id": "twb:doorLeaves",
+            "@type": "@vocab",
+            "@context": {
+                "single": "twb:SingleLeaf",
+                "one-and-a-half": "twb:OneAndAHalfLeaves",
+                "double": "twb:DoubleLeaves"
+            }
+        },
+        "zoneKind": {
+            "@id": "twb:zoneKind",
+            "@type": "@vocab",
+            "@context": {
+                "@vocab": "https://w3id.org/twb/catalogue/arch#zone-kind/"
+            }
+        },
+        "ceiling": {
+            "@id": "twb:ceilingKind",
+            "@type": "@vocab",
+            "@context": {
+                "flat": "twb:FlatCeiling",
+                "open": "twb:OpenCeiling",
+                "lowered": "twb:LoweredCeiling"
+            }
+        },
+        "ceilingMm": "twb:ceilingHeight",
+        "fixtureKind": {
+            "@id": "twb:fixtureKind",
+            "@type": "@vocab",
+            "@context": {
+                "@vocab": "https://w3id.org/twb/catalogue/arch#fixture-kind/"
+            }
+        },
+        "variant": {
+            "@id": "twb:fixtureVariant",
+            "@type": "@vocab",
+            "@context": {
+                "@vocab": "https://w3id.org/twb/catalogue/arch#fixture-variant/"
+            }
+        },
+        "placedBy": "arch:placedBy",
+        "edited": "arch:editedByUser",
+        "size": {
+            "@id": "twb:footprintMm",
+            "@type": "@json"
+        },
+        "facing": {
+            "@id": "twb:facing",
+            "@type": "@json"
+        },
+        "boundary": {
+            "@id": "twb:boundaryCondition",
+            "@type": "@vocab",
+            "@context": {
+                "exterior": "twb:OutdoorAir",
+                "ground": "twb:Ground",
+                "unheated": "twb:UnheatedSpace"
+            }
+        },
+        "airGapLevel": "arch:airGapLevel",
+        "layers": {
+            "@id": "twb:hasLayer"
+        },
+        "index": "twb:layerIndex",
+        "material": {
+            "@id": "twb:material",
+            "@type": "@vocab",
+            "@context": {
+                "@vocab": "https://w3id.org/twb/catalogue/arch#material/"
+            }
+        },
+        "thickness": "twb:thickness",
+        "core": "twb:isCore",
+        "members": {
+            "@id": "twb:hasMemberPattern"
+        },
+        "width": "twb:memberWidth",
+        "cc": "twb:spacing",
+        "run": "arch:run",
+        "cladding": {
+            "@id": "twb:hasCladdingPattern"
+        },
+        "pattern": {
+            "@id": "twb:claddingPattern",
+            "@type": "@vocab",
+            "@context": {
+                "@vocab": "https://w3id.org/twb/catalogue/arch#cladding/"
+            }
+        },
+        "boardWidth": "arch:boardWidth",
+        "boardThickness": "arch:boardThickness",
+        "overlap": "arch:overlap",
+        "stripWidth": "arch:stripWidth",
+        "stripThickness": "arch:stripThickness",
+        "fixedSpacing": "arch:fixedSpacing",
+        "taper": {
+            "@id": "twb:hasTaper"
+        },
+        "masonry": {
+            "@id": "twb:hasMasonryBond"
+        },
+        "bond": {
+            "@id": "twb:brickBond",
+            "@type": "@vocab",
+            "@context": {
+                "@vocab": "https://w3id.org/twb/catalogue/arch#bond/"
+            }
+        },
+        "ties": {
+            "@id": "twb:hasWallTies"
+        },
+        "perM2": "twb:tiesPerSquareMetre",
+        "diameter": "twb:tieDiameter",
+        "fall": "twb:fallPercent",
+        "edge": {
+            "@reverse": "twb:hasOwnJoint",
+            "@type": "@id"
+        },
+        "cuts": {
+            "@id": "twb:hasLayerTermination"
+        },
+        "surface": {
+            "@id": "twb:ofSurface",
+            "@type": "@id"
+        },
+        "role": {
+            "@id": "twb:ofRole",
+            "@type": "@vocab",
+            "@context": {
+                "first": "twb:FirstRole",
+                "second": "twb:SecondRole"
+            }
+        },
+        "layer": "twb:layerIndex",
+        "cut": {
+            "@id": "twb:cut",
+            "@type": "@vocab",
+            "@context": {
+                "miter": "twb:mitre",
+                "overhang": "twb:overhangCut",
+                "standard": "twb:standardCut",
+                "boundary": "twb:boundaryIndex"
+            }
+        },
+        "line": {
+            "@id": "arch:lineCut",
+            "@type": "@json"
+        },
+        "trims": {
+            "@id": "twb:hasTrim"
+        },
+        "profile": {
+            "@id": "twb:profileMm",
+            "@type": "@json"
+        },
+        "repeat": {
+            "@id": "arch:repeat",
+            "@type": "@json"
+        },
+        "boards": {
+            "@id": "twb:boardSeam",
+            "@type": "@vocab",
+            "@context": {
+                "through": "twb:BoardsRunThrough",
+                "break": "twb:BoardsBreak"
+            }
+        },
+        "edgeType": {
+            "@id": "twb:forEdgeType",
+            "@type": "@vocab",
+            "@context": {
+                "@vocab": "https://w3id.org/twb#"
+            }
+        },
+        "atInsideCorner": "twb:atInsideCorner",
+        "first": {
+            "@id": "twb:firstRoleRecipe",
+            "@type": "@id"
+        },
+        "second": {
+            "@id": "twb:secondRoleRecipe",
+            "@type": "@id"
+        },
+        "jointType": "twb:archTerm",
+        "option": {
+            "@id": "twb:standardOption",
+            "@type": "@vocab",
+            "@context": {
+                "@vocab": "https://w3id.org/twb/catalogue/arch#joint-option/",
+                "miter": "twb:Mitred",
+                "seamless": "twb:Seamless",
+                "parapet": "twb:Parapet",
+                "longer-through": "twb:LongerWallThrough",
+                "exterior-through": "twb:ExteriorWallThrough",
+                "partition-through": "twb:PartitionThrough",
+                "roof-through": "twb:RoofThrough",
+                "wall-through": "twb:WallThrough",
+                "floor-through": "twb:DeckThrough",
+                "floor-through-facade": "twb:DeckThroughFacadeOver",
+                "wall-on-joists": "twb:WallOnJoists"
+            }
+        },
+        "openingType": {
+            "@id": "twb:forOpeningClass",
+            "@type": "@vocab",
+            "@context": {
+                "@vocab": "https://w3id.org/twb#"
+            }
+        },
+        "standardDetail": {
+            "@id": "twb:standardDetail",
+            "@type": "@vocab",
+            "@context": {
+                "@vocab": "https://w3id.org/twb/catalogue/arch#opening-detail/",
+                "plain": "twb:PlainOpening",
+                "sill-flashing": "twb:SillFlashing",
+                "frame-boards": "twb:FrameBoards",
+                "head-sill-boards": "twb:HeadAndSillBoards"
+            }
+        },
+        "forEdges": {
+            "@id": "twb:forEdge",
+            "@type": "@id"
+        },
+        "through": {
+            "@id": "twb:throughEdge",
+            "@type": "@id"
+        },
+        "notation": "skos:notation",
+        "facade": "twb:facadeCladding",
+        "roofCovering": "twb:roofCovering",
+        "gutter": "twb:gutterKind",
+        "openingFinish": "arch:openingsExpression"
+    }
+}

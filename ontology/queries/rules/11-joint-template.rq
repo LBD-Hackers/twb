@@ -1,0 +1,15 @@
+# Joint resolution, level 2: the project's template for the edge's type, corner and pair of recipes in
+# their roles. Templates name roles, not surfaces, so one template details every edge of its kind.
+PREFIX twb: <https://w3id.org/twb#>
+CONSTRUCT { ?edge twb:resolvedJoint ?template ; twb:resolvedBy twb:ResolvedByTemplate . }
+WHERE {
+  ?edge a twb:Edge ; twb:edgeType ?type ; twb:isInsideCorner ?inside ;
+        twb:hasRoleAssignment ?ra1, ?ra2 .
+  ?ra1 twb:role twb:FirstRole ; twb:surface ?s1 .
+  ?ra2 twb:role twb:SecondRole ; twb:surface ?s2 .
+  ?s1 twb:hasRecipe ?r1 . ?s2 twb:hasRecipe ?r2 .
+  ?blueprint twb:hasJointTemplate ?template .
+  ?template twb:forEdgeType ?type ; twb:atInsideCorner ?inside ;
+            twb:firstRoleRecipe ?r1 ; twb:secondRoleRecipe ?r2 .
+  FILTER NOT EXISTS { ?edge twb:resolvedBy ?any }
+}

@@ -1,0 +1,70 @@
+{
+    "format": "arch/1",
+    "notes": "A small single-storey masonry house, 13200 x 9000 on the wall centrelines (about 119 m2): a cavity wall of aerated concrete and facing brick on a ground slab, a 25 degree gable roof with the ridge along x. South: living room and two bedrooms. North: kitchen open to the living room, entrance hall, bathroom and the main bedroom, off a corridor along the middle of the east wing.",
+    "constructionSystem": "masonry",
+    "buildingUse": "dwelling",
+    "wallHeightMm": 2640,
+    "walls": [
+        { "id": "south", "points": [[0, 0], [13200, 0]] },
+        { "id": "east", "points": [[13200, 0], [13200, 9000]] },
+        { "id": "north", "points": [[13200, 9000], [0, 9000]] },
+        { "id": "west", "points": [[0, 9000], [0, 0]] }
+    ],
+    "roof": { "type": "gable", "pitchDeg": 25, "ridge": "x" },
+    "interiorWalls": [
+        { "points": [[6600, 0], [6600, 9000]] },
+        { "points": [[3600, 4200], [13200, 4200]] },
+        { "points": [[3600, 4200], [3600, 9000]] },
+        { "points": [[6600, 5400], [13200, 5400]] },
+        { "points": [[9900, 0], [9900, 4200]] },
+        { "points": [[9000, 5400], [9000, 9000]] }
+    ],
+    "zoneSeparations": [{ "points": [[0, 4200], [3600, 4200]] }],
+    "openings": [
+        { "kind": "window", "at": [1500, 0], "widthMm": 1800, "heightMm": 1300, "sillMm": 800 },
+        { "kind": "door", "at": [4500, 0], "widthMm": 1800, "heightMm": 2100, "sillMm": 0 },
+        { "kind": "window", "at": [8250, 0], "widthMm": 1200, "heightMm": 1300, "sillMm": 800 },
+        { "kind": "window", "at": [11550, 0], "widthMm": 1200, "heightMm": 1300, "sillMm": 800 },
+
+        { "kind": "window", "at": [13200, 2100], "widthMm": 900, "heightMm": 1300, "sillMm": 800 },
+        { "kind": "window", "at": [13200, 4800], "widthMm": 600, "heightMm": 1300, "sillMm": 800 },
+        { "kind": "window", "at": [13200, 7200], "widthMm": 900, "heightMm": 1300, "sillMm": 800 },
+
+        { "kind": "window", "at": [11100, 9000], "widthMm": 1500, "heightMm": 1300, "sillMm": 800 },
+        { "kind": "window", "at": [7800, 9000], "widthMm": 900, "heightMm": 600, "sillMm": 1500 },
+        { "kind": "door", "at": [5100, 9000], "widthMm": 1000, "heightMm": 2100, "sillMm": 0 },
+        { "kind": "window", "at": [1800, 9000], "widthMm": 1500, "heightMm": 1100, "sillMm": 1000 },
+
+        { "kind": "window", "at": [0, 6600], "widthMm": 1200, "heightMm": 1100, "sillMm": 1000 },
+        { "kind": "window", "at": [0, 2100], "widthMm": 1200, "heightMm": 1300, "sillMm": 800 },
+
+        { "kind": "door", "at": [5100, 4200], "widthMm": 900, "heightMm": 2100, "sillMm": 0 },
+        { "kind": "door", "at": [6600, 4800], "widthMm": 900, "heightMm": 2100, "sillMm": 0 },
+        { "kind": "door", "at": [9000, 4200], "widthMm": 900, "heightMm": 2100, "sillMm": 0 },
+        { "kind": "door", "at": [10500, 4200], "widthMm": 900, "heightMm": 2100, "sillMm": 0 },
+        { "kind": "door", "at": [7200, 5400], "widthMm": 900, "heightMm": 2100, "sillMm": 0 },
+        { "kind": "door", "at": [10200, 5400], "widthMm": 900, "heightMm": 2100, "sillMm": 0 }
+    ],
+    "zones": [
+        { "id": "z1", "name": "Living", "kind": "living", "point": [3300, 2100] },
+        { "id": "z2", "name": "Kitchen", "kind": "kitchen", "point": [1800, 6600] },
+        { "id": "z3", "name": "Entrance hall", "kind": "circulation", "point": [5100, 6600] },
+        { "id": "z4", "name": "Corridor", "kind": "circulation", "point": [9900, 4800] },
+        { "id": "z5", "name": "Bedroom 1", "kind": "bedroom", "point": [8250, 2100] },
+        { "id": "z6", "name": "Bedroom 2", "kind": "bedroom", "point": [11550, 2100] },
+        { "id": "z7", "name": "Bathroom", "kind": "bathroom", "point": [7800, 7200] },
+        { "id": "z8", "name": "Main bedroom", "kind": "bedroom", "point": [11100, 7200] }
+    ],
+    "fixtures": [
+        { "kind": "worktop", "at": [1550, 8550], "size": [2500, 600] },
+        { "kind": "sink", "at": [1800, 8550] },
+        { "kind": "dishwasher", "at": [2400, 8550] },
+        { "kind": "hob", "at": [700, 8550] },
+        { "kind": "fridge", "at": [3150, 8550] },
+        { "kind": "wc", "at": [8600, 8500] },
+        { "kind": "basin", "at": [7700, 8600] },
+        { "kind": "shower", "at": [8500, 6000] },
+        { "kind": "washer", "at": [6950, 7000], "facing": "x+" },
+        { "kind": "dryer", "at": [6950, 7650], "facing": "x+" }
+    ]
+}

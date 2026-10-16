@@ -1,0 +1,2311 @@
+/**
+ * An IFC model read into a house file: `twb/1`, in the simple shape (`house/simple-house.ts`) —
+ * the exterior walls as plan lines, the storeys, the wall height, the windows and doors by their
+ * centre and size, the roof by its type and pitch, the partitions, the rooms and the fittings —
+ * with the build-ups read off the IFC's material layers. The faces and gables are worked out from
+ * that by `expandSimpleHouse` as for a house read from drawings, and a tool that derives a building
+ * (arch: the frame, the envelope, the analyses) derives it as it would from any house file.
+ *
+ * **Heavy or light, from the layers.** A wall's core is the layer that carries: a leaf of
+ * masonry or concrete of 75 mm or more (block before facing brick, the thickest of them), or else
+ * its layer of studs, or else its insulation (`pickCore`). A core of masonry or concrete makes the
+ * wall heavy, and a house whose exterior walls are heavy is a masonry house
+ * (`constructionSystem: "masonry"`); otherwise a timber frame.
+ *
+ * **Where a wall's line is.** arch builds a wall on one line: through the middle of its studs, or
+ * of the inner leaf that carries the roof. IFC gives a wall's axis and
+ * how its layers lie on it (`IfcMaterialLayerSetUsage`), so the line is put through the middle of
+ * the core, wherever it is in the wall: 263 mm in from the brick face of a brick-on-block wall,
+ * on the axis of a stud partition. A heavy wall with its layers mirrored (a party wall of two
+ * leaves) is put on its middle instead.
+ *
+ * **Which walls are exterior** is read off the geometry, not `IsExternal` (a party wall between
+ * two dwellings says it is): the exterior walls are the ones whose lines close round the house,
+ * each meeting the next at a corner (`findLoop`). Their corners are where their lines meet. The
+ * rest are partitions (`interiorWalls`), each on the storeys it stands on, its ends taken to the
+ * line of the wall they meet. A wall lining another (a furring wall against a party wall), a wall
+ * under 1.2 m (a soffit, a knee wall) and the foundation's walls are left out.
+ *
+ * **Openings** are read from the hole each door or window fills (`IfcOpeningElement`): its
+ * extent along the wall's line, its sill and its height. A door's leaves and a window's division
+ * come from its type (`IfcDoorStyle`/`IfcWindowStyle`, IFC4's `OperationType` and
+ * `PartitioningType`).
+ *
+ * **Build-ups** (`envelope`): the exterior wall's and the partitions' from the layer set most of
+ * their length has, the roof's from the roof, the ground floor's from its slab with the finish
+ * laid on it, and the floor between storeys' (`deck`) from the upper storeys' slab with its finish
+ * — each inside → outside, the core marked, studs as timber members c/c 600. A floor's or a roof's
+ * heavy core is a slab: hollow-core slabs where the IFC names them so, else concrete cast in place.
+ * A heavy house says so as its own choice too (`floorStructure`, `roofStructure`,
+ * so a use or an expression picked later keeps them concrete.
+ *
+ * What does not fit the house file (a stair, a steel beam, a roof window in a flat roof) is left
+ * out and listed in the report, which also goes into the file's `notes` — see
+ * `docs/ifc-import.md`.
+ *
+ * Coordinates: arch's x east, y north, z up, in mm, with the origin at the south-west corner of
+ * the exterior walls' lines and the lowest storey's floor. The IFC's own axes are kept (its
+ * project north is taken as north; a true north the file gives is reported, not applied).
+ *
+ * Pure: no DOM, no three.js.
+ */
+
+import type { HouseFile } from '../house/house-file';
+import { toTwbHouse } from '../house/house-jsonld';
+import {
+    DETAILED_OPENING_KINDS,
+    FLOOR_STRUCTURE_LABELS,
+    ROOF_STRUCTURE_LABELS,
+    defaultThicknessMm,
+    expressionDef,
+    openingTakesDetail,
+    type FloorStructure,
+    type RoofStructure,
+} from './catalogue';
+import { isEnum, type StepEntity } from './step';
+import { IfcModel, type IfcLayer, type Vec3 } from './ifc-model';
+import { isTimber, matchMaterial, type LayerRole } from './ifc-materials';
+
+interface P2 {
+    x: number;
+    y: number;
+}
+
+export interface IfcImportOptions {
+    /** The project's name; left out, the IFC project's or building's. */
+    name?: string;
+}
+
+/** Elements of one kind left out for one reason. */
+export interface SkippedGroup {
+    reason: string;
+    /** The IFC entity type, `IFCSTAIR`. */
+    type: string;
+    count: number;
+    /** A few of their names. */
+    names: string[];
+}
+
+export interface IfcImportReport {
+    schema: string;
+    /** Heavy: the exterior walls' core is masonry or concrete. Light: studs. */
+    construction: 'heavy' | 'light';
+    storeys: { name: string; elevationMm: number; heightMm: number }[];
+    exteriorWalls: number;
+    partitions: number;
+    openings: number;
+    zones: number;
+    fixtures: number;
+    lines: number;
+    /** The IFC layer set each build-up was read from. */
+    buildups: Partial<Record<'exteriorWall' | 'interiorWall' | 'roof' | 'floor' | 'deck', string>>;
+    /** What the floors between storeys and the roof are, read off their cores. */
+    structure: { floors: FloorStructure; roof: RoofStructure };
+    /** IFC material names no rule knew, with what they were read as. */
+    guessedMaterials: string[];
+    skipped: SkippedGroup[];
+    warnings: string[];
+}
+
+export interface IfcImport {
+    /** The house file, `twb/1`. */
+    house: Record<string, unknown>;
+    report: IfcImportReport;
+}
+
+/** The wall heights, mm: a storey has walls of at least this standing on it. */
+const STOREY_WALL_MM = 1800;
+/** A wall lower than this is not a wall of a room: a parapet, a soffit, a knee wall. */
+const MIN_WALL_MM = 1200;
+/**
+ * How far an upper storey's slab may lie under the storey's level, mm: its top, under the floating
+ * floor and screed its storey's level is the top of.
+ */
+const UPPER_FLOOR_REACH_MM = 150;
+/** A heavy layer at least this thick can carry. */
+const MIN_LEAF_MM = 75;
+/** How far a corner may be from a wall's end, past the wall's thickness. */
+const CORNER_REACH_MM = 300;
+/** How far a partition's end may be from the wall it meets. */
+const PARTITION_REACH_MM = 400;
+/** A ceiling hung more than this below what is over it is a lowered one. */
+const LOWERED_MM = 300;
+/** Lines this close are one line. */
+const ON_LINE_MM = 30;
+
+/** What a file picker offers for an IFC model. */
+export const IFC_FILE_ACCEPT = '.ifc,application/x-step';
+
+/** Whether a file is an IFC model, by its name. */
+export function isIfcFileName(name: string): boolean {
+    return /\.ifc$/i.test(name);
+}
+
+/** Reads an IFC file into a house file. Throws only on a file that is not IFC at all. */
+export function ifcToHouse(text: string, options: IfcImportOptions = {}): IfcImport {
+    return new Importer(IfcModel.read(text), options).run();
+}
+
+/** The report as lines of text: for the house file's notes, a status line, the CLI. */
+export function ifcImportSummary(r: IfcImportReport): string[] {
+    const lines = [
+        `Read from IFC (${r.schema}): ${r.construction === 'heavy' ? 'heavy (masonry)' : 'light (frame)'} construction, ` +
+            `${r.storeys.length} storey${r.storeys.length === 1 ? '' : 's'}, ${r.exteriorWalls} exterior walls, ` +
+            `${r.partitions} partition runs, ${r.openings} windows and doors, ${r.zones} rooms, ` +
+            `${r.fixtures} fittings${r.lines ? `, ${r.lines} posts and beams` : ''}.`,
+    ];
+    if (r.structure.floors !== 'timber' || r.structure.roof !== 'timber') {
+        lines.push(
+            `Floors between storeys: ${FLOOR_STRUCTURE_LABELS[r.structure.floors].toLowerCase()}; ` +
+                `roof: ${ROOF_STRUCTURE_LABELS[r.structure.roof].toLowerCase()}.`
+        );
+    }
+    const buildups = Object.entries(r.buildups);
+    if (buildups.length > 0) {
+        lines.push(`Build-ups from: ${buildups.map(([k, v]) => `${k} ← "${v}"`).join('; ')}.`);
+    }
+    if (r.guessedMaterials.length > 0) {
+        lines.push(`Materials guessed: ${r.guessedMaterials.join('; ')}.`);
+    }
+    for (const w of r.warnings) lines.push(w);
+    for (const s of r.skipped) {
+        const names =
+            s.names.length > 0
+                ? ` (${s.names.join(', ')}${s.count > s.names.length ? ', …' : ''})`
+                : '';
+        lines.push(`Left out: ${s.count} × ${s.type}${names} — ${s.reason}`);
+    }
+    return lines;
+}
+
+// ---- Walls -------------------------------------------------------------------------------------
+
+interface Wall {
+    e: StepEntity;
+    name: string;
+    /** The IFC axis, in plan. */
+    axisA: P2;
+    axisB: P2;
+    /** Along the axis, and the layers' direction across it (the placement's y), unit vectors. */
+    dir: P2;
+    normal: P2;
+    zLo: number;
+    zHi: number;
+    /** As the file lists them. */
+    layers: IfcLayer[];
+    /** Across the axis, where the first layer starts and which way the layers run. */
+    offset: number;
+    sense: 1 | -1;
+    thickness: number;
+    core: number;
+    heavy: boolean;
+    /** Across the axis, where arch's line is. */
+    lineY: number;
+    /** arch's line. */
+    a: P2;
+    b: P2;
+    layerSetName: string;
+    loadBearing: boolean | null;
+    isExternal: boolean | null;
+}
+
+type WallRole = 'exterior' | 'partition' | 'foundation' | 'parapet' | 'short' | 'lining';
+
+interface LivingStorey {
+    name: string;
+    elev: number;
+    /** The next storey's elevation, or the eave for the top one. */
+    top: number;
+}
+
+interface Corner {
+    at: P2;
+}
+
+class Importer {
+    private readonly skipped = new Map<string, SkippedGroup>();
+    private readonly warnings: string[] = [];
+    private readonly guessed = new Map<string, string>();
+
+    constructor(
+        private readonly m: IfcModel,
+        private readonly options: IfcImportOptions
+    ) {}
+
+    run(): IfcImport {
+        const m = this.m;
+        const walls = m
+            .all('IFCWALL', 'IFCWALLSTANDARDCASE', 'IFCWALLELEMENTEDCASE')
+            .map((e) => this.readWall(e))
+            .filter((w): w is Wall => !!w);
+        const spaces = m.all('IFCSPACE');
+
+        // ---- Storeys: the ones rooms stand on.
+        const storeyEntities = m
+            .all('IFCBUILDINGSTOREY')
+            .map((e) => ({ e, name: m.name(e) || `Storey ${e.id}`, elev: this.storeyElevation(e) }))
+            .sort((a, b) => a.elev - b.elev);
+        const tall = walls.filter((w) => w.zHi - w.zLo >= STOREY_WALL_MM);
+        const wallTop = tall.length > 0 ? Math.max(...tall.map((w) => w.zHi)) : 0;
+        const spaceBoxes = spaces.map((s) => ({ s, box: box3(m.bodyPoints(s)) }));
+        let living: { name: string; elev: number }[] = storeyEntities.filter(
+            (st) =>
+                st.elev <= wallTop - STOREY_WALL_MM &&
+                (tall.some((w) => Math.abs(w.zLo - st.elev) <= 400) ||
+                    spaceBoxes.some(
+                        ({ box }) =>
+                            box &&
+                            Math.abs(box.min.z - st.elev) <= 400 &&
+                            box.max.z - box.min.z >= STOREY_WALL_MM
+                    ))
+        );
+        if (living.length === 0) {
+            const lowest = tall.length > 0 ? Math.min(...tall.map((w) => w.zLo)) : 0;
+            living = [{ name: 'Ground floor', elev: lowest }];
+            this.warnings.push(
+                'No storey with walls standing on it was found; one storey is assumed.'
+            );
+        }
+        const base = living[0]!.elev;
+        const bandOf = (z: number): number => {
+            let k = 0;
+            living.forEach((st, i) => {
+                if (z >= st.elev - 50) k = i;
+            });
+            return k;
+        };
+
+        // ---- Which walls are which.
+        const role = new Map<Wall, WallRole>();
+        for (const w of walls) {
+            if (w.zHi <= base + 50) role.set(w, 'foundation');
+        }
+        const standing = walls.filter((w) => !role.has(w) && w.zHi - w.zLo >= MIN_WALL_MM);
+        const onGround = standing.filter((w) => w.zLo < base + 400);
+        const flagged = onGround.filter((w) => w.isExternal === true);
+        let loop = flagged.length >= 3 ? findLoop(flagged) : null;
+        if (!loop) loop = findLoop(onGround);
+        if (!loop) {
+            this.warnings.push(
+                'The exterior walls do not close round the house: every wall standing on the lowest floor is written as an exterior wall, and arch will say where the outline breaks.'
+            );
+        }
+        const loopWalls = loop?.walls ?? onGround.filter((w) => w.isExternal !== false);
+        const loopLines: { a: P2; b: P2; walls: Wall[] }[] = loop
+            ? loop.walls.map((w, i) => ({
+                  a: loop!.corners[i]!.at,
+                  b: loop!.corners[(i + 1) % loop!.corners.length]!.at,
+                  walls: [w],
+              }))
+            : loopWalls.map((w) => ({ a: w.a, b: w.b, walls: [w] }));
+        for (const w of loopWalls) role.set(w, 'exterior');
+        // A wall of an upper storey on one of those lines is the same exterior wall, higher up.
+        for (const w of standing) {
+            if (role.has(w)) continue;
+            const line = loopLines.find((l) => onSameLine(w, l.a, l.b));
+            if (line) {
+                role.set(w, 'exterior');
+                line.walls.push(w);
+            }
+        }
+        const exterior = walls.filter((w) => role.get(w) === 'exterior');
+        // Exterior walls higher up, off the ground floor's outline, closing round a storey of
+        // their own: a setback or an overhang. (A party wall says it is external too, but closes
+        // round nothing.)
+        const offOutline = living.slice(1).flatMap((st) => {
+            const upper = standing.filter(
+                (w) => !role.has(w) && w.isExternal !== false && Math.abs(w.zLo - st.elev) <= 400
+            );
+            return findLoop(upper)?.walls ?? [];
+        });
+        if (offOutline.length > 0 && loop) {
+            this.warnings.push(
+                `${offOutline.length} exterior wall${offOutline.length === 1 ? '' : 's'} of an upper storey off the ground floor's outline (a setback or an overhang): ` +
+                    'the house file runs every exterior wall from the lowest floor to the eaves, so they are written as partitions.'
+            );
+        }
+        const outline = loopLines.map((l) => l.a);
+
+        // ---- The eave: where the exterior walls end, or the flat roof's underside if it is lower.
+        const roofs = this.roofSlabs();
+        const roofBox = box3(roofs.flatMap((r) => m.bodyPoints(r)));
+        // Each facade's top is its highest wall; the eave is the lowest of those (a gable rises past it).
+        const wallsTop =
+            loopLines.length > 0
+                ? Math.min(...loopLines.map((l) => Math.max(...l.walls.map((w) => w.zHi))))
+                : base + 2400;
+        const roofShape = this.roofShape(roofs);
+        let eave = wallsTop;
+        if (
+            roofShape.type === 'flat' &&
+            roofBox &&
+            roofBox.min.z < eave - 50 &&
+            roofBox.min.z > base
+        ) {
+            eave = roofBox.min.z;
+        }
+        let parapetMm = roofShape.type === 'flat' && wallsTop > eave + 50 ? wallsTop - eave : 0;
+        for (const w of walls) {
+            if (role.has(w)) continue;
+            if (w.zLo >= eave - 50) {
+                role.set(w, 'parapet');
+                parapetMm = Math.max(parapetMm, w.zHi - eave);
+            }
+        }
+        for (const w of walls) {
+            if (!role.has(w) && w.zHi - w.zLo < MIN_WALL_MM) role.set(w, 'short');
+        }
+        const storeys: LivingStorey[] = living.map((st, i) => ({
+            name: st.name,
+            elev: st.elev,
+            top: i + 1 < living.length ? living[i + 1]!.elev : eave,
+        }));
+
+        // ---- Partitions: the rest, less the linings.
+        const rest = walls.filter((w) => !role.has(w));
+        for (const w of rest) {
+            const lined = walls.find(
+                (v) => v !== w && role.get(v) !== 'foundation' && isLining(w, v)
+            );
+            if (lined) role.set(w, 'lining');
+        }
+        const partitions = rest.filter((w) => !role.has(w));
+        for (const w of partitions) {
+            role.set(w, 'partition');
+            // A heavy wall of two mirrored leaves stands on its middle, not on one leaf.
+            if (w.heavy && isMirrored(w.layers)) {
+                w.lineY = w.offset + (w.sense * w.thickness) / 2;
+                w.a = add2(w.axisA, mul2(w.normal, w.lineY));
+                w.b = add2(w.axisB, mul2(w.normal, w.lineY));
+            }
+        }
+        for (const [w, r] of role) {
+            if (r === 'foundation')
+                this.skip(
+                    w.e,
+                    'a wall of the foundation: arch lays out its own foundation from the house.'
+                );
+            if (r === 'parapet')
+                this.skip(
+                    w.e,
+                    "a parapet over the roof: arch's flat-roof expression builds its own, of the exterior wall, 200 mm over the roofing."
+                );
+            if (r === 'short')
+                this.skip(
+                    w.e,
+                    'a wall under 1.2 m (a soffit, a bulkhead or a knee wall): not a wall of a room.'
+                );
+            if (r === 'lining')
+                this.skip(
+                    w.e,
+                    'a lining against another wall: its layers belong to that wall, which arch builds with one build-up.'
+                );
+        }
+
+        // ---- The origin: the south-west corner of the exterior walls' lines.
+        const planPts = outline.length > 0 ? outline : walls.flatMap((w) => [w.a, w.b]);
+        const ox = Math.min(...planPts.map((p) => p.x));
+        const oy = Math.min(...planPts.map((p) => p.y));
+        const T = (p: P2): [number, number] => [Math.round(p.x - ox), Math.round(p.y - oy)];
+        const Z = (z: number): number => Math.round(z - base);
+        const storeyName = (k: number): string | undefined =>
+            storeys.length > 1 ? storeys[k]!.name : undefined;
+
+        // ---- The exterior walls, each named by the way it faces.
+        const area = signedArea(outline);
+        const usedNames = new Map<string, number>();
+        const wallLines = loopLines.map((l) => {
+            const d = norm2(sub2(l.b, l.a));
+            // Outward: to the right of a counter-clockwise outline.
+            const out = area >= 0 ? { x: d.y, y: -d.x } : { x: -d.y, y: d.x };
+            const facing = compass(out);
+            const n = (usedNames.get(facing) ?? 0) + 1;
+            usedNames.set(facing, n);
+            return { ...l, id: n === 1 ? facing : `${facing}-${n}` };
+        });
+        // Second and later of a name are numbered; the first keeps the plain name only if alone.
+        for (const wl of wallLines) {
+            if ((usedNames.get(wl.id) ?? 0) > 1) wl.id = `${wl.id}-1`;
+        }
+
+        // ---- Partitions: one run per storey each stands on, its ends on the wall they meet.
+        const allLines: { a: P2; b: P2; band: number[] }[] = [
+            ...loopLines.map((l) => ({ a: l.a, b: l.b, band: storeys.map((_, i) => i) })),
+            ...partitions.map((w) => ({ a: w.a, b: w.b, band: this.bands(w, storeys) })),
+        ];
+        const interiorWalls: {
+            storey?: string;
+            points: [number, number][];
+            loadBearing?: boolean;
+        }[] = [];
+        for (const w of partitions) {
+            const bands = this.bands(w, storeys);
+            if (bands.length === 0) {
+                this.skip(w.e, 'a partition that stands on no storey for most of its height.');
+                continue;
+            }
+            for (const k of bands) {
+                const others = allLines.filter(
+                    (l) => l.band.includes(k) && !(l.a === w.a && l.b === w.b)
+                );
+                const a = snapEnd(w.a, w.b, others);
+                const b = snapEnd(w.b, w.a, others);
+                interiorWalls.push({
+                    ...(storeyName(k) ? { storey: storeyName(k) } : {}),
+                    points: [T(a), T(b)],
+                    ...(w.loadBearing !== null ? { loadBearing: w.loadBearing } : {}),
+                });
+            }
+        }
+        const heavyPartitions = partitions.filter((w) => w.heavy);
+        if (heavyPartitions.length > 0) {
+            this.warnings.push(
+                `${heavyPartitions.length} heavy partition${heavyPartitions.length === 1 ? '' : 's'} (${unique(heavyPartitions.map((w) => w.layerSetName)).join(', ')}) ` +
+                    'written as partitions: arch builds every partition with one build-up, of studs.'
+            );
+        }
+
+        // ---- Openings.
+        const openings: Record<string, unknown>[] = [];
+        let doorSides = 0;
+        const hostLine = (w: Wall): { a: P2; b: P2 } | null => {
+            if (role.get(w) === 'exterior')
+                return wallLines.find((l) => l.walls.includes(w)) ?? null;
+            if (role.get(w) === 'partition') return { a: w.a, b: w.b };
+            if (role.get(w) === 'lining') {
+                const lined = walls.find((v) => v !== w && isLining(w, v));
+                return lined ? hostLine(lined) : null;
+            }
+            return null;
+        };
+        const fillers = m.all('IFCDOOR', 'IFCWINDOW');
+        const filled = new Set<number>();
+        /** The windows, kept back to be coupled where only a sliver of wall is between them. */
+        const windows: CouplingWindow<Record<string, unknown>>[] = [];
+        for (const f of fillers) {
+            const opening = m.openingFilledBy(f);
+            if (opening) filled.add(opening.id);
+            const host = opening ? m.hostOf(opening) : this.nearestWall(f, walls);
+            const wall = host ? walls.find((w) => w.e.id === host.id) : undefined;
+            const kind =
+                f.type === 'IFCWINDOW' ? 'window' : this.isGarageDoor(f) ? 'garage-door' : 'door';
+            if (!wall) {
+                const where =
+                    host?.type === 'IFCROOF' || host?.type === 'IFCSLAB' ? 'roof' : 'other';
+                this.skip(
+                    f,
+                    where === 'roof'
+                        ? "a window in the roof: the house file's simple shape has no openings in a roof, and arch's roof windows are made for a pitched one."
+                        : 'a window or door in something that is not a wall.'
+                );
+                continue;
+            }
+            const line = hostLine(wall);
+            if (!line) {
+                this.skip(f, `a window or door in a wall that is left out (${role.get(wall)}).`);
+                continue;
+            }
+            const pts = opening ? m.bodyPoints(opening) : m.bodyPoints(f);
+            const o = this.placeOpening(pts, line, bandOf, storeys);
+            if (!o) {
+                this.skip(f, 'a window or door whose size could not be read.');
+                continue;
+            }
+            const entry: Record<string, unknown> = {
+                kind,
+                at: T(o.at),
+                widthMm: o.width,
+                heightMm: o.height,
+                sillMm: kind === 'window' ? o.sill : Math.max(0, o.sill),
+                ...(storeyName(o.band) ? { storey: storeyName(o.band) } : {}),
+            };
+            if (kind === 'window') {
+                const glazing = this.windowGlazing(f);
+                if (glazing) entry['glazing'] = glazing;
+                const d = norm2(sub2(line.b, line.a));
+                windows.push({
+                    entry,
+                    line,
+                    alongMm: dot2(sub2(o.at, line.a), d),
+                    widthMm: o.width,
+                    sillMm: o.sill,
+                    heightMm: o.height,
+                    band: o.band,
+                    mullions: glazing?.['mullions'] ?? 0,
+                    transoms: glazing?.['transoms'] ?? 0,
+                });
+                continue;
+            } else {
+                const op = this.doorOperation(f);
+                if (op && /^DOUBLE_DOOR/.test(op) && role.get(wall) === 'exterior')
+                    entry['leaves'] = 'double';
+                if (op && /LEFT|RIGHT/.test(op)) doorSides++;
+            }
+            openings.push(entry);
+        }
+        // Windows with only a sliver of wall between them are one coupled window.
+        const coupled = coupleWindows(windows);
+        if (coupled.length < windows.length) {
+            this.warnings.push(
+                `${windows.length - coupled.length + coupled.filter((w) => w.coupled).length} windows with less than ${COUPLE_GAP_MM} mm of wall between them ` +
+                    `are coupled into ${coupled.filter((w) => w.coupled).length}: one window each, their frames joined by mullions or transoms.`
+            );
+        }
+        const close = tooClose(coupled);
+        if (close.length > 0) {
+            this.warnings.push(
+                `${close.length} pair${close.length === 1 ? '' : 's'} of windows with only ${unique(close.map((g) => `${g} mm`)).join(', ')} of wall between them are kept apart: ` +
+                    'arch divides a window into equal panes, and theirs are not. Make them one window, or move them apart, in Draw.'
+            );
+        }
+        for (const w of coupled) {
+            const d = norm2(sub2(w.line.b, w.line.a));
+            const glazing = {
+                ...(w.mullions > 0 ? { mullions: w.mullions } : {}),
+                ...(w.transoms > 0 ? { transoms: w.transoms } : {}),
+            };
+            const { glazing: _own, ...rest } = w.entry;
+            openings.push({
+                ...rest,
+                at: T(add2(w.line.a, mul2(d, w.alongMm))),
+                widthMm: Math.round(w.widthMm),
+                heightMm: Math.round(w.heightMm),
+                sillMm: Math.round(w.sillMm),
+                ...(Object.keys(glazing).length > 0 ? { glazing } : {}),
+            });
+        }
+        // An opening nothing fills: a passage, or a hole for something left out.
+        for (const op of m.all('IFCOPENINGELEMENT')) {
+            if (filled.has(op.id)) continue;
+            const host = m.hostOf(op);
+            const wall = host ? walls.find((w) => w.e.id === host.id) : undefined;
+            if (!wall) continue;
+            const line = hostLine(wall);
+            const o = line ? this.placeOpening(m.bodyPoints(op), line, bandOf, storeys) : null;
+            if (!o) continue;
+            const door = o.sill <= 50;
+            openings.push({
+                kind: door ? 'door' : 'window',
+                at: T(o.at),
+                widthMm: o.width,
+                heightMm: o.height,
+                sillMm: door ? 0 : o.sill,
+                ...(storeyName(o.band) ? { storey: storeyName(o.band) } : {}),
+            });
+            this.warnings.push(
+                `An opening with nothing in it (#${op.id} in "${wall.name}") is written as a ${door ? 'door' : 'window'}.`
+            );
+        }
+        if (doorSides > 0) {
+            this.warnings.push(
+                `The hinge side of ${doorSides} door${doorSides === 1 ? '' : 's'} is not carried over: arch hangs each door from its own rule.`
+            );
+        }
+
+        // ---- The roof.
+        const roof: Record<string, unknown> = {
+            type: roofShape.type,
+            pitchDeg: roofShape.pitchDeg,
+        };
+        if (roofShape.ridge) roof['ridge'] = roofShape.ridge;
+        if (roofShape.highSide) roof['highSide'] = roofShape.highSide;
+        const overhang = this.overhang(roofBox, outline, roofShape);
+
+        // ---- Build-ups.
+        const envelope: Record<string, unknown> = {};
+        const buildups: IfcImportReport['buildups'] = {};
+        const extWall = longestBy(
+            exterior.filter((w) => w.layers.length > 0),
+            (w) => w.layerSetName
+        );
+        let heavy = false;
+        let facade: string | null = null;
+        let insulated = false;
+        if (extWall) {
+            heavy = extWall.heavy;
+            const inside = this.insideOut(extWall, outline);
+            const layers = this.fileLayers(
+                inside,
+                inside.indexOf(extWall.layers[extWall.core]!),
+                'wall'
+            );
+            envelope['exteriorWall'] = { layers };
+            buildups.exteriorWall = extWall.layerSetName;
+            facade = facadeOf(inside);
+            insulated = inside.some(
+                (l) => matchMaterial(l.material).role === 'insulation' && l.thickness >= 30
+            );
+        } else if (exterior.length > 0) {
+            heavy = exterior.some((w) => w.heavy);
+        }
+        const partWall = longestBy(
+            partitions.filter((w) => w.layers.length > 0),
+            (w) => w.layerSetName
+        );
+        if (partWall) {
+            envelope['interiorWall'] = {
+                layers: this.fileLayers(partWall.layers, partWall.core, 'wall'),
+            };
+            buildups.interiorWall = partWall.layerSetName;
+            const others = unique(partitions.map((w) => w.layerSetName)).filter(
+                (n) => n && n !== partWall.layerSetName
+            );
+            if (others.length > 0) {
+                this.warnings.push(
+                    `Partitions of other build-ups (${others.join(', ')}) are built as "${partWall.layerSetName}": arch has one partition build-up.`
+                );
+            }
+        }
+        const roofUsage = this.roofLayers(roofs);
+        let covering: string | null = null;
+        const structure: IfcImportReport['structure'] = { floors: 'timber', roof: 'timber' };
+        if (roofUsage) {
+            const inside = orientRoof(roofUsage.layers);
+            const core = pickCore(inside);
+            envelope['roof'] = { layers: this.fileLayers(inside, core, 'roof') };
+            buildups.roof = roofUsage.name;
+            structure.roof = slabStructure(inside[core]);
+            covering = coveringOf(inside);
+            insulated ||= inside.some(
+                (l) => matchMaterial(l.material).role === 'insulation' && l.thickness >= 30
+            );
+        }
+        const { ground: floor, deck } = this.floors(outline, base, storeys);
+        if (floor) {
+            envelope['floor'] = {
+                layers: this.fileLayers(floor.layers, pickCore(floor.layers), 'floor'),
+            };
+            buildups.floor = floor.name;
+        }
+        if (deck) {
+            const core = pickCore(deck.layers);
+            envelope['deck'] = { layers: this.fileLayers(deck.layers, core, 'floor') };
+            buildups.deck = deck.name;
+            structure.floors = slabStructure(deck.layers[core]);
+        }
+
+        // ---- What the house is, and how it meets the weather.
+        const expressionId = roofShape.type === 'flat' ? 'flat-roof' : 'overhang-barge';
+        const def = expressionDef(expressionId)!;
+        let roofCovering = covering ?? def.roofs[0]!;
+        if (!def.roofs.includes(roofCovering)) {
+            this.warnings.push(
+                `The roof's covering (${roofCovering}) is not one a ${def.label.toLowerCase()} takes; written as ${def.roofs[0]}.`
+            );
+            roofCovering = def.roofs[0]!;
+        }
+        const expression: Record<string, unknown> = { id: expressionId, roof: roofCovering };
+        if (facade) expression['facade'] = facade;
+        const jointStandards: Record<string, string> = {};
+        if (def.eave !== 'miter' && (expressionId !== 'flat-roof' || parapetMm > 0))
+            jointStandards['eave'] = def.eave;
+        if (def.verge !== 'miter') jointStandards['verge'] = def.verge;
+        if (expressionId === 'flat-roof' && parapetMm === 0) {
+            this.warnings.push(
+                'The flat roof has no parapet in the IFC: its eaves are left mitred.'
+            );
+        }
+        const openingStandards: Record<string, string> = {};
+        for (const kind of DETAILED_OPENING_KINDS) {
+            if (
+                openingTakesDetail(kind, def.openings) &&
+                def.openings !== 'plain'
+            ) {
+                openingStandards[kind] = def.openings;
+            }
+        }
+
+        // ---- Rooms, fittings, posts and beams.
+        const zones = this.zones(spaces, storeys, bandOf, T, storeyName);
+        const zoneSeparations = this.separations(spaces, storeys, bandOf, allLines, T, storeyName);
+        const fixtures = this.fixtures(walls, role, storeys, bandOf, T, storeyName);
+        const linesOut = this.lines(base, ox, oy);
+        this.skipTheRest();
+
+        const trueNorth = this.trueNorthDeg();
+        if (trueNorth !== null && Math.abs(trueNorth) > 0.5) {
+            this.warnings.push(
+                `The IFC's true north is ${trueNorth.toFixed(1)}° from its project north; arch takes project north as north.`
+            );
+        }
+
+        const report: IfcImportReport = {
+            schema: m.schema,
+            construction: heavy ? 'heavy' : 'light',
+            storeys: storeys.map((st) => ({
+                name: st.name,
+                elevationMm: Z(st.elev),
+                heightMm: Math.round(st.top - st.elev),
+            })),
+            exteriorWalls: wallLines.length,
+            partitions: interiorWalls.length,
+            openings: openings.length,
+            zones: zones.length,
+            fixtures: fixtures.length,
+            lines: linesOut.length,
+            buildups,
+            structure,
+            guessedMaterials: [...this.guessed].map(([name, as]) => `"${name}" as ${as}`),
+            skipped: [...this.skipped.values()],
+            warnings: this.warnings,
+        };
+
+        const file: Record<string, unknown> = {
+            format: 'arch/1',
+            name: this.options.name ?? this.projectName(),
+            notes: ifcImportSummary(report).join('\n'),
+            ...(storeys.length > 1
+                ? {
+                      storeys: report.storeys.map((s) => ({
+                          name: s.name,
+                          elevationMm: s.elevationMm,
+                          heightMm: s.heightMm,
+                      })),
+                  }
+                : {}),
+            wallHeightMm: Z(eave),
+            walls: wallLines.map((l) => ({ id: l.id, points: [T(l.a), T(l.b)] })),
+            ...(openings.length > 0 ? { openings } : {}),
+            roof,
+            roofOverhang: overhang,
+            ...(interiorWalls.length > 0 ? { interiorWalls } : {}),
+            ...(zones.length > 0 ? { zones } : {}),
+            ...(zoneSeparations.length > 0 ? { zoneSeparations } : {}),
+            ...(fixtures.length > 0 ? { fixtures } : {}),
+            ...(linesOut.length > 0 ? { lines: linesOut } : {}),
+            buildingUse: insulated ? 'dwelling' : 'shed-unheated',
+            constructionSystem: heavy ? 'masonry' : 'timber-frame',
+            // A heavy house's own choice of concrete, which its build-ups already are.
+            ...(heavy && structure.floors !== 'timber' ? { floorStructure: structure.floors } : {}),
+            ...(heavy && structure.roof !== 'timber' ? { roofStructure: structure.roof } : {}),
+            expression,
+            roofLoad:
+                roofCovering === 'green' ? 'green' : roofCovering === 'tiles' ? 'heavy' : 'light',
+            ...(Object.keys(envelope).length > 0 ? { envelope } : {}),
+            ...(Object.keys(jointStandards).length > 0
+                ? { envelopeJointStandards: jointStandards }
+                : {}),
+            ...(Object.keys(openingStandards).length > 0
+                ? { openingDetails: openingStandards }
+                : {}),
+        };
+        return { house: toTwbHouse(file as unknown as HouseFile), report };
+    }
+
+    // ---- Reading one wall -----------------------------------------------------------------------
+
+    private readWall(e: StepEntity): Wall | null {
+        const m = this.m;
+        const pts = m.bodyPoints(e);
+        if (pts.length === 0) {
+            this.skip(e, 'a wall with no body to read.');
+            return null;
+        }
+        const frame = m.placementOf(e);
+        let normal = norm2({ x: frame.y.x, y: frame.y.y });
+        const axis = m.axisOf(e);
+        let axisA: P2;
+        let axisB: P2;
+        if (axis) {
+            axisA = { x: axis[0].x, y: axis[0].y };
+            axisB = { x: axis[1].x, y: axis[1].y };
+        } else {
+            // No axis: the body's footprint along the placement's x, on its middle.
+            const along = norm2({ x: frame.x.x, y: frame.x.y });
+            const across = { x: -along.y, y: along.x };
+            const o = { x: frame.o.x, y: frame.o.y };
+            const t = pts.map((p) => dot2(sub2(p, o), along));
+            const s = pts.map((p) => dot2(sub2(p, o), across));
+            const mid = (Math.min(...s) + Math.max(...s)) / 2;
+            axisA = add2(o, add2(mul2(along, Math.min(...t)), mul2(across, mid)));
+            axisB = add2(o, add2(mul2(along, Math.max(...t)), mul2(across, mid)));
+            normal = across;
+        }
+        const len = dist2(axisA, axisB);
+        if (len < 100) {
+            this.skip(e, 'a wall shorter than 100 mm.');
+            return null;
+        }
+        const dir = norm2(sub2(axisB, axisA));
+        // The layers run across the axis: the placement's y, made square to it.
+        normal = norm2(sub2(normal, mul2(dir, dot2(normal, dir))));
+        if (!Number.isFinite(normal.x) || Math.hypot(normal.x, normal.y) < 0.5)
+            normal = { x: -dir.y, y: dir.x };
+
+        const usage = m.layerUsage(e);
+        const across = pts.map((p) => dot2(sub2(p, axisA), normal));
+        const bodyLo = Math.min(...across);
+        const bodyHi = Math.max(...across);
+        let layers: IfcLayer[];
+        let offset: number;
+        let sense: 1 | -1;
+        if (usage && usage.layers.length > 0) {
+            layers = usage.layers;
+            offset = usage.offset;
+            sense = usage.sense;
+        } else {
+            const names = m.materialNames(e);
+            layers = [
+                {
+                    material: names[0] ?? m.name(e),
+                    thickness: bodyHi - bodyLo,
+                    ventilated: false,
+                    category: null,
+                },
+            ];
+            offset = bodyHi;
+            sense = -1;
+        }
+        const thickness = layers.reduce((s, l) => s + l.thickness, 0);
+        const core = pickCore(layers);
+        const heavy = core >= 0 && matchMaterial(layers[core]!.material).role === 'heavy';
+        const before = layers.slice(0, Math.max(core, 0)).reduce((s, l) => s + l.thickness, 0);
+        const lineY =
+            core >= 0
+                ? offset + sense * (before + layers[core]!.thickness / 2)
+                : offset + (sense * thickness) / 2;
+        const z = pts.map((p) => p.z);
+        const lb = m.property(e, 'LoadBearing');
+        const ext = m.property(e, 'IsExternal');
+        return {
+            e,
+            name: m.name(e),
+            axisA,
+            axisB,
+            dir,
+            normal,
+            zLo: Math.min(...z),
+            zHi: Math.max(...z),
+            layers,
+            offset,
+            sense,
+            thickness,
+            core,
+            heavy,
+            lineY,
+            a: add2(axisA, mul2(normal, lineY)),
+            b: add2(axisB, mul2(normal, lineY)),
+            layerSetName: usage?.name ?? m.name(e),
+            loadBearing: typeof lb === 'boolean' ? lb : isEnum(lb) ? lb.enum === 'T' : null,
+            isExternal: typeof ext === 'boolean' ? ext : isEnum(ext) ? ext.enum === 'T' : null,
+        };
+    }
+
+    /** The storeys a partition stands on for most of the height of each. */
+    private bands(w: Wall, storeys: readonly LivingStorey[]): number[] {
+        const out: number[] = [];
+        storeys.forEach((st, i) => {
+            const overlap = Math.min(w.zHi, st.top) - Math.max(w.zLo, st.elev);
+            const need = Math.min(1500, 0.6 * (st.top - st.elev));
+            if (overlap >= need) out.push(i);
+        });
+        return out;
+    }
+
+    private storeyElevation(e: StepEntity): number {
+        const z = this.m.placementOf(e).o.z;
+        const attr = this.m.num(e, 9);
+        if (Math.abs(z) < 1 && attr !== null && Math.abs(attr) > 0) return attr * this.m.mmPerUnit;
+        return z;
+    }
+
+    private nearestWall(f: StepEntity, walls: readonly Wall[]): StepEntity | null {
+        const b = box3(this.m.bodyPoints(f));
+        if (!b) return null;
+        const c = { x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2 };
+        let best: Wall | null = null;
+        let bestD = Infinity;
+        for (const w of walls) {
+            if (w.zLo > b.max.z || w.zHi < b.min.z) continue;
+            const d = distToSegment(c, w.axisA, w.axisB);
+            if (d < bestD && d <= w.thickness) {
+                best = w;
+                bestD = d;
+            }
+        }
+        return best?.e ?? null;
+    }
+
+    // ---- Openings ----------------------------------------------------------------------------------
+
+    private placeOpening(
+        pts: readonly Vec3[],
+        line: { a: P2; b: P2 },
+        bandOf: (z: number) => number,
+        storeys: readonly LivingStorey[]
+    ): { at: P2; width: number; height: number; sill: number; band: number } | null {
+        if (pts.length === 0) return null;
+        const d = norm2(sub2(line.b, line.a));
+        const t = pts.map((p) => dot2(sub2(p, line.a), d));
+        const z = pts.map((p) => p.z);
+        const t0 = Math.min(...t);
+        const t1 = Math.max(...t);
+        const z0 = Math.min(...z);
+        const z1 = Math.max(...z);
+        if (t1 - t0 < 100 || z1 - z0 < 100) return null;
+        const band = bandOf(z0 + 10);
+        return {
+            at: add2(line.a, mul2(d, (t0 + t1) / 2)),
+            width: Math.round(t1 - t0),
+            height: Math.round(z1 - z0),
+            sill: Math.round(z0 - storeys[band]!.elev),
+            band,
+        };
+    }
+
+    private typeName(e: StepEntity): string {
+        const t = this.m.typeObject(e);
+        return [this.m.name(e), this.m.str(e, 4) ?? '', t ? this.m.name(t) : ''].join(' ');
+    }
+
+    private isGarageDoor(f: StepEntity): boolean {
+        const op = this.doorOperation(f) ?? '';
+        return (
+            /garage|\bport\b|overhead|sectional|roll(ing)?[- ]?up|ledhejse|vippeport|carport/i.test(
+                this.typeName(f)
+            ) || op === 'ROLLINGUP'
+        );
+    }
+
+    /** A door's `OperationType`: IFC4's on the door or its type, IFC2X3's on its style. */
+    private doorOperation(f: StepEntity): string | null {
+        const m = this.m;
+        const own = m.enumOf(f, 11);
+        if (own && own !== 'NOTDEFINED') return own;
+        const t = m.typeObject(f);
+        if (t?.type === 'IFCDOORSTYLE') return m.enumOf(t, 8);
+        if (t?.type === 'IFCDOORTYPE') return m.enumOf(t, 10);
+        return null;
+    }
+
+    /** A window's division from its `PartitioningType` (IFC4) or its style's `OperationType`. */
+    private windowGlazing(f: StepEntity): Record<string, number> | null {
+        const m = this.m;
+        const t = m.typeObject(f);
+        const kind =
+            m.enumOf(f, 11) ??
+            (t?.type === 'IFCWINDOWSTYLE'
+                ? m.enumOf(t, 9)
+                : t?.type === 'IFCWINDOWTYPE'
+                  ? m.enumOf(t, 10)
+                  : null);
+        switch (kind) {
+            case 'DOUBLE_PANEL_VERTICAL':
+                return { mullions: 1 };
+            case 'DOUBLE_PANEL_HORIZONTAL':
+                return { transoms: 1 };
+            case 'TRIPLE_PANEL_VERTICAL':
+                return { mullions: 2 };
+            case 'TRIPLE_PANEL_HORIZONTAL':
+                return { transoms: 2 };
+            case 'TRIPLE_PANEL_BOTTOM':
+            case 'TRIPLE_PANEL_TOP':
+            case 'TRIPLE_PANEL_LEFT':
+            case 'TRIPLE_PANEL_RIGHT':
+                return { mullions: 1, transoms: 1 };
+            default:
+                return null;
+        }
+    }
+
+    // ---- The roof ----------------------------------------------------------------------------------
+
+    private roofSlabs(): StepEntity[] {
+        const m = this.m;
+        const out: StepEntity[] = [];
+        const seen = new Set<number>();
+        for (const r of m.all('IFCROOF')) {
+            const parts = m.partsOf(r);
+            for (const p of parts.length > 0 ? parts : [r]) {
+                if (!seen.has(p.id)) out.push(p);
+                seen.add(p.id);
+            }
+        }
+        for (const s of m.all('IFCSLAB')) {
+            if (m.enumOf(s, 8) === 'ROOF' && !seen.has(s.id)) {
+                out.push(s);
+                seen.add(s.id);
+            }
+        }
+        return out;
+    }
+
+    /** The roof's type and pitch, read off the slope of its planes. */
+    private roofShape(roofs: readonly StepEntity[]): {
+        type: 'flat' | 'shed' | 'gable' | 'hip';
+        pitchDeg: number;
+        ridge?: 'x' | 'y';
+        highSide?: 'north' | 'south' | 'east' | 'west';
+    } {
+        const faces = roofs
+            .flatMap((r) => this.m.bodyFaces(r))
+            .map((f) => ({
+                ...f,
+                normal:
+                    f.normal.z < 0 ? { x: -f.normal.x, y: -f.normal.y, z: -f.normal.z } : f.normal,
+            }));
+        const sloped = faces.filter((f) => f.normal.z > 0.05 && f.normal.z < 0.996);
+        const level = faces.filter((f) => f.normal.z >= 0.996);
+        const slopedArea = sloped.reduce((s, f) => s + f.area, 0);
+        const levelArea = level.reduce((s, f) => s + f.area, 0);
+        if (roofs.length === 0) {
+            this.warnings.push(
+                'The IFC has no roof: a flat roof is assumed at the top of the walls.'
+            );
+            return { type: 'flat', pitchDeg: 0 };
+        }
+        if (slopedArea <= levelArea * 0.25) return { type: 'flat', pitchDeg: 0 };
+        // The planes by the way they fall, in 20° sectors.
+        const groups = new Map<number, { area: number; nz: number; nx: number; ny: number }>();
+        for (const f of sloped) {
+            const az =
+                Math.round(((Math.atan2(f.normal.y, f.normal.x) * 180) / Math.PI + 360) / 20) % 18;
+            const g = groups.get(az) ?? { area: 0, nz: 0, nx: 0, ny: 0 };
+            g.area += f.area;
+            g.nz += f.normal.z * f.area;
+            g.nx += f.normal.x * f.area;
+            g.ny += f.normal.y * f.area;
+            groups.set(az, g);
+        }
+        const main = [...groups.values()].filter((g) => g.area >= slopedArea * 0.05);
+        const nz = main.reduce((s, g) => s + g.nz, 0) / main.reduce((s, g) => s + g.area, 0);
+        const pitchDeg = Math.round(((Math.acos(Math.min(1, nz)) * 180) / Math.PI) * 10) / 10;
+        if (main.length === 1) {
+            const g = main[0]!;
+            // The plane falls the way its normal leans; it rises to the other side.
+            const up = { x: -g.nx, y: -g.ny };
+            const highSide =
+                Math.abs(up.x) > Math.abs(up.y)
+                    ? up.x > 0
+                        ? 'east'
+                        : 'west'
+                    : up.y > 0
+                      ? 'north'
+                      : 'south';
+            return { type: 'shed', pitchDeg, highSide };
+        }
+        if (main.length === 2) {
+            const [g, h] = main as [(typeof main)[0], (typeof main)[0]];
+            const opposite = g.nx * h.nx + g.ny * h.ny < 0;
+            if (opposite) {
+                const ridge = Math.abs(g.nx) > Math.abs(g.ny) ? 'y' : 'x';
+                return { type: 'gable', pitchDeg, ridge };
+            }
+        }
+        if (main.length >= 3) {
+            if (main.length !== 4) {
+                this.warnings.push(
+                    `The roof has ${main.length} slopes; it is written as a hip roof.`
+                );
+            }
+            return { type: 'hip', pitchDeg };
+        }
+        this.warnings.push(
+            "The roof's slopes could not be read as a shed, gable or hip roof; written as a gable roof."
+        );
+        return { type: 'gable', pitchDeg };
+    }
+
+    /** How far the roof runs past the walls' lines, mm, down the slope at the eaves. */
+    private overhang(
+        roofBox: Box3 | null,
+        outline: readonly P2[],
+        shape: { type: string; pitchDeg: number; ridge?: 'x' | 'y'; highSide?: string }
+    ): { eavesMm: number; vergeMm: number } {
+        if (!roofBox || outline.length < 3) return { eavesMm: 0, vergeMm: 0 };
+        const xs = outline.map((p) => p.x);
+        const ys = outline.map((p) => p.y);
+        const sides = {
+            west: Math.min(...xs) - roofBox.min.x,
+            east: roofBox.max.x - Math.max(...xs),
+            south: Math.min(...ys) - roofBox.min.y,
+            north: roofBox.max.y - Math.max(...ys),
+        };
+        const avg = (a: number, b: number) => Math.max(0, (a + b) / 2);
+        const round10 = (v: number) => Math.round(v / 10) * 10;
+        const slope = Math.cos((shape.pitchDeg * Math.PI) / 180);
+        if (shape.type === 'flat' || shape.type === 'hip') {
+            const all = avg(avg(sides.west, sides.east), avg(sides.south, sides.north));
+            return { eavesMm: round10(all / slope), vergeMm: round10(all) };
+        }
+        // Eaves run along the ridge, verges across it.
+        const alongX =
+            shape.type === 'gable'
+                ? shape.ridge === 'x'
+                : shape.highSide === 'north' || shape.highSide === 'south';
+        const eaves = alongX ? avg(sides.south, sides.north) : avg(sides.west, sides.east);
+        const verge = alongX ? avg(sides.west, sides.east) : avg(sides.south, sides.north);
+        return { eavesMm: round10(eaves / slope), vergeMm: round10(verge) };
+    }
+
+    private roofLayers(roofs: readonly StepEntity[]): { name: string; layers: IfcLayer[] } | null {
+        const m = this.m;
+        const candidates = [...m.all('IFCROOF'), ...roofs];
+        for (const r of candidates) {
+            const u = m.layerUsage(r);
+            if (u && u.layers.length > 0) return { name: u.name, layers: u.layers };
+        }
+        return null;
+    }
+
+    // ---- The floors ----------------------------------------------------------------------------------
+
+    /**
+     * The ground floor's build-up and the floor between storeys': each the slab most of its area
+     * is, with the finish most of it is laid with. The upper storeys' floors are one build-up
+     * (`deck`), as arch has one.
+     */
+    private floors(
+        outline: readonly P2[],
+        base: number,
+        storeys: readonly LivingStorey[]
+    ): {
+        ground: { name: string; layers: IfcLayer[] } | null;
+        deck: { name: string; layers: IfcLayer[] } | null;
+    } {
+        const m = this.m;
+        const slabs = m.all('IFCSLAB').filter((s) => m.enumOf(s, 8) !== 'ROOF' && !m.wholeOf(s));
+        type Slab = { s: StepEntity; layers: IfcLayer[]; area: number; name: string };
+        type Finish = { layers: IfcLayer[]; area: number; name: string };
+        const structural: Slab[] = [];
+        const finishes: Finish[] = [];
+        const upperStructural: Slab[] = [];
+        const upperFinishes: Finish[] = [];
+        /** Whether a level is an upper storey's floor, its slab's top under its finish. */
+        const atUpperFloor = (z: number): boolean =>
+            storeys.some((st, i) => i > 0 && Math.abs(z - st.elev) <= UPPER_FLOOR_REACH_MM);
+        for (const s of slabs) {
+            const b = box3(m.bodyPoints(s));
+            if (!b) continue;
+            const centre = { x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2 };
+            const area = (b.max.x - b.min.x) * (b.max.y - b.min.y);
+            if (outline.length >= 3 && !insidePolygon(centre, outline)) {
+                this.skip(
+                    s,
+                    'a slab outside the house (a terrace, a path): not part of the house.'
+                );
+                continue;
+            }
+            const u = m.layerUsage(s);
+            const layers = u?.layers ?? [
+                {
+                    material: m.materialNames(s)[0] ?? m.name(s),
+                    thickness: b.max.z - b.min.z,
+                    ventilated: false,
+                    category: null,
+                },
+            ];
+            const total = layers.reduce((sum, l) => sum + l.thickness, 0);
+            const finish =
+                total <= 40 &&
+                layers.every((l) =>
+                    ['finish', 'insulation', 'membrane', 'board'].includes(
+                        matchMaterial(l.material).role
+                    )
+                );
+            const onGround = Math.abs(b.min.z - base) <= 60 || Math.abs(b.max.z - base) <= 60;
+            const name = u?.name ?? m.name(s);
+            if (finish) {
+                if (onGround) finishes.push({ layers, area, name });
+                else if (atUpperFloor(b.max.z)) upperFinishes.push({ layers, area, name });
+                else this.skip(s, "a floor finish at no storey's floor level.");
+                continue;
+            }
+            if (onGround && b.max.z <= base + 60) {
+                structural.push({ s, layers, area, name });
+                continue;
+            }
+            if (atUpperFloor(b.max.z)) {
+                upperStructural.push({ s, layers, area, name });
+                continue;
+            }
+            this.skip(s, "a slab at no storey's floor level.");
+        }
+        /** The slab most of the area is, with the finish most of it is laid with. */
+        const buildup = (
+            slabsOf: readonly Slab[],
+            finishesOf: readonly Finish[]
+        ): { name: string; layers: IfcLayer[] } | null => {
+            if (slabsOf.length === 0) return null;
+            const slab = largestBy(slabsOf, (x) => x.name);
+            const finish = finishesOf.length > 0 ? largestBy(finishesOf, (x) => x.name) : null;
+            // A floor reads top → bottom, inside → outside: the finish, then the slab.
+            const slabLayers = orientFloor(slab.layers);
+            const finishLayers = finish
+                ? [...finish.layers].sort((a, b) => finishRank(a) - finishRank(b))
+                : [];
+            return {
+                name: finish ? `${slab.name} + ${finish.name}` : slab.name,
+                layers: [...finishLayers, ...slabLayers],
+            };
+        };
+        return {
+            ground: buildup(structural, finishes),
+            deck: buildup(upperStructural, upperFinishes),
+        };
+    }
+
+    // ---- Layers into the file -------------------------------------------------------------------
+
+    /** The file's layers for a build-up, inside → outside, with its core. */
+    private fileLayers(
+        layers: readonly IfcLayer[],
+        core: number,
+        kind: 'wall' | 'roof' | 'floor'
+    ): Record<string, unknown>[] {
+        const roles = layers.map((l) => this.match(l.material));
+        const insulationOutside = layers.some(
+            (l, i) => i !== core && roles[i]!.role === 'insulation' && l.thickness >= 45
+        );
+        let metal = false;
+        const out = layers.map((l, i) => {
+            const r = roles[i]!;
+            const thickness =
+                l.thickness > 0.5
+                    ? Math.round(l.thickness)
+                    : defaultThicknessMm(r.materialId);
+            if (/steel|stål|metal/i.test(l.material)) metal = true;
+            const layer: Record<string, unknown> = {
+                material: r.role === 'air' && l.ventilated ? 'air-ventilated' : r.materialId,
+                thickness,
+            };
+            // A floor's or a roof's heavy core is a slab: hollow-core, or else concrete.
+            if (i === core && kind !== 'wall' && r.role === 'heavy') {
+                layer['material'] = r.materialId === 'hollow-core' ? 'hollow-core' : 'concrete';
+            }
+            if (r.role === 'studs') {
+                // A layer of studs: timber members c/c 600, with insulation between unless the
+                // build-up has its insulation elsewhere.
+                layer['material'] = i === core && !insulationOutside ? 'mw-37' : 'air-still';
+                layer['members'] = { material: 'softwood', width: 45, cc: 600 };
+            } else if (i === core && r.role === 'insulation') {
+                layer['members'] = { material: 'softwood', width: 45, cc: 600 };
+            } else if (i === core && r.role !== 'heavy') {
+                layer['members'] = { material: 'softwood', width: 45, cc: 600 };
+            }
+            if (i === core) layer['core'] = true;
+            if (r.materialId === 'brick' && i !== core) layer['masonry'] = { bond: 'stretcher' };
+            // Insulation between two leaves of masonry is tied across.
+            if (r.role === 'insulation' && kind === 'wall') {
+                const heavyIn = roles.slice(0, i).some((x) => x.role === 'heavy');
+                const heavyOut = roles.slice(i + 1).some((x) => x.role === 'heavy');
+                if (heavyIn && heavyOut) layer['ties'] = { perM2: 4, diameter: 4 };
+            }
+            return layer;
+        });
+        if (metal) {
+            const w =
+                'Steel studs, joists or framing are built as timber members (45 mm c/c 600): arch frames in timber.';
+            if (!this.warnings.includes(w)) this.warnings.push(w);
+        }
+        return out;
+    }
+
+    /** The exterior wall's layers inside → outside: the side of the outline the first is on decides. */
+    private insideOut(w: Wall, outline: readonly P2[]): IfcLayer[] {
+        const firstY = w.offset + (w.sense * (w.layers[0]?.thickness ?? 0)) / 2;
+        const side = Math.sign(firstY - w.lineY) || 1;
+        const mid = mul2(add2(w.a, w.b), 0.5);
+        const probe = add2(mid, mul2(w.normal, side * Math.max(w.thickness, 200)));
+        const firstOutside =
+            outline.length >= 3 ? !insidePolygon(probe, outline) : facadeAtStart(w.layers);
+        return firstOutside ? [...w.layers].reverse() : [...w.layers];
+    }
+
+    private match(name: string): ReturnType<typeof matchMaterial> {
+        const r = matchMaterial(name);
+        if (!r.known) this.guessed.set(name, r.materialId);
+        return r;
+    }
+
+    // ---- Rooms --------------------------------------------------------------------------------------
+
+    private zones(
+        spaces: readonly StepEntity[],
+        storeys: readonly LivingStorey[],
+        bandOf: (z: number) => number,
+        T: (p: P2) => [number, number],
+        storeyName: (k: number) => string | undefined
+    ): Record<string, unknown>[] {
+        const m = this.m;
+        const ceilings = m
+            .all('IFCCOVERING')
+            .filter((c) => m.enumOf(c, 8) === 'CEILING')
+            .map((c) => box3(m.bodyPoints(c)))
+            .filter((b): b is Box3 => !!b);
+        // What is over a room: the floors and roofs, whose underside its ceiling may hang from.
+        const structure = m
+            .all('IFCSLAB', 'IFCROOF')
+            .map((x) => box3(m.bodyPoints(x)))
+            .filter((b): b is Box3 => !!b && b.max.z - b.min.z > 50);
+        const out: Record<string, unknown>[] = [];
+        for (const s of spaces) {
+            const b = box3(m.bodyPoints(s));
+            if (!b) continue;
+            const top = storeys[storeys.length - 1]!.top;
+            if (b.min.z >= top - 50 || b.max.z <= storeys[0]!.elev + 50) {
+                this.skip(s, 'a space on no storey of the house (over the roof, under the floor).');
+                continue;
+            }
+            const k = bandOf(b.min.z + 50);
+            const footprint = this.footprint(s);
+            const point =
+                footprint && footprint.length >= 3
+                    ? interiorPoint(footprint)
+                    : { x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2 };
+            // Its number and its name, "A102 Living Room": two dwellings have rooms of one name.
+            const long = (m.str(s, 7) ?? '').trim();
+            const short = m.name(s).trim();
+            const name =
+                [short, long].filter((x, i, xs) => x && xs.indexOf(x) === i).join(' ') ||
+                `Room ${s.id}`;
+            const zone: Record<string, unknown> = {
+                name,
+                kind: zoneKind(long || short),
+                ...(storeyName(k) ? { storey: storeyName(k) } : {}),
+                point: T(point),
+            };
+            const st = storeys[k]!;
+            const ceiling = ceilings.find(
+                (c) =>
+                    c.min.z > st.elev + 1500 &&
+                    c.min.z < st.top &&
+                    point.x >= c.min.x &&
+                    point.x <= c.max.x &&
+                    point.y >= c.min.y &&
+                    point.y <= c.max.y
+            );
+            // Lowered only where it hangs well below what is over it: a ceiling fixed under the
+            // joists is arch's flat ceiling, whatever its battens.
+            const over = structure
+                .filter(
+                    (x) =>
+                        x.min.z >= (ceiling?.min.z ?? st.top) - 1 &&
+                        x.min.z <= st.top + 300 &&
+                        point.x >= x.min.x &&
+                        point.x <= x.max.x &&
+                        point.y >= x.min.y &&
+                        point.y <= x.max.y
+                )
+                .map((x) => x.min.z);
+            const underside = over.length > 0 ? Math.min(...over) : st.top;
+            if (ceiling && underside - ceiling.min.z > LOWERED_MM) {
+                zone['ceiling'] = 'lowered';
+                zone['ceilingMm'] = Math.round(ceiling.min.z - st.elev);
+            }
+            out.push(zone);
+        }
+        return out;
+    }
+
+    /**
+     * Where two rooms meet with no wall between them (a kitchen open to the living room): the
+     * edge their footprints share, taken out to the walls at its ends.
+     */
+    private separations(
+        spaces: readonly StepEntity[],
+        storeys: readonly LivingStorey[],
+        bandOf: (z: number) => number,
+        walls: readonly { a: P2; b: P2; band: number[] }[],
+        T: (p: P2) => [number, number],
+        storeyName: (k: number) => string | undefined
+    ): { storey?: string; points: [number, number][] }[] {
+        const rooms: { k: number; ring: P2[] }[] = [];
+        for (const s of spaces) {
+            const b = box3(this.m.bodyPoints(s));
+            const ring = this.footprint(s);
+            if (!b || !ring || ring.length < 3) continue;
+            if (
+                b.min.z >= storeys[storeys.length - 1]!.top - 50 ||
+                b.max.z <= storeys[0]!.elev + 50
+            )
+                continue;
+            rooms.push({ k: bandOf(b.min.z + 50), ring });
+        }
+        const out: { storey?: string; points: [number, number][] }[] = [];
+        const seen = new Set<string>();
+        // Separations already found, which a later one may end on.
+        const found: { a: P2; b: P2; band: number[] }[] = [];
+        for (let i = 0; i < rooms.length; i++) {
+            for (let j = i + 1; j < rooms.length; j++) {
+                const [r, q] = [rooms[i]!, rooms[j]!];
+                if (r.k !== q.k) continue;
+                const onStorey = [...walls, ...found].filter((w) => w.band.includes(r.k));
+                for (const [a, b] of edges(r.ring)) {
+                    for (const [c, d] of edges(q.ring)) {
+                        const shared = sharedEdge(a, b, c, d);
+                        if (!shared) continue;
+                        const mid = mul2(add2(shared[0], shared[1]), 0.5);
+                        // A wall on the edge already parts the rooms.
+                        const dir = norm2(sub2(shared[1], shared[0]));
+                        const walled = onStorey.some((w) => {
+                            const wd = norm2(sub2(w.b, w.a));
+                            return (
+                                Math.abs(wd.x * dir.y - wd.y * dir.x) < 0.05 &&
+                                distToSegment(mid, w.a, w.b) < 400
+                            );
+                        });
+                        if (walled) continue;
+                        const ends = [
+                            snapEnd(shared[0], shared[1], onStorey),
+                            snapEnd(shared[1], shared[0], onStorey),
+                        ];
+                        const points = ends.map(T);
+                        const key = `${r.k}:${points.flat().join(',')}`;
+                        if (seen.has(key)) continue;
+                        seen.add(key);
+                        found.push({ a: ends[0]!, b: ends[1]!, band: [r.k] });
+                        out.push({
+                            ...(storeyName(r.k) ? { storey: storeyName(r.k) } : {}),
+                            points,
+                        });
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    /** A product's footprint in plan: the profile of its first upright extrusion. */
+    private footprint(e: StepEntity): P2[] | null {
+        for (const x of this.m.extrusions(e)) {
+            const world = x.profile.map((p) => {
+                const q = {
+                    x: x.frame.o.x + x.frame.x.x * p.x + x.frame.y.x * p.y,
+                    y: x.frame.o.y + x.frame.x.y * p.x + x.frame.y.y * p.y,
+                };
+                return q;
+            });
+            if (Math.abs(x.frame.z.z) > 0.99 && world.length >= 3) return world;
+        }
+        return null;
+    }
+
+    // ---- Fittings -----------------------------------------------------------------------------------
+
+    private fixtures(
+        walls: readonly Wall[],
+        role: ReadonlyMap<Wall, WallRole>,
+        storeys: readonly LivingStorey[],
+        bandOf: (z: number) => number,
+        T: (p: P2) => [number, number],
+        storeyName: (k: number) => string | undefined
+    ): Record<string, unknown>[] {
+        const m = this.m;
+        const kept = walls.filter(
+            (w) =>
+                role.get(w) === 'exterior' ||
+                role.get(w) === 'partition' ||
+                role.get(w) === 'lining'
+        );
+        const out: Record<string, unknown>[] = [];
+        const elements = m.all(
+            'IFCFURNISHINGELEMENT',
+            'IFCFURNITURE',
+            'IFCSYSTEMFURNITUREELEMENT',
+            'IFCSANITARYTERMINAL',
+            'IFCFLOWTERMINAL',
+            'IFCELECTRICAPPLIANCE',
+            'IFCWASTETERMINAL'
+        );
+        for (const e of elements) {
+            const name = this.typeName(e);
+            const kind = fixtureKind(name);
+            if (kind === null) continue; // part of the kitchen's worktop, or not a fitting at all
+            if (kind === 'loose') {
+                this.skip(e, 'loose furniture: arch places only the fixed fittings.');
+                continue;
+            }
+            const pts = m.bodyPoints(e);
+            const b = box3(pts);
+            if (!b) continue;
+            if (b.min.z >= storeys[storeys.length - 1]!.top || b.max.z <= storeys[0]!.elev)
+                continue;
+            const k = bandOf(b.min.z + 10);
+            const st = storeys[k]!;
+            const centre = { x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2 };
+            // Its back is to the nearest wall; it faces away from it.
+            let best: Wall | null = null;
+            let bestD = Infinity;
+            for (const w of kept) {
+                if (w.zHi < st.elev + 500 || w.zLo > st.elev + 500) continue;
+                const d = distToSegment(centre, w.a, w.b);
+                if (d < bestD) {
+                    best = w;
+                    bestD = d;
+                }
+            }
+            let facing: P2 = { x: 0, y: -1 };
+            let along: P2 = { x: 1, y: 0 };
+            if (best) {
+                const d = best.dir;
+                const n = { x: -d.y, y: d.x };
+                facing = dot2(sub2(centre, best.a), n) >= 0 ? n : { x: -n.x, y: -n.y };
+                along = d;
+            }
+            const width = spread(pts, along);
+            const depth = spread(pts, facing);
+            const backGap = bestD - depth / 2 - (best?.thickness ?? 0) / 2;
+            const isKitchenRun = kind === 'worktop';
+            const finalKind = isKitchenRun && (!best || backGap > 300) ? 'island' : kind;
+            out.push({
+                kind: finalKind,
+                ...(storeyName(k) ? { storey: storeyName(k) } : {}),
+                at: T(centre),
+                size: [Math.round(width), Math.round(depth)],
+                facing: facingOf(facing),
+            });
+            // A sink cut into the worktop: the hole it is in.
+            if (isKitchenRun) {
+                for (const hole of m.openingsIn(e)) {
+                    const hb = box3(m.bodyPoints(hole));
+                    if (!hb) continue;
+                    out.push({
+                        kind: 'sink',
+                        ...(storeyName(k) ? { storey: storeyName(k) } : {}),
+                        at: T({ x: (hb.min.x + hb.max.x) / 2, y: (hb.min.y + hb.max.y) / 2 }),
+                        facing: facingOf(facing),
+                    });
+                }
+            }
+        }
+        return out;
+    }
+
+    // ---- Posts and beams ------------------------------------------------------------------------------
+
+    private lines(base: number, ox: number, oy: number): Record<string, unknown>[] {
+        const m = this.m;
+        const out: Record<string, unknown>[] = [];
+        for (const e of m.all('IFCCOLUMN', 'IFCBEAM', 'IFCMEMBER')) {
+            // A stair's stringers and a curtain wall's mullions are counted with them.
+            const whole = m.wholeOf(e);
+            if (
+                whole &&
+                ['IFCSTAIR', 'IFCRAMP', 'IFCCURTAINWALL', 'IFCRAILING'].includes(whole.type)
+            )
+                continue;
+            const materials = m.materialNames(e).join(' ') || this.typeName(e);
+            if (!isTimber(materials)) {
+                this.skip(
+                    e,
+                    'a post or beam of steel or concrete: arch frames in timber, and works out its own beams and lintels.'
+                );
+                continue;
+            }
+            const x = m.extrusions(e)[0];
+            if (!x) {
+                this.skip(e, 'a post or beam whose axis could not be read.');
+                continue;
+            }
+            const p0 = x.frame.o;
+            const d = {
+                x: x.frame.x.x * x.dir.x + x.frame.y.x * x.dir.y + x.frame.z.x * x.dir.z,
+                y: x.frame.x.y * x.dir.x + x.frame.y.y * x.dir.y + x.frame.z.y * x.dir.z,
+                z: x.frame.x.z * x.dir.x + x.frame.y.z * x.dir.y + x.frame.z.z * x.dir.z,
+            };
+            const p1 = {
+                x: p0.x + d.x * x.depth,
+                y: p0.y + d.y * x.depth,
+                z: p0.z + d.z * x.depth,
+            };
+            const pt = (p: Vec3) => [
+                Math.round(p.x - ox),
+                Math.round(p.y - oy),
+                Math.round(p.z - base),
+            ];
+            out.push({
+                role: e.type === 'IFCCOLUMN' ? 'column' : 'beam',
+                points: [pt(p0), pt(p1)],
+            });
+        }
+        return out;
+    }
+
+    // ---- What is left out --------------------------------------------------------------------------
+
+    private skipTheRest(): void {
+        const m = this.m;
+        const reasons: [string[], string][] = [
+            [['IFCSTAIR', 'IFCRAMP'], 'a stair or ramp: arch has no stairs yet.'],
+            [['IFCRAILING'], 'a railing: arch has no railings.'],
+            [
+                ['IFCFOOTING', 'IFCPILE'],
+                'the foundation: arch lays out its own foundation from the house.',
+            ],
+            [
+                ['IFCCURTAINWALL'],
+                'a curtain wall: arch builds walls of studs or masonry, with windows in them.',
+            ],
+            [['IFCBUILDINGELEMENTPROXY'], 'an element of no known kind.'],
+            [['IFCCHIMNEY'], 'a chimney: arch has none.'],
+        ];
+        for (const [types, reason] of reasons) {
+            for (const e of m.all(...types)) {
+                // A stair's flights and railings are counted with it.
+                const whole = m.wholeOf(e);
+                if (whole && ['IFCSTAIR', 'IFCRAMP'].includes(whole.type)) continue;
+                this.skip(e, reason);
+            }
+        }
+        for (const c of m.all('IFCCOVERING')) {
+            const kind = m.enumOf(c, 8);
+            this.skip(
+                c,
+                kind === 'CEILING'
+                    ? 'a ceiling: its height is read into the rooms under it; its build-up is not carried (arch has none for a ceiling under a floor or a warm roof).'
+                    : 'a covering: arch builds its own from the build-ups.'
+            );
+        }
+    }
+
+    private skip(e: StepEntity, reason: string): void {
+        const key = `${e.type}|${reason}`;
+        const g = this.skipped.get(key) ?? { reason, type: e.type, count: 0, names: [] };
+        g.count++;
+        const name = this.m.name(e).replace(/:\d+$/, '');
+        if (name && g.names.length < 3 && !g.names.includes(name)) g.names.push(name);
+        this.skipped.set(key, g);
+    }
+
+    private projectName(): string | undefined {
+        const m = this.m;
+        const project = m.all('IFCPROJECT')[0] ?? null;
+        const building = m.all('IFCBUILDING')[0] ?? null;
+        const candidates = [
+            m.str(project, 5),
+            m.name(project),
+            m.name(building),
+            m.str(building, 7),
+        ];
+        return (
+            candidates.find((n) => n && !/^\d*$/.test(n.trim()) && !/^default$/i.test(n.trim())) ??
+            undefined
+        );
+    }
+
+    private trueNorthDeg(): number | null {
+        const m = this.m;
+        for (const c of m.all('IFCGEOMETRICREPRESENTATIONCONTEXT')) {
+            const d = m.direction(m.deref(c.args[5]));
+            if (d) return (Math.atan2(d.x, d.y) * 180) / Math.PI;
+        }
+        return null;
+    }
+}
+
+// ---- Cores and orientation --------------------------------------------------------------------------
+
+/**
+ * The layer that carries: one the file marks load-bearing (IFC4's `Category`), or the thickest
+ * heavy leaf of 75 mm or more — block or concrete before facing brick — or the thickest layer of
+ * studs, or the thickest insulation, or the thickest layer. −1 for no layers.
+ */
+export function pickCore(layers: readonly IfcLayer[]): number {
+    if (layers.length === 0) return -1;
+    const marked = layers.findIndex((l) => /load ?bearing/i.test(l.category ?? ''));
+    if (marked >= 0) return marked;
+    const roles = layers.map((l) => matchMaterial(l.material));
+    const thickest = (idx: number[]) =>
+        idx.reduce(
+            (best, i) => (layers[i]!.thickness > layers[best]!.thickness ? i : best),
+            idx[0]!
+        );
+    const heavy = layers
+        .map((_, i) => i)
+        .filter((i) => roles[i]!.role === 'heavy' && layers[i]!.thickness >= MIN_LEAF_MM);
+    if (heavy.length > 0) {
+        const inner = heavy.filter((i) => roles[i]!.materialId !== 'brick');
+        return thickest(inner.length > 0 ? inner : heavy);
+    }
+    for (const role of ['studs', 'insulation'] as LayerRole[]) {
+        const idx = layers
+            .map((_, i) => i)
+            .filter((i) => roles[i]!.role === role && layers[i]!.thickness >= 20);
+        if (idx.length > 0) return thickest(idx);
+    }
+    return thickest(layers.map((_, i) => i));
+}
+
+function isMirrored(layers: readonly IfcLayer[]): boolean {
+    const n = layers.length;
+    return layers.every(
+        (l, i) =>
+            l.material === layers[n - 1 - i]!.material &&
+            Math.abs(l.thickness - layers[n - 1 - i]!.thickness) < 1
+    );
+}
+
+/** Whether a wall's first layer is its facade: brick or cladding first, a board last. */
+function facadeAtStart(layers: readonly IfcLayer[]): boolean {
+    const first = matchMaterial(layers[0]?.material ?? '');
+    return first.role === 'covering' || first.materialId === 'brick';
+}
+
+/** A roof's layers inside → outside: the covering goes outside. */
+function orientRoof(layers: readonly IfcLayer[]): IfcLayer[] {
+    const roles = layers.map((l) => matchMaterial(l.material).role);
+    const first = roles.indexOf('covering');
+    const last = roles.lastIndexOf('covering');
+    if (first < 0) return [...layers];
+    return first < layers.length - 1 - last ? [...layers].reverse() : [...layers];
+}
+
+/** A floor slab's layers top → bottom: a finish or screed on top, the ground under. */
+function orientFloor(layers: readonly IfcLayer[]): IfcLayer[] {
+    if (layers.length < 2) return [...layers];
+    const roles = layers.map((l) => matchMaterial(l.material).role);
+    const topish = (r: LayerRole) => r === 'finish' || r === 'board';
+    return topish(roles[roles.length - 1]!) && !topish(roles[0]!)
+        ? [...layers].reverse()
+        : [...layers];
+}
+
+/** A finish's layers top first: what is walked on, then what it lies on. */
+function finishRank(l: IfcLayer): number {
+    const r = matchMaterial(l.material);
+    if (r.role === 'finish' && r.materialId !== 'screed') return 0;
+    if (r.materialId === 'screed' && /tile|flise|ceramic|klinke/i.test(l.material)) return 0;
+    if (r.role === 'finish') return 1;
+    return 2;
+}
+
+/** The facade cladding an exterior wall's outermost layers make. */
+function facadeOf(insideOut: readonly IfcLayer[]): string | null {
+    for (let i = insideOut.length - 1; i >= 0; i--) {
+        const l = insideOut[i]!;
+        const r = matchMaterial(l.material);
+        if (r.role === 'air' || r.role === 'membrane') continue;
+        if (r.materialId === 'brick') return 'brick';
+        if (r.materialId === 'facade-sheet') return 'sheet';
+        if (r.materialId === 'cladding') {
+            if (/lap|klink|weatherboard|siding/i.test(l.material)) return 'lap';
+            if (/batten|liste/i.test(l.material)) return 'board-and-batten';
+            return 'board-on-board';
+        }
+        if (r.materialId === 'screed') return 'sheet';
+        return null;
+    }
+    return null;
+}
+
+/** The roof covering a roof's outermost layers make. */
+function coveringOf(insideOut: readonly IfcLayer[]): string | null {
+    for (let i = insideOut.length - 1; i >= 0; i--) {
+        const r = matchMaterial(insideOut[i]!.material);
+        if (r.role === 'air') continue;
+        switch (r.materialId) {
+            case 'green-roof':
+                return 'green';
+            case 'zinc':
+                return 'zinc';
+            case 'roofing':
+                return 'tiles';
+            case 'roofing-felt':
+                return 'felt';
+            default:
+                return null;
+        }
+    }
+    return null;
+}
+
+// ---- Rooms and fittings by name ---------------------------------------------------------------------
+
+const ZONE_KINDS: readonly [RegExp, string][] = [
+    [/bath|\bbad\b|badeværelse|shower|bruse/i, 'bathroom'],
+    [/\bwc\b|toilet|lavatory|powder/i, 'wc'],
+    [/kitchen|køkken|dining|spise/i, 'kitchen'],
+    [/bed|sove|værelse|guest|gæste|child|børne|nursery/i, 'bedroom'],
+    [
+        /utility|laundry|bryggers|vaskerum|storage|depot|closet|pantry|viktualie|garderobe/i,
+        'utility',
+    ],
+    [
+        /hall|foyer|entr|\bgang\b|corridor|stair|trappe|vindfang|landing|passage|lobby/i,
+        'circulation',
+    ],
+    [/tech|teknik|mechanical|installation|boiler|\bfyr/i, 'technical'],
+];
+
+function zoneKind(name: string): string {
+    for (const [re, kind] of ZONE_KINDS) if (re.test(name)) return kind;
+    return 'living';
+}
+
+/** A fitting's kind from its name; null for a part of the kitchen run, `loose` for furniture. */
+function fixtureKind(name: string): string | null {
+    if (/upper cabinet|wall cabinet|overskab|base cabinet|underskab|drawer|skuffe/i.test(name))
+        return null;
+    if (/water ?closet|\bwc\b|toilet/i.test(name)) return 'wc';
+    if (/vanity|lavatory|wash ?basin|\bbasin|håndvask/i.test(name)) return 'basin';
+    if (/counter|worktop|bordplade|køkkenelement/i.test(name)) return 'worktop';
+    if (/island|køkkenø/i.test(name)) return 'island';
+    if (/kitchen sink|køkkenvask|\bsink\b/i.test(name)) return 'sink';
+    if (/refrigerat|fridge|freezer|køleskab|fryser/i.test(name)) return 'fridge';
+    if (/dishwash|opvask/i.test(name)) return 'dishwasher';
+    if (/washing machine|washer|vaskemaskine/i.test(name)) return 'washer';
+    if (/dryer|tumble|tørretumbler/i.test(name)) return 'dryer';
+    if (/\brange\b|stove|cooktop|\bhob\b|komfur|kogeplade/i.test(name)) return 'hob';
+    if (/shower|bruse/i.test(name)) return 'shower';
+    if (/bath ?tub|\bbath\b|badekar/i.test(name)) return 'bathtub';
+    if (/floor ?drain|gulvafløb|linjeafløb/i.test(name)) return 'floor-drain';
+    if (/tall cabinet|højskab|pantry cabinet/i.test(name)) return 'cabinet';
+    return 'loose';
+}
+
+function facingOf(v: P2): string | number {
+    const deg = ((Math.atan2(v.y, v.x) * 180) / Math.PI + 360) % 360;
+    const named: [number, string][] = [
+        [0, 'x+'],
+        [90, 'y+'],
+        [180, 'x-'],
+        [270, 'y-'],
+        [360, 'x+'],
+    ];
+    for (const [d, n] of named) if (Math.abs(deg - d) < 1) return n;
+    return Math.round(deg);
+}
+
+function compass(v: P2): string {
+    if (Math.abs(v.x) >= Math.abs(v.y)) return v.x > 0 ? 'east' : 'west';
+    return v.y > 0 ? 'north' : 'south';
+}
+
+// ---- The exterior loop ------------------------------------------------------------------------------
+
+/**
+ * The walls whose lines close round the house, in order, and the corners where each meets the
+ * next: of all the closed chains of walls meeting end to end, the one round the largest area.
+ * Two walls meet where their lines cross, or, in line, between their ends; the corner must be
+ * within a wall's thickness and 300 mm of each end. Null when no chain closes.
+ */
+export function findLoop(walls: readonly Wall[]): { walls: Wall[]; corners: Corner[] } | null {
+    if (walls.length < 3) return null;
+    const endOf = (w: Wall, k: 0 | 1) => (k === 0 ? w.a : w.b);
+    interface Join {
+        j: number;
+        l: 0 | 1;
+        at: P2;
+        score: number;
+    }
+    const best = new Map<string, Join>();
+    walls.forEach((w, i) => {
+        for (const k of [0, 1] as const) {
+            const e = endOf(w, k);
+            let pick: Join | null = null;
+            walls.forEach((v, j) => {
+                if (j === i) return;
+                for (const l of [0, 1] as const) {
+                    const f = endOf(v, l);
+                    const at = meet(w, v, e, f);
+                    if (!at) continue;
+                    const de = dist2(at, e);
+                    const df = dist2(at, f);
+                    if (de > w.thickness + CORNER_REACH_MM || df > v.thickness + CORNER_REACH_MM)
+                        continue;
+                    const score = de + df;
+                    if (!pick || score < pick.score) pick = { j, l, at, score };
+                }
+            });
+            if (pick) best.set(`${i}:${k}`, pick);
+        }
+    });
+    // Only joins both ends agree on.
+    const join = (i: number, k: 0 | 1): Join | null => {
+        const p = best.get(`${i}:${k}`);
+        if (!p) return null;
+        const back = best.get(`${p.j}:${p.l}`);
+        return back && back.j === i && back.l === k ? p : null;
+    };
+    let bestLoop: { walls: Wall[]; corners: Corner[]; area: number } | null = null;
+    const seen = new Set<number>();
+    walls.forEach((_, start) => {
+        if (seen.has(start)) return;
+        const order: number[] = [];
+        const corners: Corner[] = [];
+        let i = start;
+        let k: 0 | 1 = 1; // leave by this end
+        const entry = join(start, 0);
+        if (!entry) return;
+        for (let guard = 0; guard <= walls.length; guard++) {
+            order.push(i);
+            const next = join(i, k);
+            if (!next) return;
+            corners.push({ at: next.at });
+            if (next.j === start) {
+                if (next.l !== 0) return;
+                for (const n of order) seen.add(n);
+                // corners[n] is where order[n] ends; the loop's corner list starts where order[0] starts.
+                const loopCorners = [corners[corners.length - 1]!, ...corners.slice(0, -1)];
+                const area = Math.abs(signedArea(loopCorners.map((c) => c.at)));
+                if (!bestLoop || area > bestLoop.area) {
+                    bestLoop = { walls: order.map((n) => walls[n]!), corners: loopCorners, area };
+                }
+                return;
+            }
+            if (order.includes(next.j)) return;
+            i = next.j;
+            k = next.l === 0 ? 1 : 0;
+        }
+    });
+    if (!bestLoop) return null;
+    const found = bestLoop as { walls: Wall[]; corners: Corner[]; area: number };
+    return { walls: found.walls, corners: found.corners };
+}
+
+/** Where two walls' lines meet near ends `e` and `f`: their crossing, or between the ends if in line. */
+function meet(w: Wall, v: Wall, e: P2, f: P2): P2 | null {
+    const cross = w.dir.x * v.dir.y - w.dir.y * v.dir.x;
+    if (Math.abs(cross) < 0.02) {
+        // In line: one line, the ends close.
+        const off = Math.abs(dot2(sub2(f, w.a), { x: -w.dir.y, y: w.dir.x }));
+        if (off > ON_LINE_MM) return null;
+        return mul2(add2(e, f), 0.5);
+    }
+    const d = sub2(v.a, w.a);
+    const t = (d.x * v.dir.y - d.y * v.dir.x) / cross;
+    return add2(w.a, mul2(w.dir, t));
+}
+
+/** Whether a wall lies on the line from `a` to `b`, along part of it. */
+function onSameLine(w: Wall, a: P2, b: P2): boolean {
+    const d = norm2(sub2(b, a));
+    const n = { x: -d.y, y: d.x };
+    if (
+        Math.abs(dot2(sub2(w.a, a), n)) > ON_LINE_MM ||
+        Math.abs(dot2(sub2(w.b, a), n)) > ON_LINE_MM
+    )
+        return false;
+    const len = dist2(a, b);
+    const t0 = dot2(sub2(w.a, a), d);
+    const t1 = dot2(sub2(w.b, a), d);
+    return Math.min(Math.max(t0, t1), len) - Math.max(Math.min(t0, t1), 0) > 100;
+}
+
+/**
+ * Whether `w` lines `v`: in line with it, face to face, along most of its own length, and the
+ * thinner of the two (a furring wall against a party wall, a lining inside an exterior wall).
+ */
+function isLining(w: Wall, v: Wall): boolean {
+    if (w.thickness >= v.thickness) return false;
+    if (Math.abs(w.dir.x * v.dir.y - w.dir.y * v.dir.x) > 0.02) return false;
+    if (w.zHi < v.zLo + 300 || w.zLo > v.zHi - 300) return false;
+    const n = { x: -v.dir.y, y: v.dir.x };
+    // Between the two walls' middles, across them.
+    const mid = (x: Wall) => add2(x.axisA, mul2(x.normal, x.offset + (x.sense * x.thickness) / 2));
+    const midB = (x: Wall) => add2(x.axisB, mul2(x.normal, x.offset + (x.sense * x.thickness) / 2));
+    const gap = Math.abs(dot2(sub2(mid(w), mid(v)), n));
+    if (gap > (w.thickness + v.thickness) / 2 + ON_LINE_MM) return false;
+    const t0 = dot2(sub2(mid(w), mid(v)), v.dir);
+    const t1 = dot2(sub2(midB(w), mid(v)), v.dir);
+    const vLen = dist2(v.axisA, v.axisB);
+    const overlap = Math.min(Math.max(t0, t1), vLen) - Math.max(Math.min(t0, t1), 0);
+    return overlap >= 0.5 * Math.abs(t1 - t0);
+}
+
+function edges(ring: readonly P2[]): [P2, P2][] {
+    return ring.map((p, i) => [p, ring[(i + 1) % ring.length]!]);
+}
+
+/** The part two edges share, in line and at least 300 mm long, or null. */
+function sharedEdge(a: P2, b: P2, c: P2, d: P2): [P2, P2] | null {
+    const len = dist2(a, b);
+    if (len < 300) return null;
+    const u = norm2(sub2(b, a));
+    const n = { x: -u.y, y: u.x };
+    if (Math.abs(dot2(sub2(c, a), n)) > ON_LINE_MM || Math.abs(dot2(sub2(d, a), n)) > ON_LINE_MM)
+        return null;
+    const tc = dot2(sub2(c, a), u);
+    const td = dot2(sub2(d, a), u);
+    const t0 = Math.max(0, Math.min(tc, td));
+    const t1 = Math.min(len, Math.max(tc, td));
+    if (t1 - t0 < 300) return null;
+    return [add2(a, mul2(u, t0)), add2(a, mul2(u, t1))];
+}
+
+/** A partition's end taken to the nearest line it runs into within reach, along its own line. */
+function snapEnd(end: P2, other: P2, lines: readonly { a: P2; b: P2 }[]): P2 {
+    const d = norm2(sub2(end, other));
+    let best: P2 = end;
+    let bestT = Infinity;
+    for (const l of lines) {
+        const ld = sub2(l.b, l.a);
+        const cross = d.x * ld.y - d.y * ld.x;
+        if (Math.abs(cross) / Math.hypot(ld.x, ld.y) < 0.5) continue; // nearly parallel
+        const q = sub2(l.a, end);
+        const t = (q.x * ld.y - q.y * ld.x) / cross;
+        const u = (q.x * d.y - q.y * d.x) / cross;
+        const len = Math.hypot(ld.x, ld.y);
+        if (u * len < -ON_LINE_MM || u * len > len + ON_LINE_MM) continue;
+        if (Math.abs(t) > PARTITION_REACH_MM) continue;
+        if (Math.abs(t) < Math.abs(bestT)) {
+            bestT = t;
+            best = add2(end, mul2(d, t));
+        }
+    }
+    return best;
+}
+
+// ---- Plan geometry ---------------------------------------------------------------------------------
+
+interface Box3 {
+    min: Vec3;
+    max: Vec3;
+}
+
+function box3(pts: readonly Vec3[]): Box3 | null {
+    if (pts.length === 0) return null;
+    const min = { x: Infinity, y: Infinity, z: Infinity };
+    const max = { x: -Infinity, y: -Infinity, z: -Infinity };
+    for (const p of pts) {
+        min.x = Math.min(min.x, p.x);
+        min.y = Math.min(min.y, p.y);
+        min.z = Math.min(min.z, p.z);
+        max.x = Math.max(max.x, p.x);
+        max.y = Math.max(max.y, p.y);
+        max.z = Math.max(max.z, p.z);
+    }
+    return { min, max };
+}
+
+function add2(a: P2, b: P2): P2 {
+    return { x: a.x + b.x, y: a.y + b.y };
+}
+
+function sub2(a: P2, b: P2): P2 {
+    return { x: a.x - b.x, y: a.y - b.y };
+}
+
+function mul2(a: P2, k: number): P2 {
+    return { x: a.x * k, y: a.y * k };
+}
+
+function dot2(a: P2, b: P2): number {
+    return a.x * b.x + a.y * b.y;
+}
+
+function dist2(a: P2, b: P2): number {
+    return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function norm2(a: P2): P2 {
+    const l = Math.hypot(a.x, a.y);
+    return l < 1e-12 ? { x: 1, y: 0 } : { x: a.x / l, y: a.y / l };
+}
+
+function distToSegment(p: P2, a: P2, b: P2): number {
+    const ab = sub2(b, a);
+    const l2 = dot2(ab, ab);
+    const t = l2 === 0 ? 0 : Math.max(0, Math.min(1, dot2(sub2(p, a), ab) / l2));
+    return dist2(p, add2(a, mul2(ab, t)));
+}
+
+/** How far points spread along a direction. */
+function spread(pts: readonly Vec3[], d: P2): number {
+    const t = pts.map((p) => p.x * d.x + p.y * d.y);
+    return Math.max(...t) - Math.min(...t);
+}
+
+function signedArea(ring: readonly P2[]): number {
+    let a = 0;
+    for (let i = 0; i < ring.length; i++) {
+        const p = ring[i]!;
+        const q = ring[(i + 1) % ring.length]!;
+        a += p.x * q.y - q.x * p.y;
+    }
+    return a / 2;
+}
+
+function insidePolygon(p: P2, ring: readonly P2[]): boolean {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const a = ring[i]!;
+        const b = ring[j]!;
+        if (a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) {
+            inside = !inside;
+        }
+    }
+    return inside;
+}
+
+/** A point well inside a polygon: of a grid over it, the one farthest from its edges. */
+function interiorPoint(ring: readonly P2[]): P2 {
+    const xs = ring.map((p) => p.x);
+    const ys = ring.map((p) => p.y);
+    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    let best = { x: (x0 + x1) / 2, y: (y0 + y1) / 2 };
+    let bestD = -1;
+    const n = 24;
+    for (let i = 1; i < n; i++) {
+        for (let j = 1; j < n; j++) {
+            const p = { x: x0 + ((x1 - x0) * i) / n, y: y0 + ((y1 - y0) * j) / n };
+            if (!insidePolygon(p, ring)) continue;
+            let d = Infinity;
+            for (let k = 0; k < ring.length; k++) {
+                d = Math.min(d, distToSegment(p, ring[k]!, ring[(k + 1) % ring.length]!));
+            }
+            if (d > bestD) {
+                bestD = d;
+                best = p;
+            }
+        }
+    }
+    return best;
+}
+
+function unique<T>(xs: readonly T[]): T[] {
+    return [...new Set(xs)];
+}
+
+/** Of the walls, one of the layer set most of their length has. */
+function longestBy(walls: readonly Wall[], key: (w: Wall) => string): Wall | null {
+    if (walls.length === 0) return null;
+    const total = new Map<string, number>();
+    for (const w of walls) total.set(key(w), (total.get(key(w)) ?? 0) + dist2(w.axisA, w.axisB));
+    const top = [...total].sort((a, b) => b[1] - a[1])[0]![0];
+    return walls.find((w) => key(w) === top)!;
+}
+
+/** Of the slabs, one of the kind that covers the most. */
+/**
+ * How much wall two windows may have between them and still be one coupled window, mm: less than
+ * this is no pier that can be built — a sliver of masonry or a stud between two frames — and the
+ * frames are joined instead, with a joint or a mullion between them, as a window maker couples
+ * them.
+ */
+export const COUPLE_GAP_MM = 150;
+/** How closely two windows' edges have to line up to be coupled, mm. */
+const COUPLE_ALIGN_MM = 30;
+
+/** A window as the coupling reads it: on its wall's line, with its extent and division. */
+export interface CouplingWindow<T> {
+    entry: T;
+    line: { a: P2; b: P2 };
+    /** Its middle, mm along its line from `line.a`. */
+    alongMm: number;
+    widthMm: number;
+    sillMm: number;
+    heightMm: number;
+    /** The storey it is on. */
+    band: number;
+    mullions: number;
+    transoms: number;
+    /** Whether it was made of more than one. */
+    coupled?: boolean;
+}
+
+/**
+ * Windows on one wall and storey with less than `COUPLE_GAP_MM` of wall between them, as one
+ * window each: two stacked over each other, as wide and in line, coupled by a transom; two beside
+ * each other, as high and level, by a mullion. Pairs are joined until none is left to join, so a
+ * column of three becomes one window of three panes. Only where the panes come out equal: a
+ * window's division is even (`OpeningGlazing`), so a narrow window beside a wide one is left as
+ * two, and `tooClose` lists them.
+ */
+export function coupleWindows<T>(windows: readonly CouplingWindow<T>[]): CouplingWindow<T>[] {
+    const out = windows.map((w) => ({ ...w }));
+    const near = (x: number, y: number) => Math.abs(x - y) <= COUPLE_ALIGN_MM;
+    // Panes are as large within a tenth: a joined pair's panes have the joint between them in.
+    const samePane = (x: number, y: number) =>
+        Math.abs(x - y) <= Math.max(COUPLE_ALIGN_MM, 0.1 * Math.max(x, y));
+    const sameLine = (p: CouplingWindow<T>, q: CouplingWindow<T>) =>
+        p.line === q.line ||
+        (near(p.line.a.x, q.line.a.x) &&
+            near(p.line.a.y, q.line.a.y) &&
+            near(p.line.b.x, q.line.b.x) &&
+            near(p.line.b.y, q.line.b.y));
+    const join = (p: CouplingWindow<T>, q: CouplingWindow<T>): CouplingWindow<T> | null => {
+        if (p.band !== q.band || !sameLine(p, q)) return null;
+        // Stacked: in line and as wide, one over the other, their panes as high.
+        if (near(p.alongMm, q.alongMm) && near(p.widthMm, q.widthMm)) {
+            const [lo, hi] = p.sillMm <= q.sillMm ? [p, q] : [q, p];
+            const gap = hi.sillMm - (lo.sillMm + lo.heightMm);
+            if (gap < -COUPLE_ALIGN_MM || gap >= COUPLE_GAP_MM) return null;
+            if (!samePane(p.heightMm / (p.transoms + 1), q.heightMm / (q.transoms + 1))) {
+                return null;
+            }
+            return {
+                ...lo,
+                widthMm: Math.max(p.widthMm, q.widthMm),
+                heightMm: hi.sillMm + hi.heightMm - lo.sillMm,
+                mullions: Math.max(p.mullions, q.mullions),
+                transoms: p.transoms + q.transoms + 1,
+                coupled: true,
+            };
+        }
+        // Side by side: level and as high, one beside the other.
+        if (near(p.sillMm, q.sillMm) && near(p.heightMm, q.heightMm)) {
+            const [lo, hi] = p.alongMm <= q.alongMm ? [p, q] : [q, p];
+            const gap = hi.alongMm - hi.widthMm / 2 - (lo.alongMm + lo.widthMm / 2);
+            if (gap < -COUPLE_ALIGN_MM || gap >= COUPLE_GAP_MM) return null;
+            if (!samePane(p.widthMm / (p.mullions + 1), q.widthMm / (q.mullions + 1))) {
+                return null;
+            }
+            const from = lo.alongMm - lo.widthMm / 2;
+            const to = hi.alongMm + hi.widthMm / 2;
+            return {
+                ...lo,
+                alongMm: (from + to) / 2,
+                widthMm: to - from,
+                heightMm: Math.max(p.heightMm, q.heightMm),
+                mullions: p.mullions + q.mullions + 1,
+                transoms: Math.max(p.transoms, q.transoms),
+                coupled: true,
+            };
+        }
+        return null;
+    };
+    for (let joined = true; joined;) {
+        joined = false;
+        outer: for (let i = 0; i < out.length; i++) {
+            for (let j = i + 1; j < out.length; j++) {
+                const both = join(out[i]!, out[j]!);
+                if (!both) continue;
+                out[i] = both;
+                out.splice(j, 1);
+                joined = true;
+                break outer;
+            }
+        }
+    }
+    return out;
+}
+
+/**
+ * Pairs of windows on one wall and storey with less than `COUPLE_GAP_MM` of wall between them,
+ * side by side or stacked, that `coupleWindows` could not join: the wall between them, mm.
+ */
+export function tooClose<T>(windows: readonly CouplingWindow<T>[]): number[] {
+    const out: number[] = [];
+    for (let i = 0; i < windows.length; i++) {
+        for (let j = i + 1; j < windows.length; j++) {
+            const p = windows[i]!;
+            const q = windows[j]!;
+            if (p.band !== q.band || p.line !== q.line) continue;
+            const across = Math.abs(p.alongMm - q.alongMm) - (p.widthMm + q.widthMm) / 2;
+            const up =
+                Math.max(p.sillMm, q.sillMm) -
+                Math.min(p.sillMm + p.heightMm, q.sillMm + q.heightMm);
+            // Beside each other where they overlap in height; over each other where in width.
+            const gap = up < 0 ? across : across < 0 ? up : Infinity;
+            if (gap >= 0 && gap < COUPLE_GAP_MM) out.push(Math.round(gap));
+        }
+    }
+    return out;
+}
+
+/** What a floor or a roof is, by its core: hollow-core slabs, concrete cast in place, or timber. */
+function slabStructure(core: IfcLayer | undefined): FloorStructure {
+    if (!core) return 'timber';
+    const r = matchMaterial(core.material);
+    if (r.role !== 'heavy') return 'timber';
+    return r.materialId === 'hollow-core' ? 'hollow-core' : 'cast-concrete';
+}
+
+function largestBy<T extends { area: number }>(xs: readonly T[], key: (x: T) => string): T {
+    const total = new Map<string, number>();
+    for (const x of xs) total.set(key(x), (total.get(key(x)) ?? 0) + x.area);
+    const top = [...total].sort((a, b) => b[1] - a[1])[0]![0];
+    return xs.find((x) => key(x) === top)!;
+}

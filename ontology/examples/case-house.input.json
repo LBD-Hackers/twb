@@ -1,0 +1,262 @@
+{
+  "@context": "https://w3id.org/twb/context/2.jsonld",
+  "format": "twb/1",
+  "type": "Blueprint",
+  "notes": "TWB case house: 7.2 x 9.6 m single-storey timber-frame house, 2400 mm walls, a 30-degree gable roof with its ridge along y, three partitions with a door each and four rooms, all ceiled flat under a cold attic.",
+  "wallHeightMm": 2400,
+  "walls": [
+    {
+      "id": "south",
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          7200,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "east",
+      "points": [
+        [
+          7200,
+          0
+        ],
+        [
+          7200,
+          9600
+        ]
+      ]
+    },
+    {
+      "id": "north",
+      "points": [
+        [
+          7200,
+          9600
+        ],
+        [
+          0,
+          9600
+        ]
+      ]
+    },
+    {
+      "id": "west",
+      "points": [
+        [
+          0,
+          9600
+        ],
+        [
+          0,
+          0
+        ]
+      ]
+    }
+  ],
+  "roof": {
+    "type": "gable",
+    "pitchDeg": 30,
+    "ridge": "y"
+  },
+  "openings": [
+    {
+      "kind": "door",
+      "at": [
+        1650,
+        0
+      ],
+      "widthMm": 900,
+      "heightMm": 2100
+    },
+    {
+      "kind": "window",
+      "at": [
+        3600,
+        9600
+      ],
+      "widthMm": 2400,
+      "heightMm": 1200,
+      "sillMm": 900
+    },
+    {
+      "kind": "window",
+      "at": [
+        0,
+        3000
+      ],
+      "widthMm": 1200,
+      "heightMm": 1200,
+      "sillMm": 900
+    },
+    {
+      "kind": "window",
+      "at": [
+        7200,
+        900
+      ],
+      "widthMm": 600,
+      "heightMm": 600,
+      "sillMm": 1500
+    },
+    {
+      "kind": "window",
+      "at": [
+        7200,
+        4200
+      ],
+      "widthMm": 1200,
+      "heightMm": 1200,
+      "sillMm": 900
+    },
+    {
+      "kind": "door",
+      "at": [
+        4800,
+        1200
+      ],
+      "widthMm": 800,
+      "heightMm": 2100
+    },
+    {
+      "kind": "door",
+      "at": [
+        4800,
+        4200
+      ],
+      "widthMm": 800,
+      "heightMm": 2100
+    },
+    {
+      "kind": "door",
+      "at": [
+        2400,
+        6000
+      ],
+      "widthMm": 800,
+      "heightMm": 2100
+    }
+  ],
+  "interiorWalls": [
+    {
+      "points": [
+        [
+          0,
+          6000
+        ],
+        [
+          7200,
+          6000
+        ]
+      ]
+    },
+    {
+      "points": [
+        [
+          4800,
+          0
+        ],
+        [
+          4800,
+          6000
+        ]
+      ]
+    },
+    {
+      "points": [
+        [
+          4800,
+          2400
+        ],
+        [
+          7200,
+          2400
+        ]
+      ]
+    }
+  ],
+  "zones": [
+    {
+      "type": "Room",
+      "id": "z-living",
+      "name": "Living and kitchen",
+      "point": [
+        2400,
+        3000
+      ],
+      "zoneKind": "living"
+    },
+    {
+      "type": "Room",
+      "id": "z-bath",
+      "name": "Bathroom",
+      "point": [
+        6000,
+        1200
+      ],
+      "zoneKind": "bathroom"
+    },
+    {
+      "type": "Room",
+      "id": "z-bed1",
+      "name": "Bedroom 1",
+      "point": [
+        6000,
+        4200
+      ],
+      "zoneKind": "bedroom"
+    },
+    {
+      "type": "Room",
+      "id": "z-bed2",
+      "name": "Bedroom 2",
+      "point": [
+        3600,
+        7800
+      ],
+      "zoneKind": "bedroom"
+    }
+  ],
+  "jointStandards": [
+    {
+      "type": "JointStandard",
+      "jointType": "wall-corner",
+      "option": "longer-through"
+    },
+    {
+      "type": "JointStandard",
+      "jointType": "eave",
+      "option": "roof-through"
+    },
+    {
+      "type": "JointStandard",
+      "jointType": "verge",
+      "option": "roof-through"
+    }
+  ],
+  "openingStandards": [
+    {
+      "type": "OpeningStandard",
+      "openingType": "Window",
+      "standardDetail": "head-sill-boards"
+    },
+    {
+      "type": "OpeningStandard",
+      "openingType": "Door",
+      "standardDetail": "frame-boards"
+    }
+  ],
+  "roofOverhang": {
+    "eavesMm": 500,
+    "vergeMm": 400
+  },
+  "expression": {
+    "type": "Expression",
+    "notation": "overhang-barge"
+  },
+  "buildingUse": "dwelling"
+}

@@ -1,0 +1,10 @@
+# Trims: an edge is built with the trims of its resolved joint (its own, or its template's); where that
+# joint has none, with the trims the project's expression derives for it.
+PREFIX twb: <https://w3id.org/twb#>
+CONSTRUCT { ?edge twb:effectiveTrim ?trim . }
+WHERE {
+  { ?edge twb:resolvedJoint ?joint . ?joint twb:hasTrim ?trim . }
+  UNION
+  { ?edge twb:derivedTrim ?trim .
+    FILTER NOT EXISTS { ?edge twb:resolvedJoint ?j . ?j twb:hasTrim ?anyTrim } }
+}

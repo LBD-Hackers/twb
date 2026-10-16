@@ -1,0 +1,174 @@
+@prefix twb:     <https://w3id.org/twb#> .
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix skos:    <http://www.w3.org/2004/02/skos/core#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix vann:    <http://purl.org/vocab/vann/> .
+@prefix unit:    <http://qudt.org/vocab/unit/> .
+
+# =================================================================================================
+#  TWB project profile — a module of the Thin-Walled Blueprint ontology (TWB)
+#
+#  The project-wide choices: the architectural expression and the trims it derives along edges
+#  without their own, the building use that selects the adjacency rules a project is checked
+#  against, the construction system, and the structural and delivery parameters.
+#
+#  TWB is modular, as SEAS is: one namespace (twb:, https://w3id.org/twb#) shared by every module,
+#  each module an ontology of its own that imports only the modules it builds on, and every term
+#  stating the module that defines it (rdfs:isDefinedBy). https://w3id.org/twb imports them all.
+#
+#  Working draft, version 0.3.0 (2026-10-13).
+# =================================================================================================
+
+<https://w3id.org/twb/profile>
+    a owl:Ontology ;
+    dcterms:title "TWB project profile"@en ;
+    dcterms:description """The project-wide choices: the architectural
+expression and the trims it derives along edges without their own, the building use that selects the adjacency
+rules a project is checked against, the construction system, and the structural and delivery parameters."""@en ;
+    dcterms:creator "Mads Holten Rasmussen" ;
+    dcterms:license <https://creativecommons.org/licenses/by/4.0/> ;
+    dcterms:isPartOf <https://w3id.org/twb> ;
+    vann:preferredNamespacePrefix "twb" ;
+    vann:preferredNamespaceUri "https://w3id.org/twb#" ;
+    owl:imports <https://w3id.org/twb/detailing> ;
+    owl:imports <https://w3id.org/twb/requirements> ;
+    owl:versionInfo "0.3.0" ;
+    owl:versionIRI <https://w3id.org/twb/profile/0.3.0> ;
+    dcterms:modified "2026-10-13"^^xsd:date .
+
+# =================================================================================================
+#  Project profiles: architectural expression and building use
+# =================================================================================================
+
+twb:Expression
+    a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Architectural expression"@en ;
+    rdfs:comment """How a building meets the weather, as one choice: the facade cladding, the roof covering, the joint
+standards at eaves and verges, the overhangs, the finish round openings and the trims along the roof's edges
+(fascia, gutter, barge board, kerb, coping). Choosing one writes the project's recipes outside their cores and its
+standards once; the trims it implies are derived for every edge without trims of its own."""@en ;
+    twb:archTerm "ArchitecturalExpression (envelope/expression.ts)" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/profile> .
+
+twb:hasExpression a owl:ObjectProperty, owl:FunctionalProperty ; rdfs:label "has expression"@en ; rdfs:domain twb:Blueprint ; rdfs:range twb:Expression ;
+    rdfs:isDefinedBy <https://w3id.org/twb/profile> .
+twb:roofCovering a owl:DatatypeProperty ; rdfs:label "roof covering"@en ; rdfs:comment "tiles, zinc, battens, felt, or as the facade."@en ; rdfs:range xsd:string ;
+    rdfs:isDefinedBy <https://w3id.org/twb/profile> .
+twb:gutterKind a owl:DatatypeProperty ; rdfs:label "gutter kind"@en ; rdfs:comment "hung, concealed, at the facade's base, or a scupper."@en ; rdfs:range xsd:string ;
+    rdfs:isDefinedBy <https://w3id.org/twb/profile> .
+twb:facadeCladding a owl:DatatypeProperty ; rdfs:label "facade cladding"@en ;
+    rdfs:comment "board-on-board, lap, board-and-batten or sheet (0.2.0)."@en ; rdfs:range xsd:string ;
+    rdfs:isDefinedBy <https://w3id.org/twb/profile> .
+
+# --- Structural and delivery parameters (0.2.0) -----------------------------------------------------
+
+twb:roofLoadProfile a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "roof load profile"@en ;
+    rdfs:comment "The roof's dead load as a profile — light, heavy or green — which sizes the rafters and sets the stud spacing."@en ;
+    rdfs:domain twb:Blueprint ; rdfs:range xsd:string ; twb:archTerm "HouseFile.roofLoad (calc/roof-load-profiles.ts)" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/profile> .
+
+twb:liveLoad a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "live load"@en ;
+    rdfs:comment "Imposed load on a floor."@en ; rdfs:domain twb:Blueprint ; rdfs:range xsd:decimal ; twb:unit unit:KiloN-PER-M2 ;
+    twb:archTerm "StructuralLoads.liveKnPerM2" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/profile> .
+
+twb:snowLoad a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "snow load"@en ;
+    rdfs:comment "Characteristic ground snow load s_k, per m² of plan."@en ; rdfs:domain twb:Blueprint ; rdfs:range xsd:decimal ; twb:unit unit:KiloN-PER-M2 ;
+    twb:archTerm "StructuralLoads.snowKnPerM2" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/profile> .
+
+twb:windPressure a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "wind pressure"@en ;
+    rdfs:comment "Peak velocity pressure q_p."@en ; rdfs:domain twb:Blueprint ; rdfs:range xsd:decimal ; twb:unit unit:KiloN-PER-M2 ;
+    twb:archTerm "StructuralLoads.windKnPerM2" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/profile> .
+
+twb:consequenceClass a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "consequence class"@en ;
+    rdfs:comment "CC1, CC2 or CC3 (EN 1990)."@en ; rdfs:domain twb:Blueprint ; rdfs:range xsd:string ; twb:archTerm "HouseFile.consequenceClass" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/profile> .
+
+twb:sawnTimberGrade a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "sawn timber grade"@en ;
+    rdfs:comment "The strength class sawn members are sized in, e.g. C24."@en ; rdfs:domain twb:Blueprint ; rdfs:range xsd:string ; twb:archTerm "HouseFile.sawnGradeId" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/profile> .
+
+twb:ifcScope a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "IFC scope"@en ;
+    rdfs:comment "What the derived IFC holds: complete, or shell (the structure and the exterior cladding)."@en ;
+    rdfs:domain twb:Blueprint ; rdfs:range xsd:string ; twb:archTerm "HouseFile.ifcScope" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/profile> .
+
+# =================================================================================================
+#  Building use, construction system and the expression's trims
+# =================================================================================================
+
+twb:derivedTrim
+    a owl:ObjectProperty ;
+    rdfs:label "derived trim"@en ;
+    rdfs:comment "Derived: a trim the project's expression puts along an edge that states no trims of its own."@en ;
+    rdfs:domain twb:Edge ;
+    rdfs:range twb:Trim ;
+    rdfs:isDefinedBy <https://w3id.org/twb/profile> .
+
+twb:effectiveTrim
+    a owl:ObjectProperty ;
+    rdfs:label "effective trim"@en ;
+    rdfs:comment "Derived: a trim an edge is built with — its resolved joint's trims, else the trims its expression derives."@en ;
+    rdfs:domain twb:Edge ;
+    rdfs:range twb:Trim ;
+    rdfs:isDefinedBy <https://w3id.org/twb/profile> .
+
+twb:BuildingUse
+    a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Building use"@en ;
+    rdfs:comment """What the building is for under a national profile — an unheated shed, a garden house, a summer house, a
+dwelling — and so which requirements apply. A use selects the adjacency rules a project is checked against."""@en ;
+    twb:archTerm "BuildingUseDef (envelope/building-use.ts)" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/profile> .
+
+twb:hasBuildingUse a owl:ObjectProperty, owl:FunctionalProperty ; rdfs:label "has building use"@en ; rdfs:domain twb:Blueprint ; rdfs:range twb:BuildingUse ;
+    rdfs:isDefinedBy <https://w3id.org/twb/profile> .
+twb:ConstructionSystem
+    a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Construction system"@en ;
+    rdfs:comment """How the building is built — a timber frame, or masonry (a cavity wall of aerated concrete and facing brick
+on a ground slab) — chosen at the start. It decides what the recipes start as and the grid the blueprint is set out on;
+the recipes then decide everything derived, so a recipe changed afterwards is built as it now is."""@en ;
+    twb:archTerm "ConstructionSystemDef (envelope/construction-system.ts)" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/profile> .
+
+twb:hasConstructionSystem a owl:ObjectProperty, owl:FunctionalProperty ; rdfs:label "has construction system"@en ; rdfs:domain twb:Blueprint ; rdfs:range twb:ConstructionSystem ;
+    rdfs:isDefinedBy <https://w3id.org/twb/profile> .
+twb:FloorStructure
+    a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Floor structure"@en ;
+    rdfs:comment """What the floors between a heavy building's storeys are made of — timber joists, a slab of concrete cast in
+place, or prestressed hollow-core slabs — chosen with its construction system. Like the system it only decides what the
+recipe of a floor between storeys starts as; the recipe then decides everything derived: a core of concrete is not
+framed, and is checked for its span instead."""@en ;
+    twb:archTerm "FloorStructure (envelope/concrete-slabs.ts)" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/profile> .
+
+twb:hasFloorStructure a owl:ObjectProperty, owl:FunctionalProperty ; rdfs:label "has floor structure"@en ; rdfs:domain twb:Blueprint ; rdfs:range twb:FloorStructure ;
+    rdfs:comment "What the floors between the storeys are made of. Absent: timber."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/profile> .
+twb:RoofStructure
+    a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Roof structure"@en ;
+    rdfs:comment """What a heavy building's roof is made of — timber rafters or trusses, or a slab of concrete cast in place or
+laid of hollow-core slabs, insulated on top — chosen with its construction system, as twb:FloorStructure is."""@en ;
+    twb:archTerm "RoofStructure (envelope/concrete-slabs.ts)" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/profile> .
+
+twb:hasRoofStructure a owl:ObjectProperty, owl:FunctionalProperty ; rdfs:label "has roof structure"@en ; rdfs:domain twb:Blueprint ; rdfs:range twb:RoofStructure ;
+    rdfs:comment "What the roof is made of. Absent: timber."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/profile> .
+twb:nationalProfile a owl:DatatypeProperty ; rdfs:label "national profile"@en ; rdfs:comment "The market whose regulations a use belongs to, e.g. DK."@en ; rdfs:range xsd:string ;
+    rdfs:isDefinedBy <https://w3id.org/twb/profile> .
+twb:ruleOfUse a owl:ObjectProperty ; rdfs:label "rule of use"@en ; rdfs:comment "An adjacency rule that applies to buildings of this use."@en ;
+    rdfs:domain twb:BuildingUse ; rdfs:range twb:AdjacencyRule ;
+    rdfs:isDefinedBy <https://w3id.org/twb/profile> .

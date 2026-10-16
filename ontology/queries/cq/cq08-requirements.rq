@@ -1,0 +1,18 @@
+# CQ8: What does each zone require of the surfaces bounding it, and is the requirement met?
+PREFIX twb: <https://w3id.org/twb#>
+PREFIX bot: <https://w3id.org/bot#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+PREFIX inst: <https://example.org/twb/case-house/>
+SELECT ?zone ?capability (COUNT(DISTINCT ?zb) AS ?boundaries) (SUM(IF(?met, 1, 0)) AS ?met)
+WHERE {
+  ?zb twb:requires/skos:prefLabel ?capability ; twb:onSide ?side ; bot:interfaceOf ?z .
+  ?z rdfs:label ?zone . FILTER NOT EXISTS { ?z twb:positiveSide ?x }
+  ?s twb:positiveSide|twb:negativeSide ?side ; twb:hasRecipe ?r .
+  ?zb twb:requires ?cap .
+  ?cap skos:prefLabel ?capability .
+  BIND (EXISTS { ?r twb:provides ?cap } || EXISTS { ?side twb:isInside true . ?r twb:providesInside ?cap }
+        || EXISTS { ?side twb:isInside false . ?r twb:providesOutside ?cap }
+        || EXISTS { ?zb twb:hasCovering/twb:provides ?cap } AS ?met)
+}
+GROUP BY ?zone ?capability ORDER BY ?zone ?capability

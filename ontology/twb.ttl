@@ -1,0 +1,82 @@
+@prefix twb:     <https://w3id.org/twb#> .
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix vann:    <http://purl.org/vocab/vann/> .
+
+# =================================================================================================
+#  TWB — the Thin-Walled Blueprint ontology
+#
+#  A thin-walled blueprint describes a building before it is detailed: zero-thickness planar
+#  surfaces on the reference planes of its walls, floors and roofs; the zones they bound; the
+#  openings they host; and the edges where they meet. Construction knowledge is attached to that
+#  skeleton at the place it belongs:
+#
+#    - a RECIPE on each surface: the ordered layers of the assembly that will realise it;
+#    - a JOINT DETAIL on each edge: how every layer of every surface meeting there terminates,
+#      and what trims run along it;
+#    - an OPENING DETAIL on each opening: the flashings and boards that finish its perimeter;
+#    - REQUIREMENTS on each side of a surface, inferred from the zones it faces.
+#
+#  Details resolve by specificity — an edge's own joint, else the template for its kind of edge
+#  and pair of recipes, else the project's standard for that kind, else a mitre — so a handful of
+#  templates details a whole building, and the exceptions are stated where they occur.
+#
+#  The element-level building (members, sheets, boards, insulation, machining) is DERIVED from
+#  the blueprint by a deterministic compilation (twb:Derivation), which is what makes the
+#  blueprint a template of the building rather than a model of it.
+#
+#  TWB extends the Building Topology Ontology (BOT): a surface is a bot:Element in its thin form;
+#  edges, zone boundaries, zone separations and opening edges are bot:Interface.
+#
+#  TWB is modular, as SEAS is. Every term is in one namespace, twb: (https://w3id.org/twb#), and is
+#  defined by one module (rdfs:isDefinedBy), an ontology of its own that imports only the modules
+#  it builds on. This file is TWB as a whole: it defines nothing and imports every module. Import a
+#  module instead to take only what it needs.
+#
+#    core           https://w3id.org/twb/core          the blueprint, zones, surfaces, openings, edges, nodes
+#    construction   https://w3id.org/twb/construction  recipes, layers, materials, coverings     (core)
+#    detailing      https://w3id.org/twb/detailing     joints, trims, opening details, framing   (construction)
+#    requirements   https://w3id.org/twb/requirements  capabilities and adjacency rules          (construction)
+#    profile        https://w3id.org/twb/profile       expression, building use, parameters      (detailing, requirements)
+#    decision       https://w3id.org/twb/decision      decisions and their sources               (core)
+#    derivation     https://w3id.org/twb/derivation    members and layer pieces, derived         (detailing)
+#    housefile      https://w3id.org/twb/housefile     the house file's authored geometry        (detailing)
+#    doc            https://w3id.org/twb/doc           sections and the drawing set              (core)
+#
+#  Beside them, not imported here: the SHACL shapes (https://w3id.org/twb/shapes), the alignments
+#  with BPO, DiCon, SML, BEO, ifcOWL and OPM (https://w3id.org/twb/align), and arch's catalogue
+#  as SKOS (https://w3id.org/twb/catalogue/arch).
+#
+#  Working draft, version 0.3.0 (2026-10-13). 0.3.0 splits the one file of 0.2.0 into modules,
+#  with no term changed, and moves the documentation's terms from twbd: into twb:.
+# =================================================================================================
+
+<https://w3id.org/twb>
+    a owl:Ontology ;
+    dcterms:title "Thin-Walled Blueprint Ontology (TWB)"@en ;
+    dcterms:description """An ontology for thin-walled building blueprints: zero-thickness surfaces that carry
+assembly recipes, edges that carry joint details, openings that carry perimeter details, and zones whose
+adjacency to surface sides carries requirements. Extends the Building Topology Ontology (BOT). TWB as a whole:
+it imports every module."""@en ;
+    dcterms:creator "Mads Holten Rasmussen" ;
+    dcterms:created "2026-10-01"^^xsd:date ;
+    dcterms:modified "2026-10-13"^^xsd:date ;
+    dcterms:license <https://creativecommons.org/licenses/by/4.0/> ;
+    owl:versionInfo "0.3.0" ;
+    owl:versionIRI <https://w3id.org/twb/0.3.0> ;
+    owl:priorVersion <https://w3id.org/twb/0.2.0> ;
+    vann:preferredNamespacePrefix "twb" ;
+    vann:preferredNamespaceUri "https://w3id.org/twb#" ;
+    rdfs:seeAlso <https://w3id.org/bot>, <https://w3id.org/opm>, <https://twb.madsholten.dk/en/datamodel/> ;
+    rdfs:comment "Units are stated per datatype property with twb:unit."@en ;
+    owl:imports <https://w3id.org/twb/core> ,
+        <https://w3id.org/twb/construction> ,
+        <https://w3id.org/twb/detailing> ,
+        <https://w3id.org/twb/requirements> ,
+        <https://w3id.org/twb/profile> ,
+        <https://w3id.org/twb/decision> ,
+        <https://w3id.org/twb/derivation> ,
+        <https://w3id.org/twb/housefile> ,
+        <https://w3id.org/twb/doc> .

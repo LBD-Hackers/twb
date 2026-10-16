@@ -1,0 +1,366 @@
+{
+ "archCommit": "5cc0b38",
+ "edges": {
+  "floor|wall-east": {
+   "iri": "https://example.org/twb/case-house/edge/floor%7Cwall-east",
+   "type": "twb:WallFoot",
+   "resolution": "standard",
+   "through": "floor",
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "floor|wall-north": {
+   "iri": "https://example.org/twb/case-house/edge/floor%7Cwall-north",
+   "type": "twb:WallFoot",
+   "resolution": "standard",
+   "through": "floor",
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "floor|wall-south": {
+   "iri": "https://example.org/twb/case-house/edge/floor%7Cwall-south",
+   "type": "twb:WallFoot",
+   "resolution": "standard",
+   "through": "floor",
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "floor|wall-west": {
+   "iri": "https://example.org/twb/case-house/edge/floor%7Cwall-west",
+   "type": "twb:WallFoot",
+   "resolution": "standard",
+   "through": "floor",
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "floor~ceiling@1>roof-1": {
+   "iri": "https://example.org/twb/case-house/edge/floor~ceiling%401%3Eroof-1",
+   "type": "twb:CeilingJunction",
+   "resolution": "standard",
+   "through": "roof-1",
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "floor~ceiling@3>roof-2": {
+   "iri": "https://example.org/twb/case-house/edge/floor~ceiling%403%3Eroof-2",
+   "type": "twb:CeilingJunction",
+   "resolution": "standard",
+   "through": "roof-2",
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "floor~ceiling@1>wall-east": {
+   "iri": "https://example.org/twb/case-house/edge/floor~ceiling%401%3Ewall-east",
+   "type": "twb:CeilingJunction",
+   "resolution": "standard",
+   "through": "wall-east",
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "floor~ceiling@2>wall-north": {
+   "iri": "https://example.org/twb/case-house/edge/floor~ceiling%402%3Ewall-north",
+   "type": "twb:CeilingJunction",
+   "resolution": "standard",
+   "through": "wall-north",
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "floor~ceiling@2>wall-north~attic": {
+   "iri": "https://example.org/twb/case-house/edge/floor~ceiling%402%3Ewall-north~attic",
+   "type": "twb:CeilingJunction",
+   "resolution": "standard",
+   "through": "wall-north~attic",
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "floor~ceiling@0>wall-south": {
+   "iri": "https://example.org/twb/case-house/edge/floor~ceiling%400%3Ewall-south",
+   "type": "twb:CeilingJunction",
+   "resolution": "standard",
+   "through": "wall-south",
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "floor~ceiling@0>wall-south~attic": {
+   "iri": "https://example.org/twb/case-house/edge/floor~ceiling%400%3Ewall-south~attic",
+   "type": "twb:CeilingJunction",
+   "resolution": "standard",
+   "through": "wall-south~attic",
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "floor~ceiling@3>wall-west": {
+   "iri": "https://example.org/twb/case-house/edge/floor~ceiling%403%3Ewall-west",
+   "type": "twb:CeilingJunction",
+   "resolution": "standard",
+   "through": "wall-west",
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "roof-1|roof-2": {
+   "iri": "https://example.org/twb/case-house/edge/roof-1%7Croof-2",
+   "type": "twb:Ridge",
+   "resolution": "default",
+   "through": null,
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "roof-1|wall-east": {
+   "iri": "https://example.org/twb/case-house/edge/roof-1%7Cwall-east",
+   "type": "twb:Eave",
+   "resolution": "standard",
+   "through": "roof-1",
+   "trims": 3,
+   "trimSource": "expression"
+  },
+  "roof-1|wall-north~attic": {
+   "iri": "https://example.org/twb/case-house/edge/roof-1%7Cwall-north~attic",
+   "type": "twb:Verge",
+   "resolution": "standard",
+   "through": "roof-1",
+   "trims": 1,
+   "trimSource": "expression"
+  },
+  "roof-1|wall-south~attic": {
+   "iri": "https://example.org/twb/case-house/edge/roof-1%7Cwall-south~attic",
+   "type": "twb:Verge",
+   "resolution": "standard",
+   "through": "roof-1",
+   "trims": 1,
+   "trimSource": "expression"
+  },
+  "roof-2|wall-north~attic": {
+   "iri": "https://example.org/twb/case-house/edge/roof-2%7Cwall-north~attic",
+   "type": "twb:Verge",
+   "resolution": "standard",
+   "through": "roof-2",
+   "trims": 1,
+   "trimSource": "expression"
+  },
+  "roof-2|wall-south~attic": {
+   "iri": "https://example.org/twb/case-house/edge/roof-2%7Cwall-south~attic",
+   "type": "twb:Verge",
+   "resolution": "standard",
+   "through": "roof-2",
+   "trims": 1,
+   "trimSource": "expression"
+  },
+  "roof-2|wall-west": {
+   "iri": "https://example.org/twb/case-house/edge/roof-2%7Cwall-west",
+   "type": "twb:Eave",
+   "resolution": "standard",
+   "through": "roof-2",
+   "trims": 3,
+   "trimSource": "expression"
+  },
+  "s1|s2": {
+   "iri": "https://example.org/twb/case-house/edge/s1%7Cs2",
+   "type": "twb:InPlaneJoint",
+   "resolution": "default",
+   "through": null,
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "wall-east|wall-north": {
+   "iri": "https://example.org/twb/case-house/edge/wall-east%7Cwall-north",
+   "type": "twb:OutsideCorner",
+   "resolution": "template",
+   "through": null,
+   "trims": 2,
+   "trimSource": "template"
+  },
+  "wall-east|wall-south": {
+   "iri": "https://example.org/twb/case-house/edge/wall-east%7Cwall-south",
+   "type": "twb:OutsideCorner",
+   "resolution": "template",
+   "through": null,
+   "trims": 2,
+   "trimSource": "template"
+  },
+  "wall-north|wall-north~attic": {
+   "iri": "https://example.org/twb/case-house/edge/wall-north%7Cwall-north~attic",
+   "type": "twb:InPlaneJoint",
+   "resolution": "default",
+   "through": null,
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "wall-north|wall-west": {
+   "iri": "https://example.org/twb/case-house/edge/wall-north%7Cwall-west",
+   "type": "twb:OutsideCorner",
+   "resolution": "template",
+   "through": null,
+   "trims": 2,
+   "trimSource": "template"
+  },
+  "wall-south|wall-south~attic": {
+   "iri": "https://example.org/twb/case-house/edge/wall-south%7Cwall-south~attic",
+   "type": "twb:InPlaneJoint",
+   "resolution": "default",
+   "through": null,
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "wall-south|wall-west": {
+   "iri": "https://example.org/twb/case-house/edge/wall-south%7Cwall-west",
+   "type": "twb:OutsideCorner",
+   "resolution": "own",
+   "through": null,
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "s1@0>floor": {
+   "iri": "https://example.org/twb/case-house/edge/s1%400%3Efloor",
+   "type": "twb:PartitionFoot",
+   "resolution": "standard",
+   "through": "floor",
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "s1@2>floor~ceiling": {
+   "iri": "https://example.org/twb/case-house/edge/s1%402%3Efloor~ceiling",
+   "type": "twb:PartitionHead",
+   "resolution": "standard",
+   "through": "floor~ceiling",
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "s1@3>wall-west": {
+   "iri": "https://example.org/twb/case-house/edge/s1%403%3Ewall-west",
+   "type": "twb:TJunction",
+   "resolution": "standard",
+   "through": "wall-west",
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "s2@0>floor": {
+   "iri": "https://example.org/twb/case-house/edge/s2%400%3Efloor",
+   "type": "twb:PartitionFoot",
+   "resolution": "standard",
+   "through": "floor",
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "s2@1>wall-east": {
+   "iri": "https://example.org/twb/case-house/edge/s2%401%3Ewall-east",
+   "type": "twb:TJunction",
+   "resolution": "standard",
+   "through": "wall-east",
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "s2@2>floor~ceiling": {
+   "iri": "https://example.org/twb/case-house/edge/s2%402%3Efloor~ceiling",
+   "type": "twb:PartitionHead",
+   "resolution": "standard",
+   "through": "floor~ceiling",
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "s3@0>floor": {
+   "iri": "https://example.org/twb/case-house/edge/s3%400%3Efloor",
+   "type": "twb:PartitionFoot",
+   "resolution": "standard",
+   "through": "floor",
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "s3@1>s2": {
+   "iri": "https://example.org/twb/case-house/edge/s3%401%3Es2",
+   "type": "twb:TJunction",
+   "resolution": "standard",
+   "through": "s2",
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "s3@2>floor~ceiling": {
+   "iri": "https://example.org/twb/case-house/edge/s3%402%3Efloor~ceiling",
+   "type": "twb:PartitionHead",
+   "resolution": "standard",
+   "through": "floor~ceiling",
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "s3@3>wall-south": {
+   "iri": "https://example.org/twb/case-house/edge/s3%403%3Ewall-south",
+   "type": "twb:TJunction",
+   "resolution": "standard",
+   "through": "wall-south",
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "s4@0>floor": {
+   "iri": "https://example.org/twb/case-house/edge/s4%400%3Efloor",
+   "type": "twb:PartitionFoot",
+   "resolution": "standard",
+   "through": "floor",
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "s4@1>wall-east": {
+   "iri": "https://example.org/twb/case-house/edge/s4%401%3Ewall-east",
+   "type": "twb:TJunction",
+   "resolution": "standard",
+   "through": "wall-east",
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "s4@2>floor~ceiling": {
+   "iri": "https://example.org/twb/case-house/edge/s4%402%3Efloor~ceiling",
+   "type": "twb:PartitionHead",
+   "resolution": "standard",
+   "through": "floor~ceiling",
+   "trims": 0,
+   "trimSource": "none"
+  },
+  "s4@3>s3": {
+   "iri": "https://example.org/twb/case-house/edge/s4%403%3Es3",
+   "type": "twb:TJunction",
+   "resolution": "standard",
+   "through": "s3",
+   "trims": 0,
+   "trimSource": "none"
+  }
+ },
+ "openings": {
+  "wall-south/wall-southh1": {
+   "iri": "https://example.org/twb/case-house/opening/wall-south/wall-southh1",
+   "detail": "frame-boards",
+   "resolution": "standard"
+  },
+  "wall-east/wall-easth1": {
+   "iri": "https://example.org/twb/case-house/opening/wall-east/wall-easth1",
+   "detail": "sill-flashing",
+   "resolution": "own"
+  },
+  "wall-east/wall-easth2": {
+   "iri": "https://example.org/twb/case-house/opening/wall-east/wall-easth2",
+   "detail": "head-sill-boards",
+   "resolution": "standard"
+  },
+  "wall-north/wall-northh1": {
+   "iri": "https://example.org/twb/case-house/opening/wall-north/wall-northh1",
+   "detail": "head-sill-boards",
+   "resolution": "standard"
+  },
+  "wall-west/wall-westh1": {
+   "iri": "https://example.org/twb/case-house/opening/wall-west/wall-westh1",
+   "detail": "head-sill-boards",
+   "resolution": "standard"
+  }
+ },
+ "counts": {
+  "surfaces": 14,
+  "authoredSurfaces": 11,
+  "ceilings": 1,
+  "edges": 40,
+  "tees": 22,
+  "nodes": 6,
+  "nodeRules": 1,
+  "passages": 4,
+  "members": 298,
+  "rooms": 4,
+  "attics": 1,
+  "dressed": 14
+ }
+}

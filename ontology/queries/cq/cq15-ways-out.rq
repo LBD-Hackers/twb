@@ -1,0 +1,17 @@
+# CQ15: Which rooms can one reach from the outdoor air, which can one leave, and through how many doors at least?
+PREFIX twb: <https://w3id.org/twb#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+SELECT ?room ?reachable ?canLeave (MIN(?n) AS ?doorsIn)
+WHERE {
+  ?z a twb:Room ; rdfs:label ?l .
+  BIND (STR(?l) AS ?room)
+  BIND (EXISTS { twb:OutdoorAir twb:leadsTo+ ?z } AS ?reachable)
+  BIND (EXISTS { ?z twb:leadsTo+ twb:OutdoorAir } AS ?canLeave)
+  OPTIONAL {
+    { twb:OutdoorAir twb:leadsTo ?z . BIND (1 AS ?n) }
+    UNION { twb:OutdoorAir twb:leadsTo ?a . ?a twb:leadsTo ?z . FILTER (?a != ?z) BIND (2 AS ?n) }
+    UNION { twb:OutdoorAir twb:leadsTo ?a . ?a twb:leadsTo ?b . ?b twb:leadsTo ?z .
+            FILTER (?a != ?z && ?b != ?z && ?a != ?b) BIND (3 AS ?n) }
+  }
+}
+GROUP BY ?room ?reachable ?canLeave ORDER BY ?room

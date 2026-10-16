@@ -1,0 +1,13 @@
+# CQ12: Which surfaces is each room adjacent to (bot:adjacentElement), and which rooms does each room adjoin (bot:adjacentZone)?
+PREFIX twb: <https://w3id.org/twb#>
+PREFIX bot: <https://w3id.org/bot#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+PREFIX inst: <https://example.org/twb/case-house/>
+SELECT ?room (COUNT(DISTINCT ?s) AS ?adjacentSurfaces) (GROUP_CONCAT(DISTINCT ?other; separator=", ") AS ?adjacentRooms)
+WHERE {
+  ?z a twb:Room ; rdfs:label ?room ; bot:adjacentElement ?s .
+  OPTIONAL { ?z bot:adjacentZone ?o . ?o a twb:Room ; rdfs:label ?ol }
+  BIND (COALESCE(STR(?ol), "") AS ?other)
+}
+GROUP BY ?room ORDER BY ?room

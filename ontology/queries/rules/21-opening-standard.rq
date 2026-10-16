@@ -1,0 +1,10 @@
+# Opening detail resolution, level 2: the project standard for the opening's class.
+PREFIX twb: <https://w3id.org/twb#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+CONSTRUCT { ?opening twb:resolvedOpeningDetail ?detail ; twb:resolvedBy twb:ResolvedByStandard . }
+WHERE {
+  ?opening a ?class . ?class rdfs:subClassOf twb:Opening .
+  ?blueprint twb:hasOpeningStandard ?standard .
+  ?standard twb:forOpeningClass ?class ; twb:standardDetail ?detail .
+  FILTER NOT EXISTS { ?opening twb:resolvedBy ?any }
+}

@@ -1,0 +1,4 @@
+PyLD==2.0.4
+pyoxigraph==0.5.11
+pyshacl==0.40.1
+rdflib==7.6.0

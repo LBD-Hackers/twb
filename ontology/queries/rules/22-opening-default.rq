@@ -1,0 +1,8 @@
+# Opening detail resolution, level 3: plain.
+PREFIX twb: <https://w3id.org/twb#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+CONSTRUCT { ?opening twb:resolvedOpeningDetail twb:PlainOpening ; twb:resolvedBy twb:ResolvedByDefault . }
+WHERE {
+  ?opening a ?class . ?class rdfs:subClassOf twb:Opening .
+  FILTER NOT EXISTS { ?opening twb:resolvedBy ?any }
+}

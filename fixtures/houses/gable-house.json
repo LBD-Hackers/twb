@@ -1,0 +1,102 @@
+{
+    "@context": "https://w3id.org/twb/context/2.jsonld",
+    "format": "twb/1",
+    "type": "Blueprint",
+    "notes": "7.2 x 9.6 m single-storey house, 2400 mm walls, 30-degree gable roof with the ridge along Y at x = 3600. One window in the west wall, one door in the east wall.",
+    "surfaces": [
+        {
+            "type": "Surface",
+            "id": "floor",
+            "points": [
+                [0, 0, 0],
+                [7200, 0, 0],
+                [7200, 9600, 0],
+                [0, 9600, 0]
+            ]
+        },
+        {
+            "type": "Surface",
+            "id": "wall-south",
+            "points": [
+                [0, 0, 0],
+                [7200, 0, 0],
+                [7200, 0, 2400],
+                [3600, 0, 4500],
+                [0, 0, 2400]
+            ]
+        },
+        {
+            "type": "Surface",
+            "id": "wall-north",
+            "points": [
+                [0, 9600, 0],
+                [7200, 9600, 0],
+                [7200, 9600, 2400],
+                [3600, 9600, 4500],
+                [0, 9600, 2400]
+            ]
+        },
+        {
+            "type": "Surface",
+            "id": "wall-west",
+            "points": [
+                [0, 0, 0],
+                [0, 9600, 0],
+                [0, 9600, 2400],
+                [0, 0, 2400]
+            ],
+            "openings": [
+                {
+                    "type": "Window",
+                    "points": [
+                        [0, 2400, 900],
+                        [0, 3600, 900],
+                        [0, 3600, 2100],
+                        [0, 2400, 2100]
+                    ]
+                }
+            ]
+        },
+        {
+            "type": "Surface",
+            "id": "wall-east",
+            "points": [
+                [7200, 0, 0],
+                [7200, 9600, 0],
+                [7200, 9600, 2400],
+                [7200, 0, 2400]
+            ],
+            "openings": [
+                {
+                    "type": "Door",
+                    "points": [
+                        [7200, 4800, 0],
+                        [7200, 5700, 0],
+                        [7200, 5700, 2100],
+                        [7200, 4800, 2100]
+                    ]
+                }
+            ]
+        },
+        {
+            "type": "Surface",
+            "id": "roof-west",
+            "points": [
+                [0, 0, 2400],
+                [0, 9600, 2400],
+                [3600, 9600, 4500],
+                [3600, 0, 4500]
+            ]
+        },
+        {
+            "type": "Surface",
+            "id": "roof-east",
+            "points": [
+                [7200, 0, 2400],
+                [7200, 9600, 2400],
+                [3600, 9600, 4500],
+                [3600, 0, 4500]
+            ]
+        }
+    ]
+}

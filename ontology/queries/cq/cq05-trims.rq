@@ -1,0 +1,12 @@
+# CQ5: Which trims run along which edges once every joint is resolved, and how much of each is there?
+PREFIX twb: <https://w3id.org/twb#>
+PREFIX bot: <https://w3id.org/bot#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+PREFIX inst: <https://example.org/twb/case-house/>
+SELECT ?edge ?resolution ?material (COUNT(?trim) AS ?pieces) ?lengthMm
+WHERE {
+  ?e twb:resolvedJoint ?j ; rdfs:label ?edge ; twb:length ?lengthMm ; twb:resolvedBy/skos:prefLabel ?resolution .
+  ?j twb:hasTrim ?trim . ?trim twb:material/rdfs:label ?material .
+}
+GROUP BY ?edge ?resolution ?material ?lengthMm ORDER BY ?edge

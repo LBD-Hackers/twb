@@ -1,0 +1,111 @@
+{
+    "name": "@lbd-hackers/twb",
+    "version": "0.1.0",
+    "description": "TWB (thin-walled blueprints): the ontology, the house file and its JSON-LD context, IFC to TWB, the @surfacekit drawing engine and the <arch-paper-model> viewer",
+    "keywords": [
+        "twb",
+        "thin-walled blueprints",
+        "bim",
+        "ifc",
+        "linked building data",
+        "lbd",
+        "bot",
+        "ontology",
+        "json-ld",
+        "rdf",
+        "timber frame"
+    ],
+    "homepage": "https://twb.madsholten.dk",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/LBD-Hackers/twb.git"
+    },
+    "bugs": "https://github.com/LBD-Hackers/twb/issues",
+    "author": "Mads Holten Rasmussen",
+    "license": "Apache-2.0 AND CC-BY-4.0",
+    "type": "module",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        },
+        "./house": {
+            "types": "./dist/house/index.d.ts",
+            "import": "./dist/house/index.js"
+        },
+        "./ifc": {
+            "types": "./dist/ifc/index.d.ts",
+            "import": "./dist/ifc/index.js"
+        },
+        "./elements": {
+            "types": "./dist/elements/index.d.ts",
+            "import": "./dist/elements/index.js"
+        },
+        "./surfacekit/core": {
+            "types": "./dist/surfacekit/core/index.d.ts",
+            "import": "./dist/surfacekit/core/index.js"
+        },
+        "./surfacekit/grid": {
+            "types": "./dist/surfacekit/grid/index.d.ts",
+            "import": "./dist/surfacekit/grid/index.js"
+        },
+        "./surfacekit/model": {
+            "types": "./dist/surfacekit/model/index.d.ts",
+            "import": "./dist/surfacekit/model/index.js"
+        },
+        "./surfacekit/interaction": {
+            "types": "./dist/surfacekit/interaction/index.d.ts",
+            "import": "./dist/surfacekit/interaction/index.js"
+        },
+        "./surfacekit/render": {
+            "types": "./dist/surfacekit/render/index.d.ts",
+            "import": "./dist/surfacekit/render/index.js"
+        },
+        "./context.jsonld": "./ontology/twb-house.context.jsonld",
+        "./ontology/*": "./ontology/*",
+        "./package.json": "./package.json"
+    },
+    "bin": {
+        "twb": "./dist/cli.js"
+    },
+    "files": [
+        "dist",
+        "ontology",
+        "LICENSE",
+        "README.md"
+    ],
+    "engines": {
+        "node": ">=20"
+    },
+    "scripts": {
+        "build": "tsup",
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "check:ontology": "python3 tools/twb_check.py && python3 tools/twb_house_check.py",
+        "prepublishOnly": "npm run typecheck && npm test && npm run build"
+    },
+    "peerDependencies": {
+        "lit": "^3.0.0",
+        "three": ">=0.160.0"
+    },
+    "peerDependenciesMeta": {
+        "lit": {
+            "optional": true
+        },
+        "three": {
+            "optional": true
+        }
+    },
+    "devDependencies": {
+        "@types/node": "^22.0.0",
+        "@types/three": "^0.180.0",
+        "lit": "^3.3.0",
+        "three": "^0.180.0",
+        "tsup": "^8.5.0",
+        "typescript": "~5.9.3",
+        "vitest": "^4.0.0"
+    }
+}

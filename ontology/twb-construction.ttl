@@ -1,0 +1,337 @@
+@prefix twb:     <https://w3id.org/twb#> .
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix skos:    <http://www.w3.org/2004/02/skos/core#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix vann:    <http://purl.org/vocab/vann/> .
+@prefix unit:    <http://qudt.org/vocab/unit/> .
+
+# =================================================================================================
+#  TWB construction — a module of the Thin-Walled Blueprint ontology (TWB)
+#
+#  What a surface is built of: recipes and their layers in order, one of them the structural core;
+#  materials; member, cladding, taper, masonry and wall-tie patterns within a layer; coverings on
+#  zone boundaries; U- and psi-values; and the levels of specification a detail is resolved at.
+#
+#  TWB is modular, as SEAS is: one namespace (twb:, https://w3id.org/twb#) shared by every module,
+#  each module an ontology of its own that imports only the modules it builds on, and every term
+#  stating the module that defines it (rdfs:isDefinedBy). https://w3id.org/twb imports them all.
+#
+#  Working draft, version 0.3.0 (2026-10-13).
+# =================================================================================================
+
+<https://w3id.org/twb/construction>
+    a owl:Ontology ;
+    dcterms:title "TWB construction"@en ;
+    dcterms:description """What a surface is built of: recipes and their layers in order, one of
+them the structural core; materials; member, cladding, taper, masonry and wall-tie patterns within a layer;
+coverings on zone boundaries; U- and psi-values; and the levels of specification a detail is resolved at."""@en ;
+    dcterms:creator "Mads Holten Rasmussen" ;
+    dcterms:license <https://creativecommons.org/licenses/by/4.0/> ;
+    dcterms:isPartOf <https://w3id.org/twb> ;
+    vann:preferredNamespacePrefix "twb" ;
+    vann:preferredNamespaceUri "https://w3id.org/twb#" ;
+    owl:imports <https://w3id.org/twb/core> ;
+    owl:versionInfo "0.3.0" ;
+    owl:versionIRI <https://w3id.org/twb/construction/0.3.0> ;
+    dcterms:modified "2026-10-13"^^xsd:date .
+
+# =================================================================================================
+#  Coverings
+# =================================================================================================
+
+twb:Covering
+    a owl:Class ;
+    rdfs:label "Covering"@en ;
+    rdfs:comment """A finish or system applied over the recipe's outermost layer where one zone meets a surface — paint, tiles,
+a wet-room membrane system. Because it attaches to the zone boundary rather than to the recipe, one recipe can carry
+tiles towards a bathroom and paint towards the bedroom on its other side."""@en ;
+    twb:ifcCounterpart "IfcCovering" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:hasCovering
+    a owl:ObjectProperty ;
+    rdfs:label "has covering"@en ;
+    rdfs:comment "A covering applied to a zone boundary — the part of a side one zone faces — or to a whole surface side."@en ;
+    rdfs:range twb:Covering ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+# =================================================================================================
+#  Recipes
+# =================================================================================================
+
+twb:Recipe
+    a owl:Class ;
+    rdfs:label "Recipe"@en ;
+    rdfs:comment """A type-level specification of the assembly that realises a surface: its layers in order from the inside
+side to the outside side, exactly one of which is the structural core, the boundary condition it is designed for,
+and the capabilities it provides. The core's members are not listed: they are derived, by the framing rules, for
+each surface the recipe is applied to."""@en ;
+    twb:archTerm "Assembly (apps/frame-builder/src/envelope/assembly.ts)" ;
+    twb:ifcCounterpart "IfcMaterialLayerSet (on an IfcWallType / IfcSlabType)" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:hasRecipe
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "has recipe"@en ;
+    rdfs:domain twb:Surface ;
+    rdfs:range twb:Recipe ;
+    twb:ifcCounterpart "IfcRelAssociatesMaterial with IfcMaterialLayerSetUsage" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:recipeSource
+    a owl:ObjectProperty ;
+    rdfs:label "recipe source"@en ;
+    rdfs:comment "How a surface's recipe was decided: stated for the surface, or assigned by a rule."@en ;
+    rdfs:domain twb:Surface ;
+    rdfs:range twb:Resolution ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:Layer
+    a owl:Class ;
+    rdfs:label "Layer"@en ;
+    rdfs:comment "One layer of a recipe: a material, a thickness and, if it is inhomogeneous, the members or boards it is made of."@en ;
+    twb:archTerm "EnvelopeLayer" ;
+    twb:ifcCounterpart "IfcMaterialLayer" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:hasLayer
+    a owl:ObjectProperty ;
+    rdfs:label "has layer"@en ;
+    rdfs:domain twb:Recipe ;
+    rdfs:range twb:Layer ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:layerIndex
+    a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "layer index"@en ;
+    rdfs:comment "The position of the layer in its recipe, counted from 0 on the inside side."@en ;
+    rdfs:range xsd:nonNegativeInteger ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:isCore
+    a owl:DatatypeProperty ;
+    rdfs:label "is core"@en ;
+    rdfs:comment "True for the layer the structural frame lies in. Its depth and members are derived per surface."@en ;
+    rdfs:domain twb:Layer ;
+    rdfs:range xsd:boolean ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:thickness
+    a owl:DatatypeProperty ;
+    rdfs:label "thickness"@en ;
+    rdfs:range xsd:decimal ;
+    twb:unit unit:MilliM ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:material
+    a owl:ObjectProperty ;
+    rdfs:label "material"@en ;
+    rdfs:range twb:Material ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:Material
+    a owl:Class ;
+    rdfs:label "Material"@en ;
+    rdfs:comment "A generic material, with the design values calculations read. A product's declared values may replace them."@en ;
+    twb:ifcCounterpart "IfcMaterial" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:materialKind
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "material kind"@en ;
+    rdfs:domain twb:Material ;
+    rdfs:range twb:MaterialKind ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:MaterialKind
+    a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Material kind"@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:Insulation a twb:MaterialKind ; skos:prefLabel "insulation"@en ; skos:inScheme twb:MaterialKinds ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+twb:Timber a twb:MaterialKind ; skos:prefLabel "timber"@en ; skos:inScheme twb:MaterialKinds ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+twb:Board a twb:MaterialKind ; skos:prefLabel "board"@en ; skos:inScheme twb:MaterialKinds ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+twb:Masonry a twb:MaterialKind ; skos:prefLabel "masonry"@en ; skos:inScheme twb:MaterialKinds ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+twb:Membrane a twb:MaterialKind ; skos:prefLabel "membrane"@en ; skos:inScheme twb:MaterialKinds ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+twb:VentilatedAirLayer a twb:MaterialKind ; skos:prefLabel "ventilated air layer"@en ; skos:inScheme twb:MaterialKinds ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+twb:StillAirLayer a twb:MaterialKind ; skos:prefLabel "unventilated air layer"@en ; skos:inScheme twb:MaterialKinds ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+twb:MaterialKinds a skos:ConceptScheme ; skos:prefLabel "Material kinds"@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+twb:thermalConductivity
+    a owl:DatatypeProperty ;
+    rdfs:label "thermal conductivity"@en ;
+    rdfs:comment "Design thermal conductivity (lambda)."@en ;
+    rdfs:domain twb:Material ;
+    rdfs:range xsd:decimal ;
+    twb:unit unit:W-PER-M-K ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:MemberPattern
+    a owl:Class ;
+    rdfs:label "Member pattern"@en ;
+    rdfs:comment "Members of one width at one spacing within a layer, the rest of the layer being its own material."@en ;
+    twb:archTerm "LayerMembers" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:hasMemberPattern
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "has member pattern"@en ;
+    rdfs:domain twb:Layer ;
+    rdfs:range twb:MemberPattern ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:memberWidth
+    a owl:DatatypeProperty ;
+    rdfs:label "member width"@en ;
+    rdfs:domain twb:MemberPattern ;
+    rdfs:range xsd:decimal ;
+    twb:unit unit:MilliM ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:spacing
+    a owl:DatatypeProperty ;
+    rdfs:label "spacing"@en ;
+    rdfs:comment "Centre-to-centre spacing."@en ;
+    rdfs:domain twb:MemberPattern ;
+    rdfs:range xsd:decimal ;
+    twb:unit unit:MilliM ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:runsAlongCore
+    a owl:DatatypeProperty ;
+    rdfs:label "runs along core"@en ;
+    rdfs:comment "True when the members follow the core's members; false when they cross them (the default)."@en ;
+    rdfs:domain twb:MemberPattern ;
+    rdfs:range xsd:boolean ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:CladdingPattern
+    a owl:Class ;
+    rdfs:label "Cladding pattern"@en ;
+    rdfs:comment "Boards laid out one by one: board-on-board, lap or board-and-batten, with their sizes."@en ;
+    twb:archTerm "LayerCladding (envelope/cladding.ts)" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:hasCladdingPattern
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "has cladding pattern"@en ;
+    rdfs:domain twb:Layer ;
+    rdfs:range twb:CladdingPattern ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:Taper
+    a owl:Class ;
+    rdfs:label "Taper"@en ;
+    rdfs:comment "A layer that grows in thickness away from the edge the water runs to, giving a level deck its fall (tapered insulation)."@en ;
+    twb:archTerm "LayerTaper (envelope/taper.ts)" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:hasTaper a owl:ObjectProperty, owl:FunctionalProperty ; rdfs:label "has taper"@en ; rdfs:domain twb:Layer ; rdfs:range twb:Taper ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+twb:fallPercent a owl:DatatypeProperty ; rdfs:label "fall"@en ; rdfs:comment "The fall of the layer's cold face, per cent (2 is 20 mm per metre)."@en ;
+    rdfs:domain twb:Taper ; rdfs:range xsd:decimal ; twb:unit unit:PERCENT ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:MasonryBond
+    a owl:Class ;
+    rdfs:label "Masonry bond"@en ;
+    rdfs:comment "A facing leaf of brick laid in a bond: the layer's courses of stretchers and headers. Its look and its count of bricks; not its thickness."@en ;
+    twb:archTerm "LayerMasonry (envelope/assembly.ts)" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:hasMasonryBond a owl:ObjectProperty, owl:FunctionalProperty ; rdfs:label "has masonry bond"@en ; rdfs:domain twb:Layer ; rdfs:range twb:MasonryBond ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+twb:BrickBond
+    a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Brick bond"@en ;
+    rdfs:comment "How the bricks of a half-brick facing leaf are laid, course over course: løberforbandt (stretcher bond, the default), krydsforbandt, blokforbandt, munkeforbandt or polsk forbandt."@en ;
+    twb:archTerm "BrickBond (envelope/brick-bond.ts)" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:brickBond a owl:ObjectProperty, owl:FunctionalProperty ; rdfs:label "brick bond"@en ; rdfs:domain twb:MasonryBond ; rdfs:range twb:BrickBond ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+twb:WallTies
+    a owl:Class ;
+    rdfs:label "Wall ties"@en ;
+    rdfs:comment "Stainless steel ties through a layer, binding a facing leaf to the inner leaf or the frame across it. Counted in the layer's U-value by EN ISO 6946 Annex F.3."@en ;
+    twb:archTerm "LayerTies (envelope/assembly.ts)" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:hasWallTies a owl:ObjectProperty, owl:FunctionalProperty ; rdfs:label "has wall ties"@en ; rdfs:domain twb:Layer ; rdfs:range twb:WallTies ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+twb:tiesPerSquareMetre a owl:DatatypeProperty ; rdfs:label "ties per square metre"@en ;
+    rdfs:domain twb:WallTies ; rdfs:range xsd:decimal ; twb:unit unit:PER-M2 ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:tieDiameter a owl:DatatypeProperty ; rdfs:label "tie diameter"@en ;
+    rdfs:domain twb:WallTies ; rdfs:range xsd:decimal ; twb:unit unit:MilliM ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:boundaryCondition
+    a owl:ObjectProperty ;
+    rdfs:label "boundary condition"@en ;
+    rdfs:comment "What the recipe is designed to have beyond its outermost layer."@en ;
+    rdfs:domain twb:Recipe ;
+    rdfs:range twb:EnvironmentZone ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:uValue
+    a owl:DatatypeProperty ;
+    rdfs:label "U-value"@en ;
+    rdfs:comment "Thermal transmittance of the recipe as realised on a surface (derived from its layers and the frame's timber share)."@en ;
+    rdfs:range xsd:decimal ;
+    twb:unit unit:W-PER-M2-K ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+# =================================================================================================
+#  Linear thermal transmittance
+# =================================================================================================
+
+twb:linearThermalTransmittance
+    a owl:DatatypeProperty ;
+    rdfs:label "linear thermal transmittance"@en ;
+    rdfs:comment "The psi-value of a junction or an opening edge, per metre of its length."@en ;
+    rdfs:range xsd:decimal ;
+    twb:unit unit:W-PER-M-K ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+# =================================================================================================
+#  Resolution: which level of specification decided
+# =================================================================================================
+
+twb:Resolution
+    a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Resolution"@en ;
+    rdfs:comment "Which level of specification decided a detail: the instance's own, a type-level template, a project standard, or the default."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+
+twb:ResolvedByOwn a twb:Resolution ; skos:prefLabel "own"@en ; skos:inScheme twb:Resolutions ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+twb:ResolvedByTemplate a twb:Resolution ; skos:prefLabel "template"@en ; skos:inScheme twb:Resolutions ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+twb:ResolvedByStandard a twb:Resolution ; skos:prefLabel "standard"@en ; skos:inScheme twb:Resolutions ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+twb:ResolvedByRule a twb:Resolution ; skos:prefLabel "rule"@en ; skos:inScheme twb:Resolutions ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+twb:ResolvedByDefault a twb:Resolution ; skos:prefLabel "default"@en ; skos:inScheme twb:Resolutions ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+twb:Resolutions a skos:ConceptScheme ; skos:prefLabel "Resolutions"@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .
+twb:resolvedBy
+    a owl:ObjectProperty ;
+    rdfs:label "resolved by"@en ;
+    rdfs:comment "Derived: which level of specification decided the detail of an edge, an opening or the recipe of a surface."@en ;
+    rdfs:range twb:Resolution ;
+    rdfs:isDefinedBy <https://w3id.org/twb/construction> .

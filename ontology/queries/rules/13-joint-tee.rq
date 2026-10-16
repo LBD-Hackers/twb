@@ -1,0 +1,8 @@
+# Joint resolution, the T rule: an edge running along the interior of a surface leaves that surface uncut
+# — its face continues past the junction — and every layer of the landing surface stops against it.
+PREFIX twb: <https://w3id.org/twb#>
+CONSTRUCT { ?edge twb:resolvedBy twb:ResolvedByRule ; twb:runsThrough ?host ; twb:governedBy twb:HostRunsThrough . }
+WHERE {
+  ?edge a twb:Edge ; twb:alongInteriorOf ?host .
+  FILTER NOT EXISTS { ?edge twb:resolvedBy ?any }
+}

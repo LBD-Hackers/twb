@@ -1,0 +1,22 @@
+{
+    "format": "arch/1",
+    "notes": "The case house's 7.2 × 9.6 m plan under a 30° hipped roof — what the hip and jack cuts are tested on.",
+    "wallHeightMm": 2400,
+    "walls": [
+        {
+            "id": "outer",
+            "points": [
+                [0, 0],
+                [7200, 0],
+                [7200, 9600],
+                [0, 9600],
+                [0, 0]
+            ]
+        }
+    ],
+    "openings": [
+        { "kind": "door", "at": [1650, 0], "widthMm": 900, "heightMm": 2100 },
+        { "kind": "window", "at": [3600, 9600], "widthMm": 2400, "heightMm": 1200, "sillMm": 900 }
+    ],
+    "roof": { "type": "hip", "pitchDeg": 30 }
+}

@@ -1,0 +1,4 @@
+# Joint resolution, level 1: an edge's own joint beats everything.
+PREFIX twb: <https://w3id.org/twb#>
+CONSTRUCT { ?edge twb:resolvedJoint ?joint ; twb:resolvedBy twb:ResolvedByOwn . }
+WHERE { ?edge a twb:Edge ; twb:hasOwnJoint ?joint . }

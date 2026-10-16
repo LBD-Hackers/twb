@@ -1,0 +1,7 @@
+node_modules/
+dist/
+results/
+*.tgz
+.DS_Store
+__pycache__/
+fixtures/Duplex.ifc

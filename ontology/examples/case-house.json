@@ -1,0 +1,928 @@
+{
+  "@context": "https://w3id.org/twb/context/2.jsonld",
+  "format": "twb/1",
+  "type": "Blueprint",
+  "notes": "TWB case house: 7.2 x 9.6 m single-storey timber-frame house, 2400 mm walls, a 30-degree gable roof with its ridge along y, three partitions with a door each and four rooms, all ceiled flat under a cold attic.",
+  "storeys": [
+    {
+      "type": "Storey",
+      "id": "st1",
+      "name": "Ground floor",
+      "elevationMm": 0,
+      "heightMm": 4478
+    }
+  ],
+  "surfaces": [
+    {
+      "type": "Surface",
+      "id": "floor",
+      "points": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          7200,
+          0,
+          0
+        ],
+        [
+          7200,
+          9600,
+          0
+        ],
+        [
+          0,
+          9600,
+          0
+        ]
+      ]
+    },
+    {
+      "type": "Surface",
+      "id": "roof-1",
+      "points": [
+        [
+          3600,
+          0,
+          4478
+        ],
+        [
+          7200,
+          0,
+          2400
+        ],
+        [
+          7200,
+          9600,
+          2400
+        ],
+        [
+          3600,
+          9600,
+          4478
+        ]
+      ],
+      "roofGroup": "roof-1"
+    },
+    {
+      "type": "Surface",
+      "id": "roof-2",
+      "points": [
+        [
+          0,
+          0,
+          2400
+        ],
+        [
+          3600,
+          0,
+          4478
+        ],
+        [
+          3600,
+          9600,
+          4478
+        ],
+        [
+          0,
+          9600,
+          2400
+        ]
+      ],
+      "roofGroup": "roof-1"
+    },
+    {
+      "type": "Surface",
+      "id": "wall-south",
+      "points": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          7200,
+          0,
+          0
+        ],
+        [
+          7200,
+          0,
+          2400
+        ],
+        [
+          3600,
+          0,
+          4478
+        ],
+        [
+          0,
+          0,
+          2400
+        ]
+      ],
+      "openings": [
+        {
+          "type": "Door",
+          "points": [
+            [
+              1200,
+              0,
+              0
+            ],
+            [
+              2100,
+              0,
+              0
+            ],
+            [
+              2100,
+              0,
+              2100
+            ],
+            [
+              1200,
+              0,
+              2100
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Surface",
+      "id": "wall-east",
+      "points": [
+        [
+          7200,
+          0,
+          0
+        ],
+        [
+          7200,
+          9600,
+          0
+        ],
+        [
+          7200,
+          9600,
+          2400
+        ],
+        [
+          7200,
+          0,
+          2400
+        ]
+      ],
+      "openings": [
+        {
+          "type": "Window",
+          "points": [
+            [
+              7200,
+              600,
+              1500
+            ],
+            [
+              7200,
+              1200,
+              1500
+            ],
+            [
+              7200,
+              1200,
+              2100
+            ],
+            [
+              7200,
+              600,
+              2100
+            ]
+          ],
+          "detail": "sill-flashing"
+        },
+        {
+          "type": "Window",
+          "points": [
+            [
+              7200,
+              3600,
+              900
+            ],
+            [
+              7200,
+              4800,
+              900
+            ],
+            [
+              7200,
+              4800,
+              2100
+            ],
+            [
+              7200,
+              3600,
+              2100
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Surface",
+      "id": "wall-north",
+      "points": [
+        [
+          7200,
+          9600,
+          0
+        ],
+        [
+          0,
+          9600,
+          0
+        ],
+        [
+          0,
+          9600,
+          2400
+        ],
+        [
+          3600,
+          9600,
+          4478
+        ],
+        [
+          7200,
+          9600,
+          2400
+        ]
+      ],
+      "openings": [
+        {
+          "type": "Window",
+          "points": [
+            [
+              2400,
+              9600,
+              900
+            ],
+            [
+              4800,
+              9600,
+              900
+            ],
+            [
+              4800,
+              9600,
+              2100
+            ],
+            [
+              2400,
+              9600,
+              2100
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Surface",
+      "id": "wall-west",
+      "points": [
+        [
+          0,
+          9600,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          2400
+        ],
+        [
+          0,
+          9600,
+          2400
+        ]
+      ],
+      "openings": [
+        {
+          "type": "Window",
+          "points": [
+            [
+              0,
+              2400,
+              900
+            ],
+            [
+              0,
+              3600,
+              900
+            ],
+            [
+              0,
+              3600,
+              2100
+            ],
+            [
+              0,
+              2400,
+              2100
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Surface",
+      "id": "s1",
+      "points": [
+        [
+          0,
+          6000,
+          0
+        ],
+        [
+          3600,
+          6000,
+          0
+        ],
+        [
+          3600,
+          6000,
+          2400
+        ],
+        [
+          0,
+          6000,
+          2400
+        ]
+      ],
+      "openings": [
+        {
+          "type": "Door",
+          "points": [
+            [
+              2000,
+              6000,
+              0
+            ],
+            [
+              2800,
+              6000,
+              0
+            ],
+            [
+              2800,
+              6000,
+              2100
+            ],
+            [
+              2000,
+              6000,
+              2100
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Surface",
+      "id": "s2",
+      "points": [
+        [
+          3600,
+          6000,
+          0
+        ],
+        [
+          7200,
+          6000,
+          0
+        ],
+        [
+          7200,
+          6000,
+          2400
+        ],
+        [
+          3600,
+          6000,
+          2400
+        ]
+      ]
+    },
+    {
+      "type": "Surface",
+      "id": "s3",
+      "points": [
+        [
+          4800,
+          0,
+          0
+        ],
+        [
+          4800,
+          6000,
+          0
+        ],
+        [
+          4800,
+          6000,
+          2400
+        ],
+        [
+          4800,
+          0,
+          2400
+        ]
+      ],
+      "openings": [
+        {
+          "type": "Door",
+          "points": [
+            [
+              4800,
+              800,
+              0
+            ],
+            [
+              4800,
+              1600,
+              0
+            ],
+            [
+              4800,
+              1600,
+              2100
+            ],
+            [
+              4800,
+              800,
+              2100
+            ]
+          ]
+        },
+        {
+          "type": "Door",
+          "points": [
+            [
+              4800,
+              3800,
+              0
+            ],
+            [
+              4800,
+              4600,
+              0
+            ],
+            [
+              4800,
+              4600,
+              2100
+            ],
+            [
+              4800,
+              3800,
+              2100
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Surface",
+      "id": "s4",
+      "points": [
+        [
+          4800,
+          2400,
+          0
+        ],
+        [
+          7200,
+          2400,
+          0
+        ],
+        [
+          7200,
+          2400,
+          2400
+        ],
+        [
+          4800,
+          2400,
+          2400
+        ]
+      ]
+    }
+  ],
+  "zones": [
+    {
+      "type": "Room",
+      "id": "z-living",
+      "name": "Living and kitchen",
+      "storey": "st1",
+      "point": [
+        2400,
+        3000
+      ],
+      "zoneKind": "living"
+    },
+    {
+      "type": "Room",
+      "id": "z-bath",
+      "name": "Bathroom",
+      "storey": "st1",
+      "point": [
+        6000,
+        1200
+      ],
+      "zoneKind": "bathroom"
+    },
+    {
+      "type": "Room",
+      "id": "z-bed1",
+      "name": "Bedroom 1",
+      "storey": "st1",
+      "point": [
+        6000,
+        4200
+      ],
+      "zoneKind": "bedroom"
+    },
+    {
+      "type": "Room",
+      "id": "z-bed2",
+      "name": "Bedroom 2",
+      "storey": "st1",
+      "point": [
+        3600,
+        7800
+      ],
+      "zoneKind": "bedroom"
+    }
+  ],
+  "envelope": {
+    "exteriorWall": {
+      "type": "Recipe",
+      "id": "recipe/exteriorWall",
+      "boundary": "exterior",
+      "airGapLevel": 0,
+      "layers": [
+        {
+          "index": 0,
+          "material": "osb",
+          "thickness": 15
+        },
+        {
+          "index": 1,
+          "material": "wood-fibre",
+          "thickness": 45,
+          "members": {
+            "material": "softwood",
+            "width": 45,
+            "cc": 600
+          }
+        },
+        {
+          "index": 2,
+          "material": "vapour-brake",
+          "thickness": 0.2
+        },
+        {
+          "index": 3,
+          "material": "wood-fibre",
+          "thickness": 195,
+          "members": {
+            "material": "softwood",
+            "width": 45,
+            "cc": 600
+          },
+          "core": true
+        },
+        {
+          "index": 4,
+          "material": "gypsum-wind",
+          "thickness": 9
+        },
+        {
+          "index": 5,
+          "material": "air-ventilated",
+          "thickness": 25,
+          "members": {
+            "material": "softwood",
+            "width": 50,
+            "cc": 600,
+            "run": "along"
+          }
+        },
+        {
+          "index": 6,
+          "material": "air-ventilated",
+          "thickness": 25,
+          "members": {
+            "material": "softwood",
+            "width": 50,
+            "cc": 600
+          }
+        },
+        {
+          "index": 7,
+          "material": "cladding",
+          "thickness": 44,
+          "cladding": {
+            "pattern": "board-on-board",
+            "boardWidth": 125,
+            "boardThickness": 22,
+            "overlap": 25
+          }
+        }
+      ]
+    }
+  },
+  "edgeJoints": [
+    {
+      "type": "JointDetail",
+      "edge": "edge/wall-south%7Cwall-west",
+      "cuts": [
+        {
+          "surface": "wall-south",
+          "layer": 0,
+          "cut": "miter"
+        },
+        {
+          "surface": "wall-south",
+          "layer": 1,
+          "cut": "miter"
+        },
+        {
+          "surface": "wall-south",
+          "layer": 2,
+          "cut": "miter"
+        },
+        {
+          "surface": "wall-south",
+          "layer": 3,
+          "cut": "miter"
+        },
+        {
+          "surface": "wall-south",
+          "layer": 4,
+          "cut": "miter"
+        },
+        {
+          "surface": "wall-south",
+          "layer": 5,
+          "cut": "miter"
+        },
+        {
+          "surface": "wall-south",
+          "layer": 6,
+          "cut": "miter"
+        },
+        {
+          "surface": "wall-south",
+          "layer": 7,
+          "cut": "miter"
+        },
+        {
+          "surface": "wall-west",
+          "layer": 0,
+          "cut": "miter"
+        },
+        {
+          "surface": "wall-west",
+          "layer": 1,
+          "cut": "miter"
+        },
+        {
+          "surface": "wall-west",
+          "layer": 2,
+          "cut": "miter"
+        },
+        {
+          "surface": "wall-west",
+          "layer": 3,
+          "cut": "miter"
+        },
+        {
+          "surface": "wall-west",
+          "layer": 4,
+          "cut": "miter"
+        },
+        {
+          "surface": "wall-west",
+          "layer": 5,
+          "cut": "miter"
+        },
+        {
+          "surface": "wall-west",
+          "layer": 6,
+          "cut": "miter"
+        },
+        {
+          "surface": "wall-west",
+          "layer": 7,
+          "cut": "miter"
+        }
+      ]
+    }
+  ],
+  "jointTemplates": [
+    {
+      "type": "JointTemplate",
+      "edgeType": "OutsideCorner",
+      "atInsideCorner": false,
+      "first": "recipe/exteriorWall",
+      "second": "recipe/exteriorWall",
+      "cuts": [
+        {
+          "role": "first",
+          "layer": 0,
+          "cut": "standard"
+        },
+        {
+          "role": "first",
+          "layer": 1,
+          "cut": "standard"
+        },
+        {
+          "role": "first",
+          "layer": 2,
+          "cut": "standard"
+        },
+        {
+          "role": "first",
+          "layer": 3,
+          "cut": "standard"
+        },
+        {
+          "role": "first",
+          "layer": 4,
+          "cut": "standard"
+        },
+        {
+          "role": "first",
+          "layer": 5,
+          "cut": "standard"
+        },
+        {
+          "role": "first",
+          "layer": 6,
+          "cut": "standard"
+        },
+        {
+          "role": "first",
+          "layer": 7,
+          "cut": "standard"
+        },
+        {
+          "role": "second",
+          "layer": 0,
+          "cut": "standard"
+        },
+        {
+          "role": "second",
+          "layer": 1,
+          "cut": "standard"
+        },
+        {
+          "role": "second",
+          "layer": 2,
+          "cut": "standard"
+        },
+        {
+          "role": "second",
+          "layer": 3,
+          "cut": "standard"
+        },
+        {
+          "role": "second",
+          "layer": 4,
+          "cut": "standard"
+        },
+        {
+          "role": "second",
+          "layer": 5,
+          "cut": "standard"
+        },
+        {
+          "role": "second",
+          "layer": 6,
+          "cut": "standard"
+        },
+        {
+          "role": "second",
+          "layer": 7,
+          "cut": "standard"
+        }
+      ],
+      "trims": [
+        {
+          "material": "cladding",
+          "profile": [
+            [
+              100.5,
+              200.5
+            ],
+            [
+              222.5,
+              200.5
+            ],
+            [
+              222.5,
+              222.5
+            ],
+            [
+              100.5,
+              222.5
+            ]
+          ]
+        },
+        {
+          "material": "cladding",
+          "profile": [
+            [
+              200.5,
+              100.5
+            ],
+            [
+              200.5,
+              200.5
+            ],
+            [
+              222.5,
+              200.5
+            ],
+            [
+              222.5,
+              100.5
+            ]
+          ]
+        }
+      ]
+    }
+  ],
+  "jointStandards": [
+    {
+      "type": "JointStandard",
+      "jointType": "wall-corner",
+      "option": "longer-through"
+    },
+    {
+      "type": "JointStandard",
+      "jointType": "eave",
+      "option": "roof-through"
+    },
+    {
+      "type": "JointStandard",
+      "jointType": "verge",
+      "option": "roof-through"
+    }
+  ],
+  "openingStandards": [
+    {
+      "type": "OpeningStandard",
+      "openingType": "Window",
+      "standardDetail": "head-sill-boards"
+    },
+    {
+      "type": "OpeningStandard",
+      "openingType": "Door",
+      "standardDetail": "frame-boards"
+    },
+    {
+      "type": "OpeningStandard",
+      "openingType": "GarageDoor",
+      "standardDetail": "frame-boards"
+    }
+  ],
+  "nodeRules": [
+    {
+      "type": "NodeRule",
+      "forEdges": [
+        "edge/roof-1%7Cwall-east",
+        "edge/roof-1%7Cwall-south~attic"
+      ],
+      "through": "edge/roof-1%7Cwall-east"
+    }
+  ],
+  "expression": {
+    "type": "Expression",
+    "notation": "overhang-barge",
+    "facade": "board-on-board",
+    "gutter": "hung",
+    "roofCovering": "tiles",
+    "openingFinish": "frame-boards"
+  },
+  "buildingUse": "dwelling"
+}

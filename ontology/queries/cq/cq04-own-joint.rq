@@ -1,0 +1,18 @@
+# CQ4: How does each layer of each surface end at an edge with its own joint?
+PREFIX twb: <https://w3id.org/twb#>
+PREFIX bot: <https://w3id.org/bot#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+PREFIX inst: <https://example.org/twb/case-house/>
+SELECT ?edge ?surface ?layer ?material ?cut
+WHERE {
+  ?e twb:hasOwnJoint ?j ; rdfs:label ?edge .
+  ?j twb:hasLayerTermination ?t .
+  ?t twb:ofSurface ?s ; twb:layerIndex ?layer ; twb:cut ?c .
+  ?s rdfs:label ?surface ; twb:hasRecipe/twb:hasLayer ?l .
+  ?l twb:layerIndex ?layer ; twb:material/rdfs:label ?material .
+  OPTIONAL { ?c twb:boundaryIndex ?n }
+  OPTIONAL { ?c rdfs:label ?cl }
+  BIND (COALESCE(?cl, CONCAT("boundary ", STR(?n))) AS ?cut)
+}
+ORDER BY ?edge ?surface ?layer

@@ -1,0 +1,39 @@
+{
+    "@context": "https://w3id.org/twb/context/2.jsonld",
+    "format": "twb/1",
+    "type": "Blueprint",
+    "notes": "A 3.6 × 2.4 m tool shed: a shed roof rising to the north, a door in the south wall and a window in the east wall.",
+    "wallHeightMm": 2300,
+    "walls": [
+        {
+            "id": "shed",
+            "points": [
+                [0, 0],
+                [3600, 0],
+                [3600, 2400],
+                [0, 2400],
+                [0, 0]
+            ]
+        }
+    ],
+    "roof": {
+        "type": "shed",
+        "pitchDeg": 10,
+        "highSide": "north"
+    },
+    "openings": [
+        {
+            "kind": "door",
+            "at": [1800, 0],
+            "widthMm": 900,
+            "heightMm": 2000
+        },
+        {
+            "kind": "window",
+            "at": [3600, 1200],
+            "widthMm": 600,
+            "heightMm": 600,
+            "sillMm": 1100
+        }
+    ]
+}

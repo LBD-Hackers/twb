@@ -1,0 +1,13 @@
+# CQ6: How is each opening finished, and which level of specification decided it?
+PREFIX twb: <https://w3id.org/twb#>
+PREFIX bot: <https://w3id.org/bot#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+PREFIX inst: <https://example.org/twb/case-house/>
+SELECT ?opening ?class ?detail ?resolution
+WHERE {
+  ?o twb:resolvedOpeningDetail/skos:prefLabel ?detail ; twb:resolvedBy/skos:prefLabel ?resolution ;
+     a ?c ; rdfs:label ?opening .
+  ?c rdfs:subClassOf twb:Opening ; rdfs:label ?class .
+}
+ORDER BY ?opening

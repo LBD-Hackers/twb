@@ -1,0 +1,87 @@
+@prefix twb:   <https://w3id.org/twb#> .
+@prefix twbc:  <https://w3id.org/twb/catalogue/arch#> .
+@prefix bot:   <https://w3id.org/bot#> .
+@prefix bpo:   <https://w3id.org/bpo#> .
+@prefix dicm:  <https://w3id.org/digitalconstruction/0.5/Materials#> .
+@prefix sml:   <https://w3id.org/sml/def#> .
+@prefix beo:   <https://pi.pauwel.be/voc/buildingelement#> .
+@prefix ifc:   <https://standards.buildingsmart.org/IFC/DEV/IFC4/ADD2_TC1/OWL#> .
+@prefix opm:   <https://w3id.org/opm#> .
+@prefix prov:  <http://www.w3.org/ns/prov#> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos:  <http://www.w3.org/2004/02/skos/core#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+# =================================================================================================
+#  TWB alignments — kept apart from TWB's modules so that using TWB never forces an import of BPO,
+#  DiCon, SML, BEO or ifcOWL. Strong statements (rdfs:subClassOf) only where the other ontology's
+#  definition covers TWB's term; skos:closeMatch / skos:relatedMatch where it is a neighbour.
+#
+#  BOT is the exception: TWB is an extension of BOT, so its alignments live in the modules (most in twb-core.ttl).
+#  PROV likewise (twb:Blueprint ⊑ prov:Plan, twb:Derivation ⊑ prov:Activity).
+# =================================================================================================
+
+<https://w3id.org/twb/align>
+    a owl:Ontology ;
+    dcterms:title "TWB alignments"@en ;
+    rdfs:comment "Alignments of the Thin-Walled Blueprint ontology with BPO, DiCon Materials, SML (EN 17632-1), BEO, ifcOWL (IFC4) and OPM."@en ;
+    dcterms:isPartOf <https://w3id.org/twb> ;
+    owl:imports <https://w3id.org/twb> ;
+    owl:versionInfo "0.3.0" .
+
+# ---- Recipes and layers: BPO and DiCon Materials ---------------------------------------------------
+
+# A recipe is a type-level description of an assembly; BPO's assembly is "the description of a
+# structure that is composed of (at least two) other components".
+twb:Recipe rdfs:subClassOf bpo:Assembly .
+# DiCon's layer set is the ordered material build-up a recipe has; a recipe adds the core's
+# framing rules, a boundary condition and the capabilities it provides.
+twb:Recipe skos:relatedMatch dicm:LayerSet .
+twb:Layer skos:closeMatch dicm:Layer .
+twb:hasLayer skos:closeMatch dicm:hasLayer .
+twb:thickness skos:closeMatch dicm:Thickness .
+twb:thermalConductivity skos:closeMatch dicm:ThermalConductivity .
+twb:Material skos:closeMatch ifc:IfcMaterial .
+
+# ---- Interfaces of every dimension: SML (EN 17632-1) ---------------------------------------------
+# SML's interface is "a spatial object, typically a thin 2D physical space (but also 0D or 1D) that
+# connects two physical objects": a zone boundary is its 2D case, an edge its 1D case, a node its 0D.
+twb:ZoneBoundary skos:closeMatch sml:Interface .
+twb:Edge skos:closeMatch sml:Interface .
+twb:Node skos:closeMatch sml:Interface .
+twb:Trim skos:relatedMatch sml:Connection .
+
+# ---- IFC4 (ifcOWL) -----------------------------------------------------------------------------------
+twb:Surface skos:relatedMatch ifc:IfcWall, ifc:IfcSlab, ifc:IfcRoof .
+twb:hasRecipe skos:relatedMatch ifc:IfcMaterialLayerSetUsage .
+twb:isInside skos:relatedMatch ifc:directionSense_IfcMaterialLayerSetUsage .
+twb:ZoneBoundary skos:closeMatch ifc:IfcRelSpaceBoundary2ndLevel .
+twb:ZoneSeparation skos:closeMatch ifc:IfcVirtualElement .
+twb:Edge skos:relatedMatch ifc:IfcRelConnectsPathElements, ifc:IfcRelConnectsElements .
+# A layer termination is what IFC can only approximate with a priority per layer.
+twb:LayerTermination skos:relatedMatch ifc:relatingPriorities_IfcRelConnectsPathElements .
+twb:Trim skos:relatedMatch ifc:IfcRelConnectsWithRealizingElements .
+twb:Opening skos:relatedMatch ifc:IfcOpeningElement .
+twb:Window skos:closeMatch ifc:IfcWindow .
+twb:Door skos:closeMatch ifc:IfcDoor .
+twb:Member skos:relatedMatch ifc:IfcMember, ifc:IfcBeam, ifc:IfcColumn .
+twb:OutdoorAir skos:closeMatch ifc:EXTERNAL .
+twb:Ground skos:closeMatch ifc:EXTERNAL_EARTH .
+
+# ---- BEO (pi.pauwel.be) for compiled elements ---------------------------------------------------------
+# Not w3id.org/beo#, which is a different, IFC 4.3-generated ontology.
+<https://w3id.org/twb/catalogue/arch#role/stud> skos:closeMatch beo:Member-STUD .
+twb:Window skos:closeMatch beo:Window .
+twb:Door skos:closeMatch beo:Door .
+twb:WallSurface skos:relatedMatch beo:Wall .
+twb:FloorSurface skos:relatedMatch beo:Slab .
+twb:RoofSurface skos:relatedMatch beo:Roof .
+
+# ---- OPM: requirements and derived values as property states ---------------------------------------
+# TWB states requirements and derived values directly (twb:requires, twb:requiresMaxUValue,
+# twb:uValue). Where their history and reliability must be managed, the same values are carried as
+# OPM property states: a requirement inferred from adjacency is an opm:Required state, a U-value
+# computed from a recipe an opm:Derived one, linked to its arguments by prov:wasDerivedFrom.
+twb:requiresMaxUValue rdfs:seeAlso opm:Required .
+twb:uValue rdfs:seeAlso opm:Derived .

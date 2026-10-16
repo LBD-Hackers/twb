@@ -1,0 +1,4 @@
+# Joint resolution, level 4: everything left is mitred.
+PREFIX twb: <https://w3id.org/twb#>
+CONSTRUCT { ?edge twb:resolvedBy twb:ResolvedByDefault . }
+WHERE { ?edge a twb:Edge . FILTER NOT EXISTS { ?edge twb:resolvedBy ?any } }

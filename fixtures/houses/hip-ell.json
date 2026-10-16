@@ -1,0 +1,21 @@
+{
+    "format": "arch/1",
+    "notes": "An L-shaped plan under a 40° hipped roof with a 700 mm eave: hips at three ends and the outside corner, a valley in the inside corner, two ridges meeting.",
+    "wallHeightMm": 2400,
+    "walls": [
+        {
+            "id": "outer",
+            "points": [
+                [0, 0],
+                [9600, 0],
+                [9600, 6000],
+                [6000, 6000],
+                [6000, 10800],
+                [0, 10800],
+                [0, 0]
+            ]
+        }
+    ],
+    "roof": { "type": "hip", "pitchDeg": 40 },
+    "roofOverhang": { "eavesMm": 700, "vergeMm": 400 }
+}

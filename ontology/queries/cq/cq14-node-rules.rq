@@ -1,0 +1,13 @@
+# CQ14: Where do trims meet at a node other than mitred, which edge's trims run through there, and which node rule says so?
+PREFIX twb: <https://w3id.org/twb#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+SELECT ?node ?kind ?material ?through ?rule
+WHERE {
+  ?node a twb:Node ; twb:hasTrimMeeting ?m .
+  ?m twb:meetingKind ?k ; twb:material ?material .
+  FILTER (?k != twb:MitredMeeting)
+  OPTIONAL { ?m twb:throughEdge ?t . ?t rdfs:label ?through .
+             OPTIONAL { ?r a twb:NodeRule ; twb:throughEdge ?t ; rdfs:label ?rule } }
+  BIND (REPLACE(STR(?k), "^.*#", "") AS ?kind)
+}
+ORDER BY ?node ?kind

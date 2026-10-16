@@ -1,0 +1,179 @@
+@prefix twb:     <https://w3id.org/twb#> .
+@prefix bot:     <https://w3id.org/bot#> .
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix skos:    <http://www.w3.org/2004/02/skos/core#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix vann:    <http://purl.org/vocab/vann/> .
+@prefix unit:    <http://qudt.org/vocab/unit/> .
+
+# =================================================================================================
+#  TWB requirements — a module of the Thin-Walled Blueprint ontology (TWB)
+#
+#  What the construction must do where a zone meets a surface: the capabilities recipes and
+#  coverings provide, adjacency rules stated as data, the requirements they infer on zone
+#  boundaries, and U-value limits.
+#
+#  TWB is modular, as SEAS is: one namespace (twb:, https://w3id.org/twb#) shared by every module,
+#  each module an ontology of its own that imports only the modules it builds on, and every term
+#  stating the module that defines it (rdfs:isDefinedBy). https://w3id.org/twb imports them all.
+#
+#  Working draft, version 0.3.0 (2026-10-13).
+# =================================================================================================
+
+<https://w3id.org/twb/requirements>
+    a owl:Ontology ;
+    dcterms:title "TWB requirements"@en ;
+    dcterms:description """What the construction must do where a zone meets a
+surface: the capabilities recipes and coverings provide, adjacency rules stated as data, the requirements they
+infer on zone boundaries, and U-value limits."""@en ;
+    dcterms:creator "Mads Holten Rasmussen" ;
+    dcterms:license <https://creativecommons.org/licenses/by/4.0/> ;
+    dcterms:isPartOf <https://w3id.org/twb> ;
+    vann:preferredNamespacePrefix "twb" ;
+    vann:preferredNamespaceUri "https://w3id.org/twb#" ;
+    owl:imports <https://w3id.org/twb/construction> ;
+    owl:versionInfo "0.3.0" ;
+    owl:versionIRI <https://w3id.org/twb/requirements/0.3.0> ;
+    dcterms:modified "2026-10-13"^^xsd:date .
+
+# =================================================================================================
+#  Adjacency rules and capabilities
+# =================================================================================================
+
+twb:Capability
+    a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Capability"@en ;
+    rdfs:comment """Something a surface's construction must be able to do on one side, or as a whole: control vapour on the
+warm side, resist splash water towards a wet room, separate two fire cells, keep heat in."""@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+
+twb:Capabilities a skos:ConceptScheme ; skos:prefLabel "Capabilities"@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+twb:ThermalEnvelope a twb:Capability ; skos:prefLabel "thermal envelope"@en ; skos:inScheme twb:Capabilities ;
+    skos:definition "Part of the climate screen between the heated volume and something colder."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+
+twb:VapourControl a twb:Capability ; skos:prefLabel "vapour control"@en ; skos:inScheme twb:Capabilities ;
+    skos:definition "A vapour barrier or retarder on this side of the insulation."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+
+twb:WindBarrier a twb:Capability ; skos:prefLabel "wind barrier"@en ; skos:inScheme twb:Capabilities ;
+    skos:definition "A wind-tight layer on this side of the insulation."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+
+twb:WeatherProtection a twb:Capability ; skos:prefLabel "weather protection"@en ; skos:inScheme twb:Capabilities ;
+    skos:definition "A ventilated rain screen, cladding or roofing on this side."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+
+twb:WetRoomLining a twb:Capability ; skos:prefLabel "wet-room lining"@en ; skos:inScheme twb:Capabilities ;
+    skos:definition "A moisture-resistant board with a membrane on this side, as wet rooms require."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+
+twb:FireSeparation a twb:Capability ; skos:prefLabel "fire separation"@en ; skos:inScheme twb:Capabilities ;
+    skos:definition "Separates two fire cells (for example two dwellings)."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+
+twb:AcousticSeparation a twb:Capability ; skos:prefLabel "acoustic separation"@en ; skos:inScheme twb:Capabilities ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+twb:providesInside
+    a owl:ObjectProperty ;
+    rdfs:label "provides inside"@en ;
+    rdfs:comment "A capability the recipe provides on its inside side (the side of layer 0)."@en ;
+    rdfs:domain twb:Recipe ;
+    rdfs:range twb:Capability ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+
+twb:providesOutside
+    a owl:ObjectProperty ;
+    rdfs:label "provides outside"@en ;
+    rdfs:comment "A capability the recipe provides on its outside side (the side of its last layer)."@en ;
+    rdfs:domain twb:Recipe ;
+    rdfs:range twb:Capability ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+
+twb:provides
+    a owl:ObjectProperty ;
+    rdfs:label "provides"@en ;
+    rdfs:comment "A capability a recipe provides as a whole, whichever side it is asked of, or a covering provides where it is applied."@en ;
+    rdfs:range twb:Capability ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+
+twb:requires
+    a owl:ObjectProperty ;
+    rdfs:label "requires"@en ;
+    rdfs:comment """Derived by adjacency rules: a capability the construction must have where a zone meets a surface — on a
+twb:ZoneBoundary (or, for a whole side, on a twb:SurfaceSide). It is met by the surface's recipe on that side, or by
+a covering applied to that boundary."""@en ;
+    rdfs:range twb:Capability ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+
+twb:requiresMaxUValue
+    a owl:DatatypeProperty ;
+    rdfs:label "requires max U-value"@en ;
+    rdfs:comment "Derived by adjacency rules: the highest U-value the surface's recipe may have."@en ;
+    rdfs:domain twb:Surface ;
+    rdfs:range xsd:decimal ;
+    twb:unit unit:W-PER-M2-K ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+
+twb:AdjacencyRule
+    a owl:Class ;
+    rdfs:label "Adjacency rule"@en ;
+    rdfs:comment """A rule stated as data: when a surface of a given class has, on one side, a zone matching one condition
+and, on the other side, a zone matching another, then the first side (or the surface) requires a capability or a
+U-value. A single generic query applies every rule of a project, so rules are edited without code."""@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+
+twb:hasAdjacencyRule a owl:ObjectProperty ; rdfs:label "has adjacency rule"@en ; rdfs:domain twb:Blueprint ; rdfs:range twb:AdjacencyRule ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+twb:appliesToSurfaceClass
+    a owl:ObjectProperty ;
+    rdfs:label "applies to surface class"@en ;
+    rdfs:domain twb:AdjacencyRule ;
+    rdfs:range owl:Class ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+
+twb:whenThisSideFaces
+    a owl:ObjectProperty ;
+    rdfs:label "when this side faces"@en ;
+    rdfs:comment "A zone condition on the side the requirement lands on: a twb:ZoneCondition."@en ;
+    rdfs:domain twb:AdjacencyRule ;
+    rdfs:range twb:ZoneCondition ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+
+twb:whenOtherSideFaces
+    a owl:ObjectProperty ;
+    rdfs:label "when other side faces"@en ;
+    rdfs:domain twb:AdjacencyRule ;
+    rdfs:range twb:ZoneCondition ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+
+twb:ZoneCondition
+    a owl:Class ;
+    rdfs:label "Zone condition"@en ;
+    rdfs:comment "Matches a zone: a specific environment zone, any room of a kind, any wet room, any heated zone."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+
+twb:matchesZone a owl:ObjectProperty ; rdfs:label "matches zone"@en ; rdfs:domain twb:ZoneCondition ; rdfs:range bot:Zone ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+twb:matchesKind a owl:ObjectProperty ; rdfs:label "matches kind"@en ; rdfs:domain twb:ZoneCondition ; rdfs:range twb:ZoneKind ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+twb:matchesWet a owl:DatatypeProperty ; rdfs:label "matches wet"@en ; rdfs:domain twb:ZoneCondition ; rdfs:range xsd:boolean ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+twb:matchesHeated a owl:DatatypeProperty ; rdfs:label "matches heated"@en ; rdfs:domain twb:ZoneCondition ; rdfs:range xsd:boolean ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+twb:thenRequires a owl:ObjectProperty ; rdfs:label "then requires"@en ; rdfs:domain twb:AdjacencyRule ; rdfs:range twb:Capability ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+twb:thenRequiresMaxUValue a owl:DatatypeProperty ; rdfs:label "then requires max U-value"@en ;
+    rdfs:domain twb:AdjacencyRule ; rdfs:range xsd:decimal ; twb:unit unit:W-PER-M2-K ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .
+
+twb:basis
+    a owl:DatatypeProperty ;
+    rdfs:label "basis"@en ;
+    rdfs:comment "Where a rule comes from: the clause of a regulation, a guideline, a company standard."@en ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <https://w3id.org/twb/requirements> .

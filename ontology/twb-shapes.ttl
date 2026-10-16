@@ -1,0 +1,268 @@
+@prefix twb:   <https://w3id.org/twb#> .
+@prefix twbsh: <https://w3id.org/twb/shapes#> .
+@prefix bot:   <https://w3id.org/bot#> .
+@prefix geo:   <http://www.opengis.net/ont/geosparql#> .
+@prefix sh:    <http://www.w3.org/ns/shacl#> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+
+# =================================================================================================
+#  TWB shapes: what a well-formed thin-walled blueprint is, and whether its construction meets the
+#  requirements its zones put on it. Two groups:
+#
+#    1. Structure — a blueprint the compiler can run on: every surface has two sides and at most
+#       one recipe, every recipe exactly one core, every edge one type and one or two surfaces,
+#       every layer termination a layer that exists.
+#    2. Requirements — every capability an adjacency rule requires where a zone meets a surface is
+#       provided by the surface's recipe on that side, or by a covering on that boundary; every
+#       U-value limit is met.
+# =================================================================================================
+
+<https://w3id.org/twb/shapes>
+    a owl:Ontology ;
+    rdfs:label "TWB shapes"@en ;
+    dcterms:isPartOf <https://w3id.org/twb> ;
+    owl:versionInfo "0.3.0" ;
+    owl:imports <https://w3id.org/twb> ;
+    sh:declare [ sh:prefix "twb" ; sh:namespace "https://w3id.org/twb#"^^xsd:anyURI ] ,
+               [ sh:prefix "bot" ; sh:namespace "https://w3id.org/bot#"^^xsd:anyURI ] ,
+               [ sh:prefix "rdfs" ; sh:namespace "http://www.w3.org/2000/01/rdf-schema#"^^xsd:anyURI ] .
+
+# ---- 1  Structure --------------------------------------------------------------------------------
+
+twbsh:SurfaceShape
+    a sh:NodeShape ;
+    sh:targetClass twb:WallSurface, twb:FloorSurface, twb:RoofSurface, twb:CeilingSurface ;
+    sh:property [
+        sh:path geo:hasGeometry ; sh:minCount 1 ; sh:maxCount 1 ;
+        sh:message "A surface has exactly one geometry: its boundary polygon on the reference plane." ] ;
+    sh:property [
+        sh:path twb:positiveSide ; sh:minCount 1 ; sh:maxCount 1 ; sh:class twb:SurfaceSide ;
+        sh:message "A surface has exactly one positive side." ] ;
+    sh:property [
+        sh:path twb:negativeSide ; sh:minCount 1 ; sh:maxCount 1 ; sh:class twb:SurfaceSide ;
+        sh:message "A surface has exactly one negative side." ] ;
+    sh:property [
+        sh:path twb:hasRecipe ; sh:maxCount 1 ; sh:class twb:Recipe ;
+        sh:message "A surface carries at most one recipe." ] ;
+    sh:property [
+        sh:path twb:hasRecipe ; sh:minCount 1 ; sh:severity sh:Warning ;
+        sh:message "A surface without a recipe cannot be compiled into construction." ] ;
+    sh:sparql [
+        a sh:SPARQLConstraint ;
+        sh:message "A surface's positive and negative sides must be two different sides." ;
+        sh:prefixes <https://w3id.org/twb/shapes> ;
+        sh:select """SELECT $this WHERE { $this twb:positiveSide ?s ; twb:negativeSide ?s . }""" ] ;
+    sh:sparql [
+        a sh:SPARQLConstraint ;
+        sh:message "Exactly one side of a surface with a recipe is its inside side." ;
+        sh:prefixes <https://w3id.org/twb/shapes> ;
+        sh:select """SELECT $this WHERE {
+            $this twb:hasRecipe ?r ; twb:positiveSide ?p ; twb:negativeSide ?n .
+            OPTIONAL { ?p twb:isInside ?pi } OPTIONAL { ?n twb:isInside ?ni }
+            FILTER (!BOUND(?pi) || !BOUND(?ni) || ?pi = ?ni)
+        }""" ] .
+
+twbsh:SurfaceSideShape
+    a sh:NodeShape ;
+    sh:targetClass twb:SurfaceSide ;
+    sh:property [
+        sh:path twb:isInside ; sh:maxCount 1 ; sh:datatype xsd:boolean ] ;
+    sh:property [
+        sh:path twb:facesZone ; sh:minCount 1 ; sh:severity sh:Warning ;
+        sh:message "A side faces no zone: rules that depend on adjacency cannot reach it." ] .
+
+twbsh:RecipeShape
+    a sh:NodeShape ;
+    sh:targetClass twb:Recipe ;
+    sh:property [
+        sh:path twb:hasLayer ; sh:minCount 1 ; sh:class twb:Layer ;
+        sh:message "A recipe has at least one layer." ] ;
+    sh:sparql [
+        a sh:SPARQLConstraint ;
+        sh:message "A recipe has a structural core layer." ;
+        sh:prefixes <https://w3id.org/twb/shapes> ;
+        sh:select """SELECT $this WHERE { FILTER NOT EXISTS { $this twb:hasLayer ?l . ?l twb:isCore true } }""" ] ;
+    sh:sparql [
+        a sh:SPARQLConstraint ;
+        sh:message "A recipe has only one core layer." ;
+        sh:prefixes <https://w3id.org/twb/shapes> ;
+        sh:select """SELECT $this WHERE {
+            $this twb:hasLayer ?a, ?b . ?a twb:isCore true . ?b twb:isCore true . FILTER (?a != ?b) }""" ] ;
+    sh:sparql [
+        a sh:SPARQLConstraint ;
+        sh:message "Two layers of a recipe share the index {?i}." ;
+        sh:prefixes <https://w3id.org/twb/shapes> ;
+        sh:select """SELECT $this ?i WHERE {
+            $this twb:hasLayer ?a, ?b . FILTER (?a != ?b) ?a twb:layerIndex ?i . ?b twb:layerIndex ?i }""" ] .
+
+twbsh:LayerShape
+    a sh:NodeShape ;
+    sh:targetClass twb:Layer ;
+    sh:property [ sh:path twb:material ; sh:minCount 1 ; sh:maxCount 1 ; sh:class twb:Material ] ;
+    sh:property [ sh:path twb:thickness ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:decimal ; sh:minInclusive 0 ] ;
+    sh:property [ sh:path twb:layerIndex ; sh:minCount 1 ; sh:maxCount 1 ] .
+
+twbsh:EdgeShape
+    a sh:NodeShape ;
+    sh:targetClass twb:Edge ;
+    sh:property [
+        sh:path twb:edgeOf ; sh:minCount 1 ; sh:maxCount 2 ; sh:class twb:Surface ;
+        sh:message "An edge is the edge of one surface (a free edge, or one running along another's interior) or of two." ] ;
+    sh:property [
+        sh:path twb:edgeType ; sh:minCount 1 ; sh:maxCount 1 ; sh:class twb:EdgeType ;
+        sh:message "An edge has exactly one edge type." ] ;
+    sh:property [ sh:path twb:length ; sh:minCount 1 ; sh:maxCount 1 ; sh:minExclusive 0 ] ;
+    sh:property [ sh:path twb:hasOwnJoint ; sh:maxCount 1 ; sh:class twb:JointDetail ] ;
+    sh:sparql [
+        a sh:SPARQLConstraint ;
+        sh:message "An edge running along the interior of a surface is the boundary edge of exactly one other surface." ;
+        sh:prefixes <https://w3id.org/twb/shapes> ;
+        sh:select """SELECT $this WHERE {
+            $this twb:alongInteriorOf ?host ; twb:edgeOf ?a, ?b . FILTER (?a != ?b) }""" ] .
+
+twbsh:LayerTerminationShape
+    a sh:NodeShape ;
+    sh:targetClass twb:LayerTermination ;
+    sh:xone (
+        [ sh:path twb:ofSurface ; sh:minCount 1 ]
+        [ sh:path twb:ofRole ; sh:minCount 1 ]
+    ) ;
+    sh:property [ sh:path twb:layerIndex ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path twb:cut ; sh:minCount 1 ; sh:maxCount 1 ; sh:class twb:LayerCut ] ;
+    sh:sparql [
+        a sh:SPARQLConstraint ;
+        sh:message "The terminated layer {?i} does not exist in the recipe of {?s}." ;
+        sh:prefixes <https://w3id.org/twb/shapes> ;
+        sh:select """SELECT $this ?s ?i WHERE {
+            $this twb:ofSurface ?s ; twb:layerIndex ?i . ?s twb:hasRecipe ?r .
+            FILTER NOT EXISTS { ?r twb:hasLayer ?l . ?l twb:layerIndex ?i } }""" ] ;
+    sh:sparql [
+        a sh:SPARQLConstraint ;
+        sh:message "The layer is cut on boundary {?n} of {?o}, whose recipe has fewer layers." ;
+        sh:prefixes <https://w3id.org/twb/shapes> ;
+        sh:select """SELECT $this ?o ?n WHERE {
+            ?e twb:hasOwnJoint ?j . ?j twb:hasLayerTermination $this .
+            $this twb:ofSurface ?s ; twb:cut ?c . ?c twb:boundaryIndex ?n .
+            ?e twb:edgeOf ?o . FILTER (?o != ?s) ?o twb:hasRecipe ?ro .
+            FILTER (?n > 0)
+            FILTER NOT EXISTS { ?ro twb:hasLayer ?l . ?l twb:layerIndex ?k . FILTER (?k = ?n - 1) } }""" ] .
+
+twbsh:JointTemplateShape
+    a sh:NodeShape ;
+    sh:targetClass twb:JointTemplate ;
+    sh:property [ sh:path twb:forEdgeType ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path twb:atInsideCorner ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path twb:firstRoleRecipe ; sh:minCount 1 ; sh:maxCount 1 ; sh:class twb:Recipe ] ;
+    sh:property [ sh:path twb:secondRoleRecipe ; sh:minCount 1 ; sh:maxCount 1 ; sh:class twb:Recipe ] ;
+    sh:sparql [
+        a sh:SPARQLConstraint ;
+        sh:message "A template names roles, not surfaces: it is applied to every edge of its kind." ;
+        sh:prefixes <https://w3id.org/twb/shapes> ;
+        sh:select """SELECT $this WHERE { $this twb:hasLayerTermination ?t . ?t twb:ofSurface ?s }""" ] .
+
+twbsh:OpeningShape
+    a sh:NodeShape ;
+    sh:targetClass twb:Window, twb:Door, twb:GarageDoor ;
+    sh:property [ sh:path twb:u ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path twb:v ; sh:minCount 1 ; sh:maxCount 1 ] ;
+    sh:property [ sh:path twb:width ; sh:minCount 1 ; sh:maxCount 1 ; sh:minExclusive 0 ] ;
+    sh:property [ sh:path twb:height ; sh:minCount 1 ; sh:maxCount 1 ; sh:minExclusive 0 ] ;
+    sh:property [ sh:path twb:hasPerimeterEdge ; sh:minCount 4 ; sh:maxCount 4 ; sh:class twb:OpeningEdge ] ;
+    sh:property [
+        sh:path [ sh:inversePath bot:hostsElement ] ; sh:minCount 1 ; sh:maxCount 1 ;
+        sh:message "An opening is hosted by exactly one surface." ] .
+
+twbsh:PassageShape
+    a sh:NodeShape ;
+    sh:targetClass twb:Passage ;
+    sh:property [
+        sh:path twb:passageThrough ; sh:minCount 1 ; sh:maxCount 1 ; sh:class twb:Door ;
+        sh:message "A passage is the way through exactly one door." ] ;
+    sh:property [
+        sh:path twb:connectsZone ; sh:minCount 2 ; sh:maxCount 2 ;
+        sh:message "A passage connects exactly two zones: the ones on either side of its door." ] ;
+    sh:sparql [
+        a sh:SPARQLConstraint ;
+        sh:message "A door can only be openable from a zone its passage connects." ;
+        sh:prefixes <https://w3id.org/twb/shapes> ;
+        sh:select """SELECT $this WHERE { $this twb:openableFrom ?z . FILTER NOT EXISTS { $this twb:connectsZone ?z } }""" ] .
+
+twbsh:NodeRuleShape
+    a sh:NodeShape ;
+    sh:targetClass twb:NodeRule ;
+    sh:property [
+        sh:path twb:forEdge ; sh:minCount 2 ; sh:maxCount 2 ; sh:class twb:Edge ;
+        sh:message "A node rule is about exactly two edges." ] ;
+    sh:property [
+        sh:path twb:throughEdge ; sh:minCount 1 ; sh:maxCount 1 ;
+        sh:message "A node rule names exactly one edge whose trims run through." ] ;
+    sh:sparql [
+        a sh:SPARQLConstraint ;
+        sh:message "The edge a node rule runs through is one of its two edges." ;
+        sh:prefixes <https://w3id.org/twb/shapes> ;
+        sh:select """SELECT $this WHERE { $this twb:throughEdge ?e . FILTER NOT EXISTS { $this twb:forEdge ?e } }""" ] .
+
+twbsh:AtticShape
+    a sh:NodeShape ;
+    sh:targetClass twb:Attic ;
+    sh:property [
+        sh:path twb:insulatedAt ; sh:minCount 1 ; sh:maxCount 1 ;
+        sh:message "An attic is insulated either at its ceilings or at the roof." ] ;
+    sh:property [
+        sh:path twb:atticOver ; sh:minCount 1 ; sh:class twb:Room ;
+        sh:message "An attic lies over at least one room." ] .
+
+twbsh:FixtureShape
+    a sh:NodeShape ;
+    sh:targetClass twb:Fixture ;
+    sh:property [
+        sh:path twb:fixtureKind ; sh:minCount 1 ; sh:maxCount 1 ; sh:class twb:FixtureKind ;
+        sh:message "A fixture is of exactly one fixture kind." ] ;
+    sh:property [
+        sh:path twb:pointMm ; sh:minCount 1 ; sh:maxCount 1 ;
+        sh:message "A fixture has the centre of its footprint." ] ;
+    sh:property [
+        sh:path twb:onStorey ; sh:maxCount 1 ; sh:class bot:Storey ;
+        sh:message "A fixture stands on at most one storey." ] .
+
+# ---- 2  Requirements ------------------------------------------------------------------------------
+
+twbsh:EgressShape
+    a sh:NodeShape ;
+    sh:targetClass twb:Room ;
+    sh:sparql [
+        a sh:SPARQLConstraint ;
+        sh:message "No way out: from {$this} no passage leads, door by door, to the outdoor air." ;
+        sh:prefixes <https://w3id.org/twb/shapes> ;
+        sh:select """SELECT $this WHERE { FILTER NOT EXISTS { $this twb:leadsTo+ twb:OutdoorAir } }""" ] .
+
+twbsh:CapabilityShape
+    a sh:NodeShape ;
+    sh:targetSubjectsOf twb:requires ;
+    sh:sparql [
+        a sh:SPARQLConstraint ;
+        sh:message "{?surface} does not provide {?cap} where it meets {?zone}: its recipe lacks it on this side and no covering supplies it." ;
+        sh:prefixes <https://w3id.org/twb/shapes> ;
+        sh:select """SELECT $this ?surface ?cap ?zone WHERE {
+            $this twb:requires ?cap ; twb:onSide ?side .
+            OPTIONAL { $this bot:interfaceOf ?zone . FILTER NOT EXISTS { ?zone twb:positiveSide|twb:negativeSide ?anything } }
+            ?surface twb:positiveSide|twb:negativeSide ?side .
+            ?surface twb:hasRecipe ?r .
+            FILTER NOT EXISTS { ?r twb:provides ?cap }
+            FILTER NOT EXISTS { ?side twb:isInside true . ?r twb:providesInside ?cap }
+            FILTER NOT EXISTS { ?side twb:isInside false . ?r twb:providesOutside ?cap }
+            FILTER NOT EXISTS { $this twb:hasCovering ?c . ?c twb:provides ?cap }
+        }""" ] .
+
+twbsh:UValueShape
+    a sh:NodeShape ;
+    sh:targetSubjectsOf twb:requiresMaxUValue ;
+    sh:sparql [
+        a sh:SPARQLConstraint ;
+        sh:message "The recipe's U-value {?u} W/m²K exceeds the {?max} W/m²K the surface's adjacency requires." ;
+        sh:prefixes <https://w3id.org/twb/shapes> ;
+        sh:select """SELECT $this ?u ?max WHERE {
+            $this twb:requiresMaxUValue ?max ; twb:hasRecipe ?r . ?r twb:uValue ?u . FILTER (?u > ?max) }""" ] .

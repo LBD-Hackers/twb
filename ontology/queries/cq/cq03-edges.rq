@@ -1,0 +1,14 @@
+# CQ3: At each edge, which surfaces meet, what kind of junction is it, and what decides its joint?
+PREFIX twb: <https://w3id.org/twb#>
+PREFIX bot: <https://w3id.org/bot#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+PREFIX inst: <https://example.org/twb/case-house/>
+SELECT ?edge ?type ?resolution ?through (GROUP_CONCAT(DISTINCT ?sl; separator=" + ") AS ?surfaces) ?along
+WHERE {
+  ?e a twb:Edge ; rdfs:label ?edge ; twb:edgeType/skos:prefLabel ?type ; twb:edgeOf/rdfs:label ?sl .
+  OPTIONAL { ?e twb:resolvedBy/skos:prefLabel ?resolution }
+  OPTIONAL { ?e twb:runsThrough/rdfs:label ?through }
+  OPTIONAL { ?e twb:alongInteriorOf/rdfs:label ?along }
+}
+GROUP BY ?edge ?type ?resolution ?through ?along ORDER BY ?type ?edge

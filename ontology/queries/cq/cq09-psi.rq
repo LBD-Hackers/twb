@@ -1,0 +1,12 @@
+# CQ9: What is the linear heat loss coefficient of the opening perimeters, per class of opening?
+PREFIX twb: <https://w3id.org/twb#>
+PREFIX bot: <https://w3id.org/bot#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+PREFIX inst: <https://example.org/twb/case-house/>
+SELECT ?class (SUM(?len) / 1000 AS ?perimeterM) (SUM(?psi * ?len) / 1000 AS ?psiLWperK)
+WHERE {
+  ?o a ?c ; twb:hasPerimeterEdge ?pe . ?c rdfs:subClassOf twb:Opening ; rdfs:label ?class .
+  ?pe twb:linearThermalTransmittance ?psi ; twb:length ?len .
+}
+GROUP BY ?class ORDER BY ?class

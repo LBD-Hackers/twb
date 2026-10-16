@@ -1,0 +1,12 @@
+# CQ13: Through which doors can one walk from room to room, and which zones does each door connect?
+PREFIX twb: <https://w3id.org/twb#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+SELECT ?door (GROUP_CONCAT(DISTINCT ?zone; separator=" <-> ") AS ?connects) (COUNT(DISTINCT ?from) AS ?restrictedTo)
+WHERE {
+  ?p a twb:Passage ; twb:passageThrough ?d ; twb:connectsZone ?z .
+  ?d rdfs:label ?door .
+  OPTIONAL { ?z rdfs:label ?zl }
+  OPTIONAL { ?p twb:openableFrom ?from }
+  BIND (COALESCE(STR(?zl), REPLACE(STR(?z), "^.*#", "")) AS ?zone)
+}
+GROUP BY ?door ORDER BY ?door

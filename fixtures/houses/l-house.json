@@ -1,0 +1,96 @@
+{
+    "@context": "https://w3id.org/twb/context/2.jsonld",
+    "format": "twb/1",
+    "type": "Blueprint",
+    "notes": "L-shaped single-storey house: a 12.0 x 4.8 m wing along x and a 4.8 x 12.0 m wing along y, 2500 mm to the eaves, one 25-degree gable roof over both. Written in the simple shape — the roof planes, valleys and gables are generated.",
+    "wallHeightMm": 2500,
+    "walls": [
+        {
+            "id": "south",
+            "points": [
+                [0, 0],
+                [12000, 0]
+            ]
+        },
+        {
+            "id": "east",
+            "points": [
+                [12000, 0],
+                [12000, 4800]
+            ]
+        },
+        {
+            "id": "inner",
+            "points": [
+                [12000, 4800],
+                [4800, 4800],
+                [4800, 12000]
+            ]
+        },
+        {
+            "id": "north",
+            "points": [
+                [4800, 12000],
+                [0, 12000]
+            ]
+        },
+        {
+            "id": "west",
+            "points": [
+                [0, 12000],
+                [0, 0]
+            ]
+        }
+    ],
+    "roof": {
+        "type": "gable",
+        "pitchDeg": 25
+    },
+    "openings": [
+        {
+            "kind": "door",
+            "at": [7200, 0],
+            "widthMm": 1000,
+            "heightMm": 2100
+        },
+        {
+            "kind": "window",
+            "at": [3600, 0],
+            "widthMm": 1800,
+            "heightMm": 1200,
+            "sillMm": 900
+        },
+        {
+            "kind": "window",
+            "at": [12000, 2400],
+            "widthMm": 1200,
+            "heightMm": 1200,
+            "sillMm": 900
+        },
+        {
+            "kind": "window",
+            "at": [0, 8400],
+            "widthMm": 1200,
+            "heightMm": 1200,
+            "sillMm": 900
+        },
+        {
+            "kind": "door",
+            "at": [4800, 2400],
+            "widthMm": 900,
+            "heightMm": 2100
+        }
+    ],
+    "interiorWalls": [
+        {
+            "points": [
+                [4800, 0],
+                [4800, 4800]
+            ]
+        }
+    ],
+    "roofOverhang": {
+        "eavesMm": 400,
+        "vergeMm": 300
+    }
+}

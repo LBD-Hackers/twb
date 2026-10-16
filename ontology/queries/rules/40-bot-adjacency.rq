@@ -1,0 +1,9 @@
+# BOT alignment: a zone is adjacent to every surface one of its zone boundaries is on.
+PREFIX twb: <https://w3id.org/twb#>
+PREFIX bot: <https://w3id.org/bot#>
+CONSTRUCT { ?zone bot:adjacentElement ?surface . }
+WHERE {
+  ?boundary a twb:ZoneBoundary ; twb:onSide ?side ; bot:interfaceOf ?zone, ?surface .
+  ?surface twb:positiveSide|twb:negativeSide ?side .
+  FILTER (?zone != ?surface)
+}

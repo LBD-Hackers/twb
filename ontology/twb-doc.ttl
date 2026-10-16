@@ -1,0 +1,197 @@
+@prefix twb:     <https://w3id.org/twb#> .
+@prefix prov:    <http://www.w3.org/ns/prov#> .
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix skos:    <http://www.w3.org/2004/02/skos/core#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix vann:    <http://purl.org/vocab/vann/> .
+
+# =================================================================================================
+#  TWB documentation — a module of the Thin-Walled Blueprint ontology (TWB)
+#
+#  A module of its own, beside the building's modules, because documentation is not the building:
+#  it is what is drawn of it. It imports only the core. It has two halves.
+#
+#    - INPUT, on the blueprint: what the user said about the drawings — the SECTIONS, each a
+#      vertical cut through the house along a line in plan, looking to the line's left; where it
+#      stands when the user placed it, and whether the drawing set draws it. The drawing set
+#      places two sections itself (A–A and B–B); a section without a cut line is one of those,
+#      placed by the set. One with a line was placed by the user, and that wins: the same
+#      default-and-override pattern as recipes and joint standards.
+#    - OUTPUT, derived: the DRAWING SET — numbered sheets at one scale, each holding drawings
+#      (plans, the roof plan, elevations, sections) — generated from the blueprint by a
+#      twb:Derivation, as the element-level building is.
+#
+#  Everything here can be produced with no one at the keyboard: a blueprint in, a documented
+#  house out. The user's choices only override the defaults the derivation would otherwise take.
+#
+#  Its terms are in TWB's one namespace, twb:, as every module's are (0.3.0). Until 0.2.0 they had
+#  a namespace of their own, twbd: (https://w3id.org/twb/doc#); the four a house file written with
+#  context 1 uses are kept below, deprecated, as equivalents of their twb: terms.
+#
+#  Working draft, version 0.3.0 (2026-10-13).
+# =================================================================================================
+
+<https://w3id.org/twb/doc>
+    a owl:Ontology ;
+    dcterms:title "TWB documentation"@en ;
+    dcterms:description """The documentation of a thin-walled blueprint: the sections the user placed or left out
+(input, on the blueprint) and the drawing set derived from it — sheets, drawings and their scale (output)."""@en ;
+    dcterms:creator "Mads Holten Rasmussen" ;
+    dcterms:license <https://creativecommons.org/licenses/by/4.0/> ;
+    dcterms:isPartOf <https://w3id.org/twb> ;
+    vann:preferredNamespacePrefix "twb" ;
+    vann:preferredNamespaceUri "https://w3id.org/twb#" ;
+    owl:imports <https://w3id.org/twb/core> ;
+    owl:versionInfo "0.3.0" ;
+    owl:versionIRI <https://w3id.org/twb/doc/0.3.0> ;
+    owl:priorVersion <https://w3id.org/twb/doc/0.1.0> ;
+    dcterms:modified "2026-10-13"^^xsd:date .
+
+# ---- Input: the sections ------------------------------------------------------------------------
+
+twb:Section
+    a owl:Class ;
+    rdfs:label "Section"@en ;
+    rdfs:comment """A vertical cut through the building, named by a letter and drawn as "A–A". It stands on a line in
+plan and looks to the line's left — square to it, anticlockwise from the way it runs. A section with no
+twb:cutLineMm is one the drawing set places itself (A and B), where it cuts the most openings; one with a line
+was placed by the user, and stays there."""@en ;
+    twb:archTerm "DocSections (docs/doc-sections.ts)" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+
+twb:hasSection
+    a owl:ObjectProperty ;
+    rdfs:label "has section"@en ;
+    rdfs:domain twb:Blueprint ;
+    rdfs:range twb:Section ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+
+twb:cutLineMm
+    a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "cut line (mm)"@en ;
+    rdfs:comment "Where the section stands: its line in plan as [[x, y], [x, y]], millimetres in the project frame, from its first end to its second. It looks to the left of that direction."@en ;
+    rdfs:domain twb:Section ;
+    rdfs:range rdf:JSON ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+
+twb:inDrawingSet
+    a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "in drawing set"@en ;
+    rdfs:comment "Whether the drawing set draws the section. Absent, it does."@en ;
+    rdfs:domain twb:Section ;
+    rdfs:range xsd:boolean ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+
+twb:placement
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "placement"@en ;
+    rdfs:comment "Who placed the section: derived from whether it has a cut line."@en ;
+    rdfs:domain twb:Section ;
+    rdfs:range twb:Placement ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+
+twb:Placement a owl:Class ; rdfs:subClassOf skos:Concept ; rdfs:label "Placement"@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+twb:Placements a skos:ConceptScheme ; skos:prefLabel "Placements"@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+twb:AutomaticPlacement a twb:Placement ; skos:prefLabel "automatic"@en ; skos:inScheme twb:Placements ;
+    skos:definition "Placed by the drawing set, where the section shows the most."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+twb:UserPlacement a twb:Placement ; skos:prefLabel "user placed"@en ; skos:inScheme twb:Placements ;
+    skos:definition "Placed by the user; overrides where the drawing set would place it."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+
+# ---- Output: the drawing set --------------------------------------------------------------------
+
+twb:DrawingSet
+    a owl:Class ;
+    rdfs:subClassOf prov:Entity ;
+    rdfs:label "Drawing set"@en ;
+    rdfs:comment "Every drawing the building needs to be applied for and built, on numbered sheets at one scale; derived from a blueprint."@en ;
+    twb:archTerm "DrawingSet (docs/drawing-set.ts)" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+
+twb:documents
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "documents"@en ;
+    rdfs:subPropertyOf prov:wasDerivedFrom ;
+    rdfs:domain twb:DrawingSet ;
+    rdfs:range twb:Blueprint ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+
+twb:scaleDenominator
+    a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "scale denominator"@en ;
+    rdfs:comment "The set's one scale, 1:n: 50, 100, 200 or 500 — the most detailed every drawing fits an A3 sheet at."@en ;
+    rdfs:domain twb:DrawingSet ;
+    rdfs:range xsd:positiveInteger ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+
+twb:Sheet
+    a owl:Class ;
+    rdfs:label "Sheet"@en ;
+    rdfs:comment "One A3 sheet of a drawing set, with its number and title."@en ;
+    twb:archTerm "DrawingSheet (docs/drawing-set.ts)" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+
+twb:hasSheet a owl:ObjectProperty ; rdfs:label "has sheet"@en ; rdfs:domain twb:DrawingSet ; rdfs:range twb:Sheet ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+
+twb:sheetNumber
+    a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "sheet number"@en ;
+    rdfs:comment "As the title block has it: 'A01'."@en ;
+    rdfs:domain twb:Sheet ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+
+twb:Drawing
+    a owl:Class ;
+    rdfs:label "Drawing"@en ;
+    rdfs:comment "One drawing on a sheet, at the set's scale."@en ;
+    twb:archTerm "Drawing (docs/drawing.ts)" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+
+twb:onSheet a owl:ObjectProperty, owl:FunctionalProperty ; rdfs:label "on sheet"@en ; rdfs:domain twb:Drawing ; rdfs:range twb:Sheet ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+
+twb:PlanDrawing a owl:Class ; rdfs:subClassOf twb:Drawing ; rdfs:label "Plan drawing"@en ;
+    rdfs:comment "A storey seen from above, cut at window height, with the sections' lines on it."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+twb:RoofPlanDrawing a owl:Class ; rdfs:subClassOf twb:Drawing ; rdfs:label "Roof plan drawing"@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+twb:ElevationDrawing a owl:Class ; rdfs:subClassOf twb:Drawing ; rdfs:label "Elevation drawing"@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+twb:SectionDrawing a owl:Class ; rdfs:subClassOf twb:Drawing ; rdfs:label "Section drawing"@en ;
+    rdfs:comment "The building cut by a section, seen the way the section looks."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+
+twb:ofStorey a owl:ObjectProperty, owl:FunctionalProperty ; rdfs:label "of storey"@en ;
+    rdfs:domain twb:PlanDrawing ; rdfs:range <https://w3id.org/bot#Storey> ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+
+twb:drawsSection a owl:ObjectProperty, owl:FunctionalProperty ; rdfs:label "draws section"@en ;
+    rdfs:domain twb:SectionDrawing ; rdfs:range twb:Section ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+
+twb:elevationSide a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "elevation side"@en ;
+    rdfs:comment "The side the elevation is seen from: 'north', 'south', 'east' or 'west'."@en ;
+    rdfs:domain twb:ElevationDrawing ; rdfs:range xsd:string ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+
+# ---- Deprecated: the twbd: terms of 0.2.0 ---------------------------------------------------------
+#
+# A house file whose @context is https://w3id.org/twb/context/1.jsonld still reads its sections in
+# these terms. Each is the twb: term of the same name.
+
+<https://w3id.org/twb/doc#Section> a owl:Class ; owl:equivalentClass twb:Section ; owl:deprecated true ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+<https://w3id.org/twb/doc#hasSection> a owl:ObjectProperty ; owl:equivalentProperty twb:hasSection ; owl:deprecated true ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+<https://w3id.org/twb/doc#cutLineMm> a owl:DatatypeProperty ; owl:equivalentProperty twb:cutLineMm ; owl:deprecated true ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .
+<https://w3id.org/twb/doc#inDrawingSet> a owl:DatatypeProperty ; owl:equivalentProperty twb:inDrawingSet ; owl:deprecated true ;
+    rdfs:isDefinedBy <https://w3id.org/twb/doc> .

@@ -1,0 +1,25 @@
+# Adjacency rules with a U-value limit put it on the surface as a whole.
+PREFIX twb: <https://w3id.org/twb#>
+PREFIX bot: <https://w3id.org/bot#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+CONSTRUCT { ?surface twb:requiresMaxUValue ?max ; twb:governedBy ?rule . }
+WHERE {
+  ?blueprint twb:hasAdjacencyRule ?rule .
+  ?rule twb:thenRequiresMaxUValue ?max ; twb:whenThisSideFaces ?c1 .
+  ?surface twb:positiveSide|twb:negativeSide ?side .
+  ?surface twb:positiveSide|twb:negativeSide ?other . FILTER (?other != ?side)
+  FILTER (NOT EXISTS { ?rule twb:appliesToSurfaceClass ?anyClass }
+      || EXISTS { ?rule twb:appliesToSurfaceClass ?class . ?surface a/rdfs:subClassOf* ?class })
+  ?side twb:facesZone ?z1 .
+  FILTER NOT EXISTS { ?c1 twb:matchesZone ?m1 . FILTER (?m1 != ?z1) }
+  FILTER NOT EXISTS { ?c1 twb:matchesKind ?k1 . FILTER NOT EXISTS { ?z1 twb:zoneKind ?k1 } }
+  FILTER NOT EXISTS { ?c1 twb:matchesWet true . FILTER NOT EXISTS { ?z1 twb:zoneKind/twb:isWet true } }
+  FILTER NOT EXISTS { ?c1 twb:matchesHeated ?h1 . FILTER NOT EXISTS { ?z1 twb:isHeated ?h1 } }
+  FILTER (NOT EXISTS { ?rule twb:whenOtherSideFaces ?anyC2 } || EXISTS {
+    ?rule twb:whenOtherSideFaces ?c2 . ?other twb:facesZone ?z2 .
+    FILTER NOT EXISTS { ?c2 twb:matchesZone ?m2 . FILTER (?m2 != ?z2) }
+    FILTER NOT EXISTS { ?c2 twb:matchesKind ?k2 . FILTER NOT EXISTS { ?z2 twb:zoneKind ?k2 } }
+    FILTER NOT EXISTS { ?c2 twb:matchesWet true . FILTER NOT EXISTS { ?z2 twb:zoneKind/twb:isWet true } }
+    FILTER NOT EXISTS { ?c2 twb:matchesHeated ?h2 . FILTER NOT EXISTS { ?z2 twb:isHeated ?h2 } }
+  })
+}

@@ -1,0 +1,143 @@
+@prefix twb:     <https://w3id.org/twb#> .
+@prefix bot:     <https://w3id.org/bot#> .
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix vann:    <http://purl.org/vocab/vann/> .
+@prefix unit:    <http://qudt.org/vocab/unit/> .
+
+# =================================================================================================
+#  TWB house file — a module of the Thin-Walled Blueprint ontology (TWB)
+#
+#  The terms the house file (twb/1, arch's Save, JSON-LD) needs beyond the other modules: geometry
+#  as authored, in millimetres as JSON literals, and references by name (storeys, roof groups,
+#  pinned kinds, layer terminations left to the standard).
+#
+#  TWB is modular, as SEAS is: one namespace (twb:, https://w3id.org/twb#) shared by every module,
+#  each module an ontology of its own that imports only the modules it builds on, and every term
+#  stating the module that defines it (rdfs:isDefinedBy). https://w3id.org/twb imports them all.
+#
+#  Working draft, version 0.3.0 (2026-10-13).
+# =================================================================================================
+
+<https://w3id.org/twb/housefile>
+    a owl:Ontology ;
+    dcterms:title "TWB house file"@en ;
+    dcterms:description """The terms the house file (twb/1, arch's Save, JSON-LD) needs beyond the
+other modules: geometry as authored, in millimetres as JSON literals, and references by name (storeys, roof
+groups, pinned kinds, layer terminations left to the standard)."""@en ;
+    dcterms:creator "Mads Holten Rasmussen" ;
+    dcterms:license <https://creativecommons.org/licenses/by/4.0/> ;
+    dcterms:isPartOf <https://w3id.org/twb> ;
+    vann:preferredNamespacePrefix "twb" ;
+    vann:preferredNamespaceUri "https://w3id.org/twb#" ;
+    owl:imports <https://w3id.org/twb/detailing> ;
+    owl:versionInfo "0.3.0" ;
+    owl:versionIRI <https://w3id.org/twb/housefile/0.3.0> ;
+    dcterms:modified "2026-10-13"^^xsd:date .
+
+# =================================================================================================
+#  The house file: authored geometry and references (0.2.0)
+# =================================================================================================
+#
+#  A house file in the twb/1 format (arch's Save) is JSON-LD in these terms. Its geometry is kept
+#  as written — [x, y, z] millimetres in the project frame — as JSON literals; the TWB export adds
+#  WKT. Data TWB has no terms for travels in the arch: namespace (https://w3id.org/twb/arch#).
+
+twb:pointsMm
+    a owl:DatatypeProperty ;
+    rdfs:label "points, mm"@en ;
+    rdfs:comment "Corners as authored: a JSON array of [x, y, z] (or [x, y] in plan) in millimetres, in the project frame."@en ;
+    rdfs:range rdf:JSON ;
+    twb:unit unit:MilliM ;
+    rdfs:isDefinedBy <https://w3id.org/twb/housefile> .
+
+twb:pointMm
+    a owl:DatatypeProperty ;
+    rdfs:label "point, mm"@en ;
+    rdfs:comment "One point as authored: a JSON array [x, y] in plan or [x, y, z], millimetres, project frame. A room's seed point; a column's centre."@en ;
+    rdfs:range rdf:JSON ;
+    twb:unit unit:MilliM ;
+    rdfs:isDefinedBy <https://w3id.org/twb/housefile> .
+
+twb:footprintMm
+    a owl:DatatypeProperty ;
+    rdfs:label "footprint, mm"@en ;
+    rdfs:comment "A fitting's size as authored: a JSON array [width, depth], width along its front, depth back from it. Left out, its kind's own."@en ;
+    rdfs:domain twb:Fixture ;
+    rdfs:range rdf:JSON ;
+    twb:unit unit:MilliM ;
+    rdfs:isDefinedBy <https://w3id.org/twb/housefile> .
+
+twb:facing
+    a owl:DatatypeProperty ;
+    rdfs:label "facing"@en ;
+    rdfs:comment "The way a fitting's front faces, as authored: \"x+\", \"x-\", \"y+\", \"y-\" or degrees anticlockwise from +x. Left out, \"y-\"."@en ;
+    rdfs:domain twb:Fixture ;
+    rdfs:range rdf:JSON ;
+    rdfs:isDefinedBy <https://w3id.org/twb/housefile> .
+
+twb:holesMm
+    a owl:DatatypeProperty ;
+    rdfs:label "holes, mm"@en ;
+    rdfs:comment "Inner rings drawn inside a surface, as authored: a JSON array of rings of [x, y, z]."@en ;
+    rdfs:domain twb:Surface ;
+    rdfs:range rdf:JSON ;
+    rdfs:isDefinedBy <https://w3id.org/twb/housefile> .
+
+twb:spanDirection
+    a owl:DatatypeProperty ;
+    rdfs:label "span direction"@en ;
+    rdfs:comment "The plan direction a flat or square roof's rafters or a floor's joists span, as a JSON array [x, y]. Left out, derived."@en ;
+    rdfs:domain twb:Surface ;
+    rdfs:range rdf:JSON ;
+    rdfs:isDefinedBy <https://w3id.org/twb/housefile> .
+
+twb:profileMm
+    a owl:DatatypeProperty ;
+    rdfs:label "profile, mm"@en ;
+    rdfs:comment "A trim's cross-section as authored: a JSON array of [x, y] in the edge's own frame, millimetres."@en ;
+    rdfs:domain twb:Trim ;
+    rdfs:range rdf:JSON ;
+    rdfs:isDefinedBy <https://w3id.org/twb/housefile> .
+
+twb:pinnedKind
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "pinned kind"@en ;
+    rdfs:comment "The surface class its author pinned, where the geometry is ambiguous: twb:WallSurface, twb:FloorSurface or twb:RoofSurface."@en ;
+    rdfs:domain twb:Surface ;
+    rdfs:range owl:Class ;
+    twb:archTerm "Surface.kindOverride" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/housefile> .
+
+twb:roofGroupName
+    a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "roof group name"@en ;
+    rdfs:comment "The name the planes of one roof share in a house file; the TWB export makes it a twb:RoofGroup."@en ;
+    rdfs:domain twb:Surface ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <https://w3id.org/twb/housefile> .
+
+twb:onStorey
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "on storey"@en ;
+    rdfs:comment "The storey a room, a zone separation, a partition or a fixture stands on. Left out, the lowest."@en ;
+    rdfs:range bot:Storey ;
+    rdfs:isDefinedBy <https://w3id.org/twb/housefile> .
+
+twb:claddingPattern
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "cladding pattern"@en ;
+    rdfs:comment "How a board cladding is laid: board-on-board, lap or board-and-batten (a catalogue concept)."@en ;
+    rdfs:domain twb:CladdingPattern ;
+    rdfs:isDefinedBy <https://w3id.org/twb/housefile> .
+
+twb:standardCut
+    a twb:LayerCut ;
+    rdfs:label "as the standard"@en ;
+    rdfs:comment """A layer termination that states no cut of its own: the layer ends as the edge's template or the
+project's standard says. A joint lists one for every layer it leaves alone, so that it keeps the number of layers
+its recipe had when it was detailed."""@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/housefile> .

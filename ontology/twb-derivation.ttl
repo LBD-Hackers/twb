@@ -1,0 +1,122 @@
+@prefix twb:     <https://w3id.org/twb#> .
+@prefix bot:     <https://w3id.org/bot#> .
+@prefix prov:    <http://www.w3.org/ns/prov#> .
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix skos:    <http://www.w3.org/2004/02/skos/core#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix vann:    <http://purl.org/vocab/vann/> .
+@prefix unit:    <http://qudt.org/vocab/unit/> .
+
+# =================================================================================================
+#  TWB derivation — a module of the Thin-Walled Blueprint ontology (TWB)
+#
+#  The element-level building derived from a blueprint by a deterministic compilation: the
+#  derivation, the members it makes with their roles, sections and processings, the pieces of the
+#  non-core layers, and the rule, standard or template that governed each.
+#
+#  TWB is modular, as SEAS is: one namespace (twb:, https://w3id.org/twb#) shared by every module,
+#  each module an ontology of its own that imports only the modules it builds on, and every term
+#  stating the module that defines it (rdfs:isDefinedBy). https://w3id.org/twb imports them all.
+#
+#  Working draft, version 0.3.0 (2026-10-13).
+# =================================================================================================
+
+<https://w3id.org/twb/derivation>
+    a owl:Ontology ;
+    dcterms:title "TWB derivation"@en ;
+    dcterms:description """The element-level building derived from a blueprint by a
+deterministic compilation: the derivation, the members it makes with their roles, sections and processings, the
+pieces of the non-core layers, and the rule, standard or template that governed each."""@en ;
+    dcterms:creator "Mads Holten Rasmussen" ;
+    dcterms:license <https://creativecommons.org/licenses/by/4.0/> ;
+    dcterms:isPartOf <https://w3id.org/twb> ;
+    vann:preferredNamespacePrefix "twb" ;
+    vann:preferredNamespaceUri "https://w3id.org/twb#" ;
+    owl:imports <https://w3id.org/twb/detailing> ;
+    owl:versionInfo "0.3.0" ;
+    owl:versionIRI <https://w3id.org/twb/derivation/0.3.0> ;
+    dcterms:modified "2026-10-13"^^xsd:date .
+
+# =================================================================================================
+#  Derivation
+# =================================================================================================
+
+twb:Derivation
+    a owl:Class ;
+    rdfs:subClassOf prov:Activity ;
+    rdfs:label "Derivation"@en ;
+    rdfs:comment """A deterministic compilation of a blueprint into element-level information (members, layer pieces,
+machining, IFC, calculations). It uses the blueprint (prov:used) and follows it as a plan; its outputs are
+prov:wasGeneratedBy it. Re-running it on an unchanged blueprint yields the same outputs."""@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/derivation> .
+
+twb:governedBy
+    a owl:ObjectProperty ;
+    rdfs:label "governed by"@en ;
+    rdfs:comment "Links a derived element or value to the rule option, standard or template that decided it."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/derivation> .
+
+# =================================================================================================
+#  Derived elements
+# =================================================================================================
+
+twb:Member
+    a owl:Class ;
+    rdfs:subClassOf bot:Element ;
+    rdfs:label "Member"@en ;
+    rdfs:comment """A linear structural piece derived from the blueprint: a stud, plate, header, joist, rafter, beam, post.
+It is a sub-element of the surface it frames (bot:hasSubElement), derived from that surface or from the edge or
+opening that called for it, and it names the rule that governed it."""@en ;
+    twb:archTerm "TimberMember (recipe/timber-member.ts)" ;
+    twb:ifcCounterpart "IfcMember / IfcBeam / IfcColumn, aggregated into an IfcElementAssembly per surface" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/derivation> .
+
+twb:memberRole
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "member role"@en ;
+    rdfs:domain twb:Member ;
+    rdfs:range twb:MemberRole ;
+    rdfs:isDefinedBy <https://w3id.org/twb/derivation> .
+
+twb:MemberRole
+    a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Member role"@en ;
+    twb:ifcCounterpart "IfcMemberTypeEnum / IfcBeamTypeEnum (PredefinedType) and ObjectType" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/derivation> .
+
+twb:sectionWidth a owl:DatatypeProperty ; rdfs:label "section width"@en ; rdfs:domain twb:Member ; rdfs:range xsd:decimal ; twb:unit unit:MilliM ;
+    rdfs:isDefinedBy <https://w3id.org/twb/derivation> .
+twb:sectionDepth a owl:DatatypeProperty ; rdfs:label "section depth"@en ; rdfs:domain twb:Member ; rdfs:range xsd:decimal ; twb:unit unit:MilliM ;
+    rdfs:isDefinedBy <https://w3id.org/twb/derivation> .
+twb:strengthClass a owl:DatatypeProperty ; rdfs:label "strength class"@en ; rdfs:domain twb:Member ; rdfs:range xsd:string ;
+    rdfs:isDefinedBy <https://w3id.org/twb/derivation> .
+twb:hasProcessing
+    a owl:ObjectProperty ;
+    rdfs:label "has processing"@en ;
+    rdfs:domain twb:Member ;
+    rdfs:range twb:Processing ;
+    rdfs:isDefinedBy <https://w3id.org/twb/derivation> .
+
+twb:LayerPiece
+    a owl:Class ;
+    rdfs:subClassOf bot:Element ;
+    rdfs:label "Layer piece"@en ;
+    rdfs:comment "A piece of a non-core layer as derived for one surface: a sheet with its openings cut out, a board, an insulation bay."@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/derivation> .
+
+twb:ofLayer
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "of layer"@en ;
+    rdfs:domain twb:LayerPiece ;
+    rdfs:range twb:Layer ;
+    rdfs:isDefinedBy <https://w3id.org/twb/derivation> .
+
+twb:ifcGlobalId
+    a owl:DatatypeProperty ;
+    rdfs:label "IFC GlobalId"@en ;
+    rdfs:comment "The GlobalId the element is exported with. Derived from the element's own key, so it is stable across exports."@en ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <https://w3id.org/twb/derivation> .

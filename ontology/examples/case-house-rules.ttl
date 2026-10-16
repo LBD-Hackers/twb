@@ -1,0 +1,57 @@
+@prefix twb:  <https://w3id.org/twb#> .
+@prefix twbc: <https://w3id.org/twb/catalogue/arch#> .
+@prefix inst: <https://example.org/twb/case-house/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+# =================================================================================================
+#  Adjacency rules of the case house, stated as data. One generic query
+#  (queries/rules/30-adjacency-capabilities.rq, 31-adjacency-uvalue.rq) applies them all, so a
+#  project edits its rules without touching code.
+#
+#  The U-value rules of the building's use are generated from arch's national profile
+#  (case-house-use-rules.ttl). The capability rules below are illustrative of how layer functions
+#  follow from what a surface separates; they are not quotations of a regulation.
+# =================================================================================================
+
+<https://example.org/twb/case-house/blueprint>
+    twb:hasAdjacencyRule inst:rule-vapour, inst:rule-wind, inst:rule-weather, inst:rule-wet-room .
+
+inst:rule-vapour
+    a twb:AdjacencyRule ;
+    rdfs:label "Vapour control on the warm side of the climate screen"@en ;
+    twb:whenThisSideFaces [ a twb:ZoneCondition ; twb:matchesHeated true ] ;
+    twb:whenOtherSideFaces [ a twb:ZoneCondition ; twb:matchesHeated false ] ;
+    twb:thenRequires twb:VapourControl ;
+    twb:basis "Illustrative: a vapour barrier on the warm side of an insulated timber envelope" .
+
+inst:rule-wind
+    a twb:AdjacencyRule ;
+    rdfs:label "Wind barrier on the cold side of the climate screen"@en ;
+    twb:appliesToSurfaceClass twb:WallSurface, twb:RoofSurface ;
+    twb:whenThisSideFaces [ a twb:ZoneCondition ; twb:matchesHeated false ] ;
+    twb:whenOtherSideFaces [ a twb:ZoneCondition ; twb:matchesHeated true ] ;
+    twb:thenRequires twb:WindBarrier ;
+    twb:basis "Illustrative: a wind-tight layer on the cold side of the insulation in walls and roofs; loose fill over a ceiling under a cold attic is kept in place by wind deflectors at the eaves instead" .
+
+inst:rule-weather
+    a twb:AdjacencyRule ;
+    rdfs:label "Weather protection towards outdoor air"@en ;
+    twb:appliesToSurfaceClass twb:WallSurface, twb:RoofSurface ;
+    twb:whenThisSideFaces [ a twb:ZoneCondition ; twb:matchesZone twb:OutdoorAir ] ;
+    twb:thenRequires twb:WeatherProtection ;
+    twb:basis "Illustrative: cladding or roofing with a ventilated cavity towards the weather" .
+
+inst:rule-wet-room
+    a twb:AdjacencyRule ;
+    rdfs:label "Wet-room lining towards a wet room"@en ;
+    twb:appliesToSurfaceClass twb:WallSurface, twb:FloorSurface ;
+    twb:whenThisSideFaces [ a twb:ZoneCondition ; twb:matchesWet true ] ;
+    twb:thenRequires twb:WetRoomLining ;
+    twb:basis "Illustrative: walls and floors of a wet room take a moisture-resistant board with a membrane" .
+
+# A covering the repair step applies where the wet-room rule fires.
+inst:covering-wet-room-system
+    a twb:Covering ;
+    rdfs:label "Wet-room membrane system with tiles"@en ;
+    twb:provides twb:WetRoomLining .
