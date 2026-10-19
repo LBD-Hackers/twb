@@ -132,6 +132,20 @@ const UPPER_FLOOR_REACH_MM = 150;
 const MIN_LEAF_MM = 75;
 /** How far a corner may be from a wall's end, past the wall's thickness. */
 const CORNER_REACH_MM = 300;
+/** How much more an upper storey's facade must close round than the lowest floor's to be the outline. */
+const OUTLINE_GAIN = 1.25;
+/** How far a curtain wall may stand past its host wall's ends and faces and still be set in it, mm. */
+const SET_IN_MM = 50;
+/** Members closer than this along a curtain wall (or up it) are one mullion (or transom), mm. */
+const GRID_MERGE_MM = 50;
+/** A curtain wall's bay narrower than this, its piers taken off, holds no window: arch's narrowest, mm. */
+const MIN_BAY_MM = 400;
+/** Over a glazed bay: room for the header arch frames over a window, under the storey above, mm. */
+const BAY_HEAD_MM = 300;
+/** The most transoms a glazed bay is divided by: arch's window is at most three panes high. */
+const MAX_BAY_TRANSOMS = 2;
+/** Two king studs back to back: the least wall arch frames between two openings, mm. */
+const MIN_PIER_MM = 90;
 /** How far a partition's end may be from the wall it meets. */
 const PARTITION_REACH_MM = 400;
 /** A ceiling hung more than this below what is over it is a lowered one. */
@@ -213,6 +227,18 @@ interface Wall {
     layerSetName: string;
     loadBearing: boolean | null;
     isExternal: boolean | null;
+    /** A curtain wall's grid: a wall of glass between mullions, with no layers of its own. */
+    curtain?: CurtainGrid;
+}
+
+/**
+ * Where a curtain wall's mullions and transoms stand: each vertical member by its middle along
+ * the wall's line (mm from `a`) and the heights it spans, each horizontal one by its middle
+ * height and the stretch of the line it spans.
+ */
+interface CurtainGrid {
+    mullions: { t: number; zLo: number; zHi: number }[];
+    transoms: { z: number; tLo: number; tHi: number }[];
 }
 
 type WallRole = 'exterior' | 'partition' | 'foundation' | 'parapet' | 'short' | 'lining';
@@ -240,10 +266,22 @@ class Importer {
 
     run(): IfcImport {
         const m = this.m;
-        const walls = m
+        const basicWalls = m
             .all('IFCWALL', 'IFCWALLSTANDARDCASE', 'IFCWALLELEMENTEDCASE')
             .map((e) => this.readWall(e))
             .filter((w): w is Wall => !!w);
+        // A curtain wall set in a wall (Revit's way of drawing a glazed panel in a wall) is a
+        // window in that wall; one standing on its own is a wall of glass, read as any wall is.
+        const curtains = m
+            .all('IFCCURTAINWALL')
+            .map((e) => this.readCurtainWall(e))
+            .filter((w): w is Wall => !!w);
+        const setIn = new Map<Wall, Wall>();
+        for (const cw of curtains) {
+            const host = hostWallOf(cw, basicWalls);
+            if (host) setIn.set(cw, host);
+        }
+        const walls = [...basicWalls, ...curtains.filter((cw) => !setIn.has(cw))];
         const spaces = m.all('IFCSPACE');
 
         // ---- Storeys: the ones rooms stand on.
@@ -291,6 +329,32 @@ class Importer {
         const flagged = onGround.filter((w) => w.isExternal === true);
         let loop = flagged.length >= 3 ? findLoop(flagged) : null;
         if (!loop) loop = findLoop(onGround);
+        // A basement or a plinth with other walls than the house over it: the outline is the
+        // facade of the storey that closes round the most, which the walls under it are not.
+        const loopArea = (l: typeof loop) =>
+            l ? Math.abs(signedArea(l.corners.map((c) => c.at))) : 0;
+        const lowestArea = loopArea(loop);
+        let outlineStorey = 0;
+        living.forEach((st, k) => {
+            if (k === 0) return;
+            const on = standing.filter((w) => Math.abs(w.zLo - st.elev) <= 400);
+            const facade = on.filter((w) => w.isExternal === true);
+            const upper = facade.length >= 3 ? findLoop(facade) : findLoop(on);
+            if (loopArea(upper) > OUTLINE_GAIN * loopArea(loop)) {
+                loop = upper;
+                outlineStorey = k;
+            }
+        });
+        if (outlineStorey > 0) {
+            const m2 = (a: number) => `${Math.round(a / 1e6).toLocaleString('en')} m²`;
+            this.warnings.push(
+                `The outline is read on ${living[outlineStorey]!.name}, whose facade closes round ${m2(loopArea(loop))}; ` +
+                    (lowestArea > 0
+                        ? `the lowest floor's (${living[0]!.name}) closes round only ${m2(lowestArea)}. `
+                        : `the lowest floor's (${living[0]!.name}) closes round nothing. `) +
+                    'The house file runs every exterior wall from the lowest floor, so the walls under it are built as partitions.'
+            );
+        }
         if (!loop) {
             this.warnings.push(
                 'The exterior walls do not close round the house: every wall standing on the lowest floor is written as an exterior wall, and arch will say where the outline breaks.'
@@ -349,6 +413,22 @@ class Importer {
             roofBox.min.z > base
         ) {
             eave = roofBox.min.z;
+        }
+        // One eave over every storey: a facade or a roof that stops under the top storey (a
+        // terrace, a canopy, a lower wing) does not take the storeys over it out of the house.
+        const topFloor = living[living.length - 1]!;
+        if (eave < topFloor.elev + STOREY_WALL_MM) {
+            const over = roofs
+                .map((r) => box3(m.bodyPoints(r))?.min.z)
+                .filter((z): z is number => z !== undefined && z >= topFloor.elev + STOREY_WALL_MM);
+            const raised = over.length > 0 ? Math.min(...over) : wallTop;
+            this.warnings.push(
+                `The facade or a roof stops at ${Math.round(eave - base)} mm, under the top storey (${topFloor.name}, at ${Math.round(topFloor.elev - base)} mm): ` +
+                    `the house file has one eave over every storey, so it is put at ${Math.round(raised - base)} mm` +
+                    (over.length > 0 ? ', under the lowest roof over the top storey' : ', the top of the highest wall') +
+                    ', and the roofs under it (terraces, canopies, lower wings) are left out.'
+            );
+            eave = raised;
         }
         let parapetMm = roofShape.type === 'flat' && wallsTop > eave + 50 ? wallsTop - eave : 0;
         for (const w of walls) {
@@ -488,10 +568,14 @@ class Importer {
         const filled = new Set<number>();
         /** The windows, kept back to be coupled where only a sliver of wall is between them. */
         const windows: CouplingWindow<Record<string, unknown>>[] = [];
+        /** The doors in curtain walls, by the stretch of the wall's line each takes, mm from `a`. */
+        const curtainDoors: { wall: Wall; band: number; tLo: number; tHi: number }[] = [];
         for (const f of fillers) {
             const opening = m.openingFilledBy(f);
             if (opening) filled.add(opening.id);
-            const host = opening ? m.hostOf(opening) : this.nearestWall(f, walls);
+            const host = opening
+                ? m.hostOf(opening)
+                : (this.nearestWall(f, walls) ?? this.curtainCrossed(f, walls));
             const wall = host ? walls.find((w) => w.e.id === host.id) : undefined;
             const kind =
                 f.type === 'IFCWINDOW' ? 'window' : this.isGarageDoor(f) ? 'garage-door' : 'door';
@@ -548,6 +632,59 @@ class Importer {
                 if (op && /LEFT|RIGHT/.test(op)) doorSides++;
             }
             openings.push(entry);
+            // A door in a curtain wall takes the place of the panel it stands in.
+            if (wall.curtain) {
+                const t = dot2(sub2(o.at, wall.a), wall.dir);
+                curtainDoors.push({ wall, band: o.band, tLo: t - o.width / 2, tHi: t + o.width / 2 });
+            }
+        }
+        // A curtain wall set in a wall: a window in it, divided as its mullions and transoms are.
+        let setInRead = 0;
+        for (const [cw, host] of setIn) {
+            const line = hostLine(host);
+            if (!line) {
+                this.skip(cw.e, `a curtain wall set in a wall that is left out (${role.get(host)}).`);
+                continue;
+            }
+            const pts = [
+                { x: cw.a.x, y: cw.a.y, z: cw.zLo },
+                { x: cw.b.x, y: cw.b.y, z: cw.zHi },
+            ];
+            const o = this.placeOpening(pts, line, bandOf, storeys);
+            if (!o) {
+                this.skip(cw.e, 'a curtain wall whose size could not be read.');
+                continue;
+            }
+            const len = dist2(cw.a, cw.b);
+            const mullions = gridLines(cw.curtain!.mullions.map((g) => g.t), 0, len).length;
+            const transoms = gridLines(cw.curtain!.transoms.map((g) => g.z), cw.zLo, cw.zHi).length;
+            const entry: Record<string, unknown> = {
+                kind: 'window',
+                at: T(o.at),
+                widthMm: o.width,
+                heightMm: o.height,
+                sillMm: o.sill,
+                ...(storeyName(o.band) ? { storey: storeyName(o.band) } : {}),
+            };
+            const d = norm2(sub2(line.b, line.a));
+            windows.push({
+                entry,
+                line,
+                alongMm: dot2(sub2(o.at, line.a), d),
+                widthMm: o.width,
+                sillMm: o.sill,
+                heightMm: o.height,
+                band: o.band,
+                mullions,
+                transoms,
+            });
+            setInRead++;
+        }
+        if (setInRead > 0) {
+            this.warnings.push(
+                `${setInRead} curtain wall${setInRead === 1 ? '' : 's'} set in a wall (a glazed panel drawn as a curtain wall) ` +
+                    `${setInRead === 1 ? 'is' : 'are'} read as a window in that wall, divided by ${setInRead === 1 ? 'its' : 'their'} mullions and transoms.`
+            );
         }
         // Windows with only a sliver of wall between them are one coupled window.
         const coupled = coupleWindows(windows);
@@ -579,6 +716,71 @@ class Importer {
                 sillMm: Math.round(w.sillMm),
                 ...(Object.keys(glazing).length > 0 ? { glazing } : {}),
             });
+        }
+        // A wall of glass: on each storey, a window in each bay between its mullions, a stud's pier
+        // where each mullion stands, under a header below the storey above. A door in it takes
+        // its bay.
+        let glazed = 0;
+        let bays = 0;
+        for (const cw of walls) {
+            if (!cw.curtain) continue;
+            const line = hostLine(cw);
+            if (!line) continue;
+            const d = norm2(sub2(line.b, line.a));
+            const len = dist2(cw.a, cw.b);
+            const along = (t: number) => dot2(sub2(add2(cw.a, mul2(cw.dir, t)), line.a), d);
+            const before = bays;
+            storeys.forEach((st, k) => {
+                const z0 = Math.max(cw.zLo, st.elev);
+                const z1 = Math.min(cw.zHi, st.top - BAY_HEAD_MM);
+                if (z1 - z0 < MIN_WALL_MM) return;
+                const posts = gridLines(
+                    cw.curtain!.mullions
+                        .filter((g) => Math.min(g.zHi, z1) - Math.max(g.zLo, z0) > (z1 - z0) / 2)
+                        .map((g) => g.t),
+                    0,
+                    len
+                );
+                const cuts = [0, ...posts, len];
+                for (let i = 0; i + 1 < cuts.length; i++) {
+                    const lo = cuts[i]! + (i === 0 ? MIN_PIER_MM : MIN_PIER_MM / 2);
+                    const hi = cuts[i + 1]! - (i + 2 === cuts.length ? MIN_PIER_MM : MIN_PIER_MM / 2);
+                    if (hi - lo < MIN_BAY_MM) continue;
+                    const door = curtainDoors.some(
+                        (o) => o.wall === cw && o.band === k && o.tLo < hi && o.tHi > lo
+                    );
+                    if (door) continue;
+                    const mid = (lo + hi) / 2;
+                    const transoms = Math.min(
+                        MAX_BAY_TRANSOMS,
+                        gridLines(
+                            cw.curtain!.transoms
+                                .filter((g) => g.tLo <= mid && g.tHi >= mid)
+                                .map((g) => g.z),
+                            z0,
+                            z1
+                        ).length
+                    );
+                    openings.push({
+                        kind: 'window',
+                        at: T(add2(line.a, mul2(d, along(mid)))),
+                        widthMm: Math.round(hi - lo),
+                        heightMm: Math.round(z1 - z0),
+                        sillMm: Math.round(z0 - st.elev),
+                        ...(storeyName(k) ? { storey: storeyName(k) } : {}),
+                        ...(transoms > 0 ? { glazing: { transoms } } : {}),
+                    });
+                    bays++;
+                }
+            });
+            if (bays > before) glazed++;
+        }
+        if (glazed > 0) {
+            this.warnings.push(
+                `${glazed} curtain wall${glazed === 1 ? '' : 's'} standing on ${glazed === 1 ? 'its' : 'their'} own ${glazed === 1 ? 'is' : 'are'} built as ` +
+                    `${glazed === 1 ? 'a wall' : 'walls'} of the house's frame glazed bay by bay: ${bays} windows, one in each bay between the mullions on each storey, ` +
+                    `with a ${MIN_PIER_MM} mm pier of studs at each mullion and a header under the storey above.`
+            );
         }
         // An opening nothing fills: a passage, or a hole for something left out.
         for (const op of m.all('IFCOPENINGELEMENT')) {
@@ -898,6 +1100,84 @@ class Importer {
         };
     }
 
+    /**
+     * A curtain wall as a wall of glass: its line through the middle of its plates and members,
+     * along the way they run in plan, and its grid. It has no body of its own, only its parts,
+     * and no layers: the build-ups are read from the walls that have them.
+     */
+    private readCurtainWall(e: StepEntity): Wall | null {
+        const m = this.m;
+        const parts = m.partsOf(e);
+        const pts = [...m.bodyPoints(e), ...parts.flatMap((p) => m.bodyPoints(p))];
+        if (pts.length === 0) {
+            this.skip(e, 'a curtain wall with no panels or mullions to read.');
+            return null;
+        }
+        // The way it runs: the plan's principal axis.
+        const c = {
+            x: pts.reduce((s, p) => s + p.x, 0) / pts.length,
+            y: pts.reduce((s, p) => s + p.y, 0) / pts.length,
+        };
+        let sxx = 0;
+        let syy = 0;
+        let sxy = 0;
+        for (const p of pts) {
+            sxx += (p.x - c.x) ** 2;
+            syy += (p.y - c.y) ** 2;
+            sxy += (p.x - c.x) * (p.y - c.y);
+        }
+        const angle = Math.atan2(2 * sxy, sxx - syy) / 2;
+        const dir = { x: Math.cos(angle), y: Math.sin(angle) };
+        const normal = { x: -dir.y, y: dir.x };
+        const t = pts.map((p) => dot2(sub2(p, c), dir));
+        const across = pts.map((p) => dot2(sub2(p, c), normal));
+        const len = Math.max(...t) - Math.min(...t);
+        if (len < 100) {
+            this.skip(e, 'a curtain wall shorter than 100 mm.');
+            return null;
+        }
+        const mid = (Math.min(...across) + Math.max(...across)) / 2;
+        const axisA = add2(c, add2(mul2(dir, Math.min(...t)), mul2(normal, mid)));
+        const axisB = add2(c, add2(mul2(dir, Math.max(...t)), mul2(normal, mid)));
+        const grid: CurtainGrid = { mullions: [], transoms: [] };
+        for (const part of parts) {
+            if (part.type !== 'IFCMEMBER') continue;
+            const ps = m.bodyPoints(part);
+            if (ps.length === 0) continue;
+            const pt = ps.map((p) => dot2(sub2(p, axisA), dir));
+            const pz = ps.map((p) => p.z);
+            const [tLo, tHi] = [Math.min(...pt), Math.max(...pt)];
+            const [zLo, zHi] = [Math.min(...pz), Math.max(...pz)];
+            if (zHi - zLo > tHi - tLo) grid.mullions.push({ t: (tLo + tHi) / 2, zLo, zHi });
+            else grid.transoms.push({ z: (zLo + zHi) / 2, tLo, tHi });
+        }
+        const z = pts.map((p) => p.z);
+        const ext = m.property(e, 'IsExternal');
+        return {
+            e,
+            name: m.name(e),
+            axisA,
+            axisB,
+            dir,
+            normal,
+            zLo: Math.min(...z),
+            zHi: Math.max(...z),
+            layers: [],
+            offset: 0,
+            sense: 1,
+            thickness: Math.max(1, Math.max(...across) - Math.min(...across)),
+            core: -1,
+            heavy: false,
+            lineY: 0,
+            a: axisA,
+            b: axisB,
+            layerSetName: '',
+            loadBearing: false,
+            isExternal: typeof ext === 'boolean' ? ext : isEnum(ext) ? ext.enum === 'T' : null,
+            curtain: grid,
+        };
+    }
+
     /** The storeys a partition stands on for most of the height of each. */
     private bands(w: Wall, storeys: readonly LivingStorey[]): number[] {
         const out: number[] = [];
@@ -926,6 +1206,39 @@ class Importer {
             if (w.zLo > b.max.z || w.zHi < b.min.z) continue;
             const d = distToSegment(c, w.axisA, w.axisB);
             if (d < bestD && d <= w.thickness) {
+                best = w;
+                bestD = d;
+            }
+        }
+        return best?.e ?? null;
+    }
+
+    /**
+     * The curtain wall a door with no hole of its own stands in: one whose line runs through the
+     * door's plan, at its height. A door's body takes in its leaf's swing, so its middle stands
+     * off the glass by half of it, too far for `nearestWall`.
+     */
+    private curtainCrossed(f: StepEntity, walls: readonly Wall[]): StepEntity | null {
+        const b = box3(this.m.bodyPoints(f));
+        if (!b) return null;
+        const c = { x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2 };
+        let best: Wall | null = null;
+        let bestD = Infinity;
+        for (const w of walls) {
+            if (!w.curtain || w.zLo > b.max.z || w.zHi < b.min.z) continue;
+            // The line through the door's box, square to it, within the curtain wall's length.
+            const len = dist2(w.a, w.b);
+            const t = dot2(sub2(c, w.a), w.dir);
+            if (t < -SET_IN_MM || t > len + SET_IN_MM) continue;
+            const corners = [
+                { x: b.min.x, y: b.min.y },
+                { x: b.max.x, y: b.min.y },
+                { x: b.min.x, y: b.max.y },
+                { x: b.max.x, y: b.max.y },
+            ].map((p) => dot2(sub2(p, w.a), w.normal));
+            if (Math.min(...corners) > SET_IN_MM || Math.max(...corners) < -SET_IN_MM) continue;
+            const d = Math.abs(dot2(sub2(c, w.a), w.normal));
+            if (d < bestD) {
                 best = w;
                 bestD = d;
             }
@@ -1640,10 +1953,6 @@ class Importer {
                 ['IFCFOOTING', 'IFCPILE'],
                 'the foundation: arch lays out its own foundation from the house.',
             ],
-            [
-                ['IFCCURTAINWALL'],
-                'a curtain wall: arch builds walls of studs or masonry, with windows in them.',
-            ],
             [['IFCBUILDINGELEMENTPROXY'], 'an element of no known kind.'],
             [['IFCCHIMNEY'], 'a chimney: arch has none.'],
         ];
@@ -1973,6 +2282,40 @@ function meet(w: Wall, v: Wall, e: P2, f: P2): P2 | null {
     const d = sub2(v.a, w.a);
     const t = (d.x * v.dir.y - d.y * v.dir.x) / cross;
     return add2(w.a, mul2(w.dir, t));
+}
+
+/**
+ * The wall a curtain wall is set in: one it lies in the thickness of, square to it, within its
+ * length and its height. Revit draws a glazed panel in a wall so, and its IFC keeps the wall whole.
+ */
+function hostWallOf(cw: Wall, walls: readonly Wall[]): Wall | null {
+    let best: Wall | null = null;
+    for (const w of walls) {
+        if (w.zLo > cw.zLo + SET_IN_MM || w.zHi < cw.zHi - SET_IN_MM) continue;
+        if (Math.abs(dot2(cw.dir, w.dir)) < 0.99) continue;
+        const len = dist2(w.axisA, w.axisB);
+        const ta = dot2(sub2(cw.a, w.axisA), w.dir);
+        const tb = dot2(sub2(cw.b, w.axisA), w.dir);
+        if (Math.min(ta, tb) < -SET_IN_MM || Math.max(ta, tb) > len + SET_IN_MM) continue;
+        // Across: inside the wall's body, from its first layer's face to its last's.
+        const lo = Math.min(w.offset, w.offset + w.sense * w.thickness) - SET_IN_MM;
+        const hi = Math.max(w.offset, w.offset + w.sense * w.thickness) + SET_IN_MM;
+        const s = dot2(sub2(mul2(add2(cw.a, cw.b), 0.5), w.axisA), w.normal);
+        if (s < lo || s > hi) continue;
+        if (!best || w.thickness > best.thickness) best = w;
+    }
+    return best;
+}
+
+/** Positions closer than `GRID_MERGE_MM` taken as one, strictly between `lo` and `hi`, sorted. */
+function gridLines(values: readonly number[], lo: number, hi: number): number[] {
+    const out: number[] = [];
+    for (const v of [...values].sort((a, b) => a - b)) {
+        if (v <= lo + GRID_MERGE_MM || v >= hi - GRID_MERGE_MM) continue;
+        if (out.length > 0 && v - out[out.length - 1]! < GRID_MERGE_MM) continue;
+        out.push(v);
+    }
+    return out;
 }
 
 /** Whether a wall lies on the line from `a` to `b`, along part of it. */

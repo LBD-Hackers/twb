@@ -124,6 +124,7 @@ export function buildInteriorWalls(
     const messages: string[] = [];
     const storeys = sortStoreys(store.storeys());
     const built: BuiltSegment[] = [];
+    const offModule = new Set<string>();
     for (const wall of walls) {
         const storey: Storey | undefined = wall.storeyName
             ? storeys.find(
@@ -145,8 +146,12 @@ export function buildInteriorWalls(
             messages.push('interior wall: fewer than two distinct points after snapping.');
             continue;
         }
+        // Once a corner on the storey is off the module, no partition added to it puts it back.
         const enforceModule =
-            options.snapToModule !== false && storeyOnModule(store.surfaces(), storey);
+            options.snapToModule !== false &&
+            !offModule.has(storey.id) &&
+            storeyOnModule(store.surfaces(), storey);
+        if (options.snapToModule !== false && !enforceModule) offModule.add(storey.id);
         for (let i = 0; i + 1 < pointsUv.length; i++) {
             const segment = {
                 storey,
@@ -256,6 +261,7 @@ export function placeInteriorOpenings(
     let placed = 0;
     const messages: string[] = [];
     const storeys = sortStoreys(store.storeys());
+    const faces = partitionFaceIndex(store, faceIds);
     openings.forEach((o, i) => {
         const mid = { x: (o.aMm.x + o.bMm.x) / 2, y: (o.aMm.y + o.bMm.y) / 2 };
         const where = `interior ${o.kind} ${i + 1} at [${Math.round(mid.x)}, ${Math.round(mid.y)}]`;
@@ -272,12 +278,10 @@ export function placeInteriorOpenings(
         const zHi = zLo + o.heightMm;
         let best: { id: SurfaceId; p: Vec2Mm; q: Vec2Mm } | null = null;
         let bestOff = PARTITION_REACH_MM;
-        for (const id of faceIds) {
-            const face = store.get(id);
-            if (!face) continue;
-            const zs = face.boundaryMm.map((p) => p.z);
-            if (Math.min(...zs) > zLo + 1 || Math.max(...zs) < zHi - 1) continue;
-            const [p, q] = planSpan(face.boundaryMm);
+        for (const id of faces.near(mid, mid)) {
+            const span = faces.spanOf(id);
+            if (!span || span.zMin > zLo + 1 || span.zMax < zHi - 1) continue;
+            const { p, q } = span;
             const off = distance2(mid, nearestPointOnSegment2(mid, p, q));
             if (off <= bestOff) {
                 best = { id, p, q };
@@ -295,11 +299,11 @@ export function placeInteriorOpenings(
         const len = distance2(p, q);
         const along = (v: Vec2Mm) => ((v.x - p.x) * (q.x - p.x) + (v.y - p.y) * (q.y - p.y)) / len;
         const [t0, t1] = [along(o.aMm), along(o.bMm)].sort((m, n) => m - n) as [number, number];
-        const floorOf = (id: SurfaceId) => Math.min(...store.get(id)!.boundaryMm.map((v) => v.z));
-        const across = faceIds.filter((id) => {
-            const face = id !== best!.id ? store.get(id) : undefined;
-            if (!face || Math.abs(floorOf(id) - floorOf(best!.id)) > 1) return false;
-            const [m, n] = planSpan(face.boundaryMm);
+        const floor = faces.spanOf(best.id)!.zMin;
+        const across = faces.near(o.aMm, o.bMm).filter((id) => {
+            const span = id !== best!.id ? faces.spanOf(id) : null;
+            if (!span || Math.abs(span.zMin - floor) > 1) return false;
+            const { p: m, q: n } = span;
             const offLine = (v: Vec2Mm) =>
                 Math.abs((v.x - p.x) * (q.y - p.y) - (v.y - p.y) * (q.x - p.x)) / len;
             if (offLine(m) > 1 || offLine(n) > 1) return false;
@@ -308,7 +312,7 @@ export function placeInteriorOpenings(
         });
         // Nearest first, so each one healed in meets the face along an edge.
         const middle = (id: SurfaceId) => {
-            const [m, n] = planSpan(store.get(id)!.boundaryMm);
+            const { p: m, q: n } = faces.spanOf(id)!;
             return Math.abs((along(m) + along(n)) / 2 - (t0 + t1) / 2);
         };
         across.sort((m, n) => middle(m) - middle(n));
@@ -319,6 +323,7 @@ export function placeInteriorOpenings(
                 return;
             }
         }
+        if (across.length > 0) faces.reindex(best.id);
         const onFace = (v: Vec2Mm) => {
             const t = along(v) / len;
             return { x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t };
@@ -339,6 +344,70 @@ export function placeInteriorOpenings(
         else messages.push(`${where}: ${result.violations.map((v) => v.message).join(' ')}`);
     });
     return { placed, messages };
+}
+
+/** Plan cells the partition faces are filed in, mm: a face in each cell its reach touches. */
+const FACE_CELL_MM = 2000;
+
+/** A partition face's floor and head, and its line in plan, read while the face is unchanged. */
+interface FaceSpan {
+    face: Surface;
+    zMin: number;
+    zMax: number;
+    p: Vec2Mm;
+    q: Vec2Mm;
+}
+
+/**
+ * The partition faces, filed by where they stand in plan: each opening looks only at the faces
+ * within reach of it, not at every partition of the house, and in the order `faceIds` gives them,
+ * so it finds the same face it would find among them all. A face is read again once it changes
+ * (a door cut in it, a face healed into it).
+ */
+function partitionFaceIndex(store: SurfaceStore, faceIds: readonly SurfaceId[]) {
+    const order = new Map(faceIds.map((id, k) => [id, k]));
+    const spans = new Map<SurfaceId, FaceSpan>();
+    const cells = new Map<string, SurfaceId[]>();
+    const spanOf = (id: SurfaceId): FaceSpan | null => {
+        const face = store.get(id);
+        if (!face) return null;
+        const known = spans.get(id);
+        if (known?.face === face) return known;
+        const zs = face.boundaryMm.map((v) => v.z);
+        const [p, q] = planSpan(face.boundaryMm);
+        const span = { face, zMin: Math.min(...zs), zMax: Math.max(...zs), p, q };
+        spans.set(id, span);
+        return span;
+    };
+    const keysOf = (a: Vec2Mm, b: Vec2Mm): string[] => {
+        const r = PARTITION_REACH_MM;
+        const [x0, x1] = [Math.min(a.x, b.x) - r, Math.max(a.x, b.x) + r].map((v) => Math.floor(v / FACE_CELL_MM));
+        const [y0, y1] = [Math.min(a.y, b.y) - r, Math.max(a.y, b.y) + r].map((v) => Math.floor(v / FACE_CELL_MM));
+        const keys: string[] = [];
+        for (let x = x0!; x <= x1!; x++) for (let y = y0!; y <= y1!; y++) keys.push(`${x},${y}`);
+        return keys;
+    };
+    const file = (id: SurfaceId) => {
+        const span = spanOf(id);
+        if (!span) return;
+        for (const k of keysOf(span.p, span.q)) {
+            const list = cells.get(k);
+            if (!list) cells.set(k, [id]);
+            else if (!list.includes(id)) list.push(id);
+        }
+    };
+    for (const id of faceIds) file(id);
+    return {
+        spanOf,
+        /** The faces filed within reach of the stretch from `a` to `b`, in `faceIds` order. */
+        near(a: Vec2Mm, b: Vec2Mm): SurfaceId[] {
+            const found = new Set<SurfaceId>();
+            for (const k of keysOf(a, b)) for (const id of cells.get(k) ?? []) found.add(id);
+            return [...found].sort((m, n) => order.get(m)! - order.get(n)!);
+        },
+        /** Files a face again where it now reaches, once others were healed into it. */
+        reindex: file,
+    };
 }
 
 /** A vertical face's line in plan: the two of its corners furthest apart. */

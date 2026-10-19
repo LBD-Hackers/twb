@@ -8,8 +8,8 @@
  * run — stop at the lower of the two, which is where the enclosure genuinely is.
  */
 
-import { planeHeightAt, planeOfPolygon, pointInOrOnPolygonPlan } from '../core';
-import { classifyAll } from './classify';
+import { planeHeightAt, planeOfPolygon, pointInOrOnPolygonPlan, type Point3Mm } from '../core';
+import { classifySurface } from './classify';
 import type { Surface } from './surface';
 
 /**
@@ -27,11 +27,14 @@ export function roofHeightAbove(
     y: number,
     aboveZ: number
 ): number | null {
-    const kinds = classifyAll(surfaces);
     let lowest: number | null = null;
     for (const s of surfaces) {
-        if (kinds.get(s.id) !== 'roof') continue;
+        // Over the point first: classifying a face reads every other, so only the few over it are.
+        const box = planBoxOf(s.boundaryMm);
+        if (x < box.x0 - ON_MM || x > box.x1 + ON_MM || y < box.y0 - ON_MM || y > box.y1 + ON_MM)
+            continue;
         if (!pointInOrOnPolygonPlan({ x, y }, s.boundaryMm)) continue;
+        if (classifySurface(s, surfaces) !== 'roof') continue;
         const plane = planeOfPolygon(s.boundaryMm);
         if (!plane) continue;
         const z = planeHeightAt(plane, x, y);
@@ -39,6 +42,26 @@ export function roofHeightAbove(
         if (lowest === null || z < lowest) lowest = z;
     }
     return lowest;
+}
+
+/** Past a face's box by this much a point is not on it either, mm. */
+const ON_MM = 1;
+
+/** Each boundary's box in plan, read once: a face's boundary is replaced, not changed, when it moves. */
+const planBoxes = new WeakMap<readonly Point3Mm[], { x0: number; x1: number; y0: number; y1: number }>();
+
+function planBoxOf(ring: readonly Point3Mm[]): { x0: number; x1: number; y0: number; y1: number } {
+    const known = planBoxes.get(ring);
+    if (known) return known;
+    const box = { x0: Infinity, x1: -Infinity, y0: Infinity, y1: -Infinity };
+    for (const p of ring) {
+        box.x0 = Math.min(box.x0, p.x);
+        box.x1 = Math.max(box.x1, p.x);
+        box.y0 = Math.min(box.y0, p.y);
+        box.y1 = Math.max(box.y1, p.y);
+    }
+    planBoxes.set(ring, box);
+    return box;
 }
 
 /** A point along a wall's top edge, with the roof (or nominal ceiling) height already resolved. */

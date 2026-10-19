@@ -56,6 +56,17 @@ and corner the same way it does for a house read from drawings.
   300 mm; the corners are where their lines cross. Upper storeys' walls on those lines are the
   same walls, higher up. Every other wall is a partition, written once per storey it stands on,
   its ends taken to the line of the wall they meet (within 400 mm).
+- **Curtain walls** are read from their panels and mullions (they have no body of their own): their
+  line the long direction of their parts in plan, through the middle of their thickness. One set
+  in a wall (parallel to it, inside its thickness, its length and its height — Revit's glazed
+  panel in a wall) is a window in that wall, divided by its mullions and transoms. One on its own
+  is a wall of the house's build-up on its line, a facade on the outline or a partition, glazed
+  bay by bay: on each storey a window between each two mullions, 45 mm short of each (a 90 mm
+  pier of studs), 90 mm short of the wall's ends, from its foot up to 300 mm under the storey
+  above, divided by at most two transoms. A door in a curtain wall takes its bay; Revit writes its
+  body with the leaf's swing in it, so it is found by the curtain wall whose line runs through it.
+  A curtain wall has no layers, so it never decides a build-up: a facade that is glass all round
+  gets the default exterior wall.
 - **Left out as walls:** foundation walls (top at or under the lowest floor), parapets (standing
   on the eaves), walls under 1.2 m (soffits, bulkheads, knee walls) and linings (a thinner wall
   face to face with another along most of its length — the Duplex's furring walls).
@@ -74,7 +85,9 @@ and corner the same way it does for a house read from drawings.
 - **The roof**: flat when its slabs are level, else read off the slope of its planes — one slope
   a shed roof (and the side it rises to), two opposite a gable (and the ridge's direction), more
   a hip roof — with the pitch from their normals. The eave is where the exterior walls end (the
-  lowest facade's top), or a flat roof's underside where that is lower. The overhang is how far
+  lowest facade's top), or a flat roof's underside where that is lower — but never lower than a
+  storey's walls (1.8 m) over the top storey's floor: a canopy, a terrace or a lower wing's roof
+  under the top storey is left out instead of taking the storeys over it out of the house. The overhang is how far
   the roof runs past the walls' lines.
 - **Build-ups** (`envelope`): the exterior wall's and the partitions' from the layer set most of
   their length has; the roof's from the roof; the ground floor's from its slab with the finish
@@ -116,7 +129,9 @@ which also goes into the house file's `notes`.
   shape runs every exterior wall from the lowest floor to the eaves. Such walls are reported and
   written as partitions.
 - **Basements and split levels**: a storey below ground is read as any other storey; half
-  storeys are not recognised.
+  storeys are not recognised. A basement with other walls than the house over it: the outline is
+  the facade of the storey that closes round the most, if at least a quarter more than the lowest
+  floor's, and the walls under it are partitions.
 - **Several buildings** in one IFC: only the largest closed outline becomes the exterior walls.
 - **Curved walls**: read as the straight line between their ends.
 - **Walls with no layer set** (IFC4 `IfcMaterialConstituentSet`, profile sets, a plain material)
@@ -170,7 +185,7 @@ which also goes into the house file's `notes`.
 - Room kinds come from the room's name (English and Danish words); `IfcZone` groupings, space
   boundaries and the spaces' own properties (area, occupancy) are not read.
 - Fittings are recognised by name only, and face away from the nearest wall.
-- **Not read at all**: stairs and ramps, railings, curtain walls, footings and piles (arch lays out
+- **Not read at all**: stairs and ramps, railings, footings and piles (arch lays out
   its own foundation), chimneys, `IfcBuildingElementProxy`, the site and terrain, terraces and
   paths outside the house, MEP (ducts, pipes, terminals other than sanitary ones), grids,
   annotations, classifications, and steel or concrete columns and beams (lintels included).
