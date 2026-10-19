@@ -18,7 +18,8 @@
  * rules are applied with `--rules`; a blueprint's adjacency rules kept beside it as
  * `<name>-rules.ttl` and `<name>-use-rules.ttl` (as the case house keeps them) are loaded with it,
  * and `--with` adds any other file. It exits 1 on a finding of severity error. It needs
- * `oxigraph`, an optional peer dependency, and loads it only when it runs.
+ * `oxigraph` 0.5.11 or later, installed beside the package (not a peer dependency), and loads it
+ * only when it runs.
  */
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -114,7 +115,7 @@ async function validateCommand(args: string[]): Promise<number> {
     try {
         ox = (await import('oxigraph')) as unknown as Oxigraph;
     } catch {
-        process.stderr.write('twb validate needs oxigraph: npm install oxigraph\n');
+        process.stderr.write('twb validate needs oxigraph: npm install oxigraph@^0.5.11\n');
         return 2;
     }
     const { validate, formatReport, detectInput } = await import('./validate');

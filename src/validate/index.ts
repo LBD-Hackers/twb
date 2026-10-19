@@ -5,8 +5,9 @@
  * Runs in Node and in a browser (in a Web Worker, say): the caller hands it the Oxigraph module —
  * `oxigraph` in Node, `oxigraph/web.js` once its WASM is initialised in a browser — and the
  * ontology's texts (`OntologySources`; in Node, `loadOntologySources` from
- * `@lbd-hackers/twb/validate/node` reads them from the package). Oxigraph is an optional peer
- * dependency: only this entry needs it.
+ * `@lbd-hackers/twb/validate/node` reads them from the package). Only this entry needs Oxigraph,
+ * 0.5.11 or later (earlier versions cannot read JSON-LD 1.1); it is not a peer dependency, so an
+ * app on an older Oxigraph can use the rest of the package.
  *
  * ```ts
  * import * as ox from 'oxigraph';
