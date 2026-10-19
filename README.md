@@ -48,8 +48,10 @@ Node 20 or later, or any modern browser. The house file, the IFC importer and th
 are pure TypeScript with no dependencies. The viewer and the engine's renderer need
 [`three`](https://www.npmjs.com/package/three) and [`lit`](https://www.npmjs.com/package/lit),
 which are optional peer dependencies: install them if you use `@lbd-hackers/twb/elements` or
-`@lbd-hackers/twb/surfacekit/render`. So is [`oxigraph`](https://www.npmjs.com/package/oxigraph),
-for `@lbd-hackers/twb/validate` and `twb validate`.
+`@lbd-hackers/twb/surfacekit/render`. [`oxigraph`](https://www.npmjs.com/package/oxigraph) 0.5.11
+or later is needed by `@lbd-hackers/twb/validate` and `twb validate` only. It is not a peer
+dependency, so an app on an older Oxigraph that does not validate can use the rest of the package;
+install it yourself if you validate.
 
 ## From the command line
 
@@ -64,8 +66,8 @@ npx @lbd-hackers/twb context                                    # the JSON-LD co
 
 `twb validate` checks a house file, an IFC file or a TWB graph against the ontology, its catalogue
 and its SHACL shapes, with the ontology the package ships. It needs
-[`oxigraph`](https://www.npmjs.com/package/oxigraph), an optional peer dependency
-(`npm install oxigraph`), and exits 1 on any finding of severity error.
+[`oxigraph`](https://www.npmjs.com/package/oxigraph) 0.5.11 or later, installed beside it
+(`npm install oxigraph@^0.5.11`; earlier versions cannot read JSON-LD 1.1), and exits 1 on any finding of severity error.
 
 ```bash
 npx @lbd-hackers/twb validate house.twb.jsonld        # a house file, twb/1 or arch/1

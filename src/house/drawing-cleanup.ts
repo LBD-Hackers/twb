@@ -160,6 +160,101 @@ function settingsKey(s: Surface): string {
     ]);
 }
 
+/** Past this, a face's box is clear of a point or edge every test here would find on it, mm. */
+const BOX_SLACK_MM = PLANE_MM + 3;
+/** Plan cells the faces are filed in for `nearbyFaces`, mm. */
+const CELL_MM = 2000;
+
+interface Box {
+    lo: Point3Mm;
+    hi: Point3Mm;
+}
+
+function boxOfPoints(points: readonly Point3Mm[]): Box {
+    const lo = { x: Infinity, y: Infinity, z: Infinity };
+    const hi = { x: -Infinity, y: -Infinity, z: -Infinity };
+    for (const p of points) {
+        lo.x = Math.min(lo.x, p.x);
+        lo.y = Math.min(lo.y, p.y);
+        lo.z = Math.min(lo.z, p.z);
+        hi.x = Math.max(hi.x, p.x);
+        hi.y = Math.max(hi.y, p.y);
+        hi.z = Math.max(hi.z, p.z);
+    }
+    return { lo, hi };
+}
+
+/** Each ring's box, read once: a merge makes a new ring rather than changing one. */
+const ringBoxes = new WeakMap<readonly Point3Mm[], Box>();
+
+function boxOfRing(ring: readonly Point3Mm[]): Box {
+    let box = ringBoxes.get(ring);
+    if (!box) {
+        box = boxOfPoints(ring);
+        ringBoxes.set(ring, box);
+    }
+    return box;
+}
+
+function boxesTouch(a: Box, b: Box, d = BOX_SLACK_MM): boolean {
+    return (
+        a.lo.x <= b.hi.x + d &&
+        b.lo.x <= a.hi.x + d &&
+        a.lo.y <= b.hi.y + d &&
+        b.lo.y <= a.hi.y + d &&
+        a.lo.z <= b.hi.z + d &&
+        b.lo.z <= a.hi.z + d
+    );
+}
+
+/**
+ * The faces filed by where they stand in plan, so a face is held only against those whose boxes
+ * touch its own — the others share no edge with it and pass through none of its edges — in the
+ * order `surfaces` gives them, which is the order the merges are looked for in.
+ */
+function nearbyFaces(surfaces: readonly Surface[], rings: ReadonlyMap<SurfaceId, readonly Point3Mm[]>) {
+    const byId = new Map(surfaces.map((s) => [s.id, s]));
+    const order = new Map(surfaces.map((s, k) => [s.id, k]));
+    const alive = new Set(surfaces.map((s) => s.id));
+    const cells = new Map<string, Set<SurfaceId>>();
+    const keysOf = (box: Box): string[] => {
+        const d = BOX_SLACK_MM;
+        const x0 = Math.floor((box.lo.x - d) / CELL_MM);
+        const x1 = Math.floor((box.hi.x + d) / CELL_MM);
+        const y0 = Math.floor((box.lo.y - d) / CELL_MM);
+        const y1 = Math.floor((box.hi.y + d) / CELL_MM);
+        const keys: string[] = [];
+        for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) keys.push(`${x},${y}`);
+        return keys;
+    };
+    const file = (id: SurfaceId) => {
+        for (const k of keysOf(boxOfRing(rings.get(id)!))) {
+            let cell = cells.get(k);
+            if (!cell) cells.set(k, (cell = new Set()));
+            cell.add(id);
+        }
+    };
+    for (const s of surfaces) file(s.id);
+    const within = (box: Box): SurfaceId[] => {
+        const found = new Set<SurfaceId>();
+        for (const k of keysOf(box)) {
+            for (const id of cells.get(k) ?? []) {
+                if (alive.has(id) && boxesTouch(box, boxOfRing(rings.get(id)!))) found.add(id);
+            }
+        }
+        return [...found].sort((m, n) => order.get(m)! - order.get(n)!);
+    };
+    return {
+        surface: (id: SurfaceId) => byId.get(id)!,
+        within,
+        /** The faces after `id` in order whose boxes touch `box`. */
+        after: (id: SurfaceId, box: Box) => within(box).filter((o) => order.get(o)! > order.get(id)!),
+        drop: (id: SurfaceId) => alive.delete(id),
+        /** Files a face again where its new ring reaches. */
+        file,
+    };
+}
+
 function edgesOf(ring: readonly Point3Mm[]): Segment[] {
     return ring.map((p, i) => [p, ring[(i + 1) % ring.length]!] as const);
 }
@@ -188,6 +283,8 @@ export function faceMerges(
     const rings = new Map(surfaces.map((s) => [s.id, s.boundaryMm]));
     const live = [...surfaces];
     const merges: FaceMerge[] = [];
+    const settings = new Map(surfaces.map((s) => [s.id, settingsKey(s)]));
+    const near = nearbyFaces(surfaces, rings);
 
     /** Whether anything else is drawn along a run of shared edge. */
     const pinned = (seg: Segment, a: SurfaceId, b: SurfaceId): boolean => {
@@ -198,9 +295,9 @@ export function faceMerges(
         const level = Math.abs(p.z - q.z) <= PLANE_MM;
         if (level && floorLevels.some((z) => Math.abs(p.z - z) <= PLANE_MM)) return true;
         const mid = midpoint3(p, q);
-        return live.some((c) => {
-            if (c.id === a || c.id === b) return false;
-            const ring = rings.get(c.id)!;
+        return near.within(boxOfPoints([p, q])).some((c) => {
+            if (c === a || c === b) return false;
+            const ring = rings.get(c)!;
             if (edgesOf(ring).some(along)) return true;
             // Lying in `c` and across it: `c` passes through the split.
             const frame = surfaceFrame(ring);
@@ -214,16 +311,24 @@ export function faceMerges(
         });
     };
 
+    // After a merge the search starts over, and a face before the merged one heals no
+    // differently unless the merge reached it: the merged face's new ring, where the face it
+    // took in lay too, is all that changed. Those it did not reach are passed over.
+    let resumeAt = 0;
+    let changed: Box | null = null;
     for (let healed = true; healed;) {
         healed = false;
         outer: for (let i = 0; i < live.length; i++) {
             const a = live[i]!;
             const ringA = rings.get(a.id)!;
+            if (changed && i < resumeAt && !boxesTouch(boxOfRing(ringA), changed, 2 * BOX_SLACK_MM))
+                continue;
             const plane = planeOfPolygon(ringA);
             if (!plane) continue;
-            for (let j = i + 1; j < live.length; j++) {
-                const b = live[j]!;
-                if (settingsKey(a) !== settingsKey(b)) continue;
+            // Only the later faces whose boxes touch `a`'s can share an edge with it.
+            for (const id of near.after(a.id, boxOfRing(ringA))) {
+                const b = near.surface(id);
+                if (settings.get(a.id) !== settings.get(b.id)) continue;
                 const ringB = rings.get(b.id)!;
                 if (ringB.some((p) => Math.abs(distanceToPlane(p, plane)) > PLANE_MM)) continue;
                 const shared = sharedSegments(ringA, ringB);
@@ -232,8 +337,12 @@ export function faceMerges(
                 const ring = mergeRings(ringA, ringB);
                 if (!ring) continue;
                 rings.set(a.id, ring);
-                live.splice(j, 1);
+                live.splice(live.indexOf(b), 1);
+                near.drop(b.id);
+                near.file(a.id);
                 merges.push({ keep: a.id, drop: b.id });
+                resumeAt = i;
+                changed = boxOfRing(ring);
                 healed = true;
                 // `a` has a new outline: look again from the start.
                 break outer;

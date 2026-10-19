@@ -107,7 +107,11 @@ export function resolvedSurfaces(surfaces: readonly Surface[]): Surface[] {
  */
 export function hostFor(ring: readonly Point3Mm[], surfaces: readonly Surface[]): Surface | null {
     let best: { surface: Surface; area: number } | null = null;
+    const within = boxOf(ring, false);
     for (const s of surfaces) {
+        // A ring on a face's plane and inside its outline is inside its box, give or take the
+        // plane's tolerance: the faces it is not are passed over before their planes are read.
+        if (!boxHolds(boxOf(s.boundaryMm), within, ON_PLANE_MM + 1)) continue;
         const plane = planeOfPolygon(s.boundaryMm);
         const frame = surfaceFrame(s.boundaryMm);
         if (!plane || !frame) continue;
@@ -129,4 +133,42 @@ export function hostFor(ring: readonly Point3Mm[], surfaces: readonly Surface[])
         if (!best || area < best.area) best = { surface: s, area };
     }
     return best?.surface ?? null;
+}
+
+interface Box3 {
+    lo: Point3Mm;
+    hi: Point3Mm;
+}
+
+/** Each ring's box, read once: a face's boundary is replaced, not changed, when it moves. */
+const boxes = new WeakMap<readonly Point3Mm[], Box3>();
+
+function boxOf(ring: readonly Point3Mm[], keep = true): Box3 {
+    const known = keep ? boxes.get(ring) : undefined;
+    if (known) return known;
+    const lo = { x: Infinity, y: Infinity, z: Infinity };
+    const hi = { x: -Infinity, y: -Infinity, z: -Infinity };
+    for (const p of ring) {
+        lo.x = Math.min(lo.x, p.x);
+        lo.y = Math.min(lo.y, p.y);
+        lo.z = Math.min(lo.z, p.z);
+        hi.x = Math.max(hi.x, p.x);
+        hi.y = Math.max(hi.y, p.y);
+        hi.z = Math.max(hi.z, p.z);
+    }
+    const box = { lo, hi };
+    if (keep) boxes.set(ring, box);
+    return box;
+}
+
+/** Whether `outer`, grown by `slack` every way, holds `inner`. */
+function boxHolds(outer: Box3, inner: Box3, slack: number): boolean {
+    return (
+        inner.lo.x >= outer.lo.x - slack &&
+        inner.lo.y >= outer.lo.y - slack &&
+        inner.lo.z >= outer.lo.z - slack &&
+        inner.hi.x <= outer.hi.x + slack &&
+        inner.hi.y <= outer.hi.y + slack &&
+        inner.hi.z <= outer.hi.z + slack
+    );
 }

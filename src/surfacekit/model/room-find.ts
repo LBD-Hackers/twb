@@ -32,17 +32,31 @@ const keyOf = (p: Vec2Mm): string => `${Math.round(p.x)},${Math.round(p.y)}`;
  * when the point is not enclosed — outside the building, or in a room with a gap in its walls.
  */
 export function roomOutlineAt(segments: readonly PlanSegment[], pointMm: Vec2Mm): Vec2Mm[] | null {
-    const edges = nodedEdges(segments);
-    const adjacency = pruneDangling(edges);
     let best: { ring: Vec2Mm[]; area: number } | null = null;
-    for (const ring of faces(adjacency)) {
-        const area = signedArea2(ring);
-        // Bounded faces come out counter-clockwise; the one clockwise face is the outside.
-        if (area <= 0) continue;
-        if (!pointInPolygon2(pointMm, ring)) continue;
-        if (!best || area < best.area) best = { ring, area };
+    for (const face of roomsOf(segments)) {
+        if (!pointInPolygon2(pointMm, face.ring)) continue;
+        if (!best || face.area < best.area) best = face;
     }
     return best ? dropCollinear(best.ring) : null;
+}
+
+/**
+ * The rooms the segments close, each with its area: worked out once per list of segments, since
+ * a storey's rooms are all found in the same walls, one point after another.
+ */
+const roomsBySegments = new WeakMap<readonly PlanSegment[], { ring: Vec2Mm[]; area: number }[]>();
+
+function roomsOf(segments: readonly PlanSegment[]): { ring: Vec2Mm[]; area: number }[] {
+    const known = roomsBySegments.get(segments);
+    if (known) return known;
+    const rooms: { ring: Vec2Mm[]; area: number }[] = [];
+    for (const ring of faces(pruneDangling(nodedEdges(segments)))) {
+        const area = signedArea2(ring);
+        // Bounded faces come out counter-clockwise; the one clockwise face is the outside.
+        if (area > 0) rooms.push({ ring, area });
+    }
+    roomsBySegments.set(segments, rooms);
+    return rooms;
 }
 
 /** Every segment split at every vertex lying on it, deduplicated, as undirected edges. */
