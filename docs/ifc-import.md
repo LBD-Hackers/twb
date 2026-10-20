@@ -57,7 +57,9 @@ and corner the same way it does for a house read from drawings.
   same walls, higher up. Every other wall is a partition, written once per storey it stands on,
   its ends taken to the line of the wall they meet (within 400 mm).
 - **Curtain walls** are read from their panels and mullions (they have no body of their own): their
-  line the long direction of their parts in plan, through the middle of their thickness. One set
+  line the long direction of their parts in plan, through the middle of their thickness. Those side
+  by side on one line (Revit writes each panel of a glazed wall as one), within 300 mm of each
+  other along it, are joined into one wall of glass first. One set
   in a wall (parallel to it, inside its thickness, its length and its height — Revit's glazed
   panel in a wall) is a window in that wall, divided by its mullions and transoms. One on its own
   is a wall of the house's build-up on its line, a facade on the outline or a partition, glazed
@@ -66,7 +68,9 @@ and corner the same way it does for a house read from drawings.
   above, divided by at most two transoms. A door in a curtain wall takes its bay; Revit writes its
   body with the leaf's swing in it, so it is found by the curtain wall whose line runs through it.
   A curtain wall has no layers, so it never decides a build-up: a facade that is glass all round
-  gets the default exterior wall.
+  gets the default exterior wall. Each window made of a curtain wall keeps its glass, measured off
+  its panels (their area and count), in the report's `curtainGlass`, by where the window is: the
+  house file has the window as a hole of a size, the report what glass is in it.
 - **Left out as walls:** foundation walls (top at or under the lowest floor), parapets (standing
   on the eaves), walls under 1.2 m (soffits, bulkheads, knee walls) and linings (a thinner wall
   face to face with another along most of its length — the Duplex's furring walls).
@@ -130,8 +134,9 @@ which also goes into the house file's `notes`.
   written as partitions.
 - **Basements and split levels**: a storey below ground is read as any other storey; half
   storeys are not recognised. A basement with other walls than the house over it: the outline is
-  the facade of the storey that closes round the most, if at least a quarter more than the lowest
-  floor's, and the walls under it are partitions.
+  the facade of the storey that holds the most of the building's rooms (with no rooms in the IFC,
+  the one that closes round the most, if at least a quarter more than the lowest floor's), and the
+  walls under it are partitions.
 - **Several buildings** in one IFC: only the largest closed outline becomes the exterior walls.
 - **Curved walls**: read as the straight line between their ends.
 - **Walls with no layer set** (IFC4 `IfcMaterialConstituentSet`, profile sets, a plain material)
