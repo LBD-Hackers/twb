@@ -26,7 +26,7 @@ const T = 200;
  * canopy over the entrance under the upper storey, or a basement smaller than the house.
  */
 function officeIfc(
-    opts: { setIn?: boolean; facade?: boolean; canopy?: boolean; basement?: boolean } = {}
+    opts: { setIn?: boolean; facade?: boolean; canopy?: boolean; basement?: boolean; glassPartition?: boolean } = {}
 ): string {
     const lines: string[] = [];
     let n = 0;
@@ -154,6 +154,14 @@ function officeIfc(
         wall('KW', [3000, 5000], [3000, 2000], -H, H);
     }
     if (opts.setIn) curtainWall('Glasfelt', h, [3000, 4000], 900, 2100);
+    if (opts.glassPartition) {
+        // A glazed partition across the ground floor, Revit's way: each panel a curtain wall of its
+        // own, 120 mm between them; and a partition that stops in the gap between two.
+        curtainWall('Glas 1', 4000, [4000, 4940], 0, 2900);
+        curtainWall('Glas 2', 4000, [5060, 6000], 0, 2900);
+        curtainWall('Glas 3', 4000, [6120, 7060], 0, 2900);
+        wall('P', [5000, 4100], [5000, D - h], 0, H);
+    }
     if (opts.facade) {
         curtainWall('Facade', D - h, [h, 3000, 6000, 9000, W - h], 0, H - 50, [2100]);
         storeyAt(0).contained.push(
@@ -286,5 +294,34 @@ describe('a basement smaller than the house', () => {
     it('builds the basement’s own walls as partitions under it', () => {
         const runs = h['interiorWalls'] as { storey?: string }[];
         expect(runs.filter((r) => r.storey === 'Kælder')).toHaveLength(4);
+    });
+});
+
+describe('a glazed partition of one curtain wall per panel', () => {
+    const { h, report, warned } = read({ glassPartition: true });
+    const runs = (h['interiorWalls'] as { points: [number, number][] }[]).map((r) => r.points);
+    // 4000 in the IFC, less the 100 to the walls' lines the origin is moved by.
+    const glassLine = 4000 - T / 2;
+
+    it('is one wall of glass along the line', () => {
+        const glass = runs.filter((p) => p.every(([, y]) => y === glassLine));
+        expect(glass).toHaveLength(1);
+        const xs = glass[0]!.map(([x]) => x);
+        // From the first panel's outer post face to the last one's.
+        expect([Math.min(...xs), Math.max(...xs)]).toEqual([3970 - T / 2, 7090 - T / 2]);
+        expect(warned).toContain('3 curtain walls standing side by side on a line are joined into 1');
+    });
+
+    it('takes the partition that stopped in the gap between two panels onto its line', () => {
+        const partition = runs.find((p) => p.every(([x]) => x === 5000 - T / 2))!;
+        expect(Math.min(...partition.map(([, y]) => y))).toBe(glassLine);
+    });
+
+    it('measures each window’s glass off its panel: 880 × 2780 mm', () => {
+        expect(report.curtainGlass.map((g) => [g.glassAreaM2, g.panes])).toEqual([
+            [2.45, 1],
+            [2.45, 1],
+            [2.45, 1],
+        ]);
     });
 });

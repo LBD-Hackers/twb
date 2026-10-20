@@ -111,6 +111,11 @@ export interface IfcImportReport {
      */
     trueNorthDeg: number | null;
     warnings: string[];
+    /**
+     * The glass of each window made of a curtain wall, measured off its panels: what a room's
+     * glass in curtain walls is counted from. Not in the house file.
+     */
+    curtainGlass: CurtainGlass[];
 }
 
 export interface IfcImport {
@@ -144,6 +149,10 @@ const MIN_BAY_MM = 400;
 const BAY_HEAD_MM = 300;
 /** The most transoms a glazed bay is divided by: arch's window is at most three panes high. */
 const MAX_BAY_TRANSOMS = 2;
+/** Curtain walls this far apart along one line, or less, are one wall of glass, mm: a mullion's gap. */
+const JOIN_GAP_MM = 300;
+/** Curtain walls within a degree of each other run the same way. */
+const JOIN_COS = Math.cos((1 * Math.PI) / 180);
 /** Two king studs back to back: the least wall arch frames between two openings, mm. */
 const MIN_PIER_MM = 90;
 /** How far a partition's end may be from the wall it meets. */
@@ -239,6 +248,20 @@ interface Wall {
 interface CurtainGrid {
     mullions: { t: number; zLo: number; zHi: number }[];
     transoms: { z: number; tLo: number; tHi: number }[];
+    /** Its panels (`IfcPlate`), each by the stretch of the line and the heights it covers. */
+    panes: { tLo: number; tHi: number; zLo: number; zHi: number }[];
+    /** How many of the IFC's curtain walls it is: panels side by side on a line are joined. */
+    panels: number;
+}
+
+/** The glass of a window made of a curtain wall, measured off its panels, for the quantities. */
+export interface CurtainGlass {
+    /** The window's `at` and `storey`, as the house file has them. */
+    at: [number, number];
+    storey?: string;
+    /** The panels' area, m², and how many there are. */
+    glassAreaM2: number;
+    panes: number;
 }
 
 type WallRole = 'exterior' | 'partition' | 'foundation' | 'parapet' | 'short' | 'lining';
@@ -281,7 +304,17 @@ class Importer {
             const host = hostWallOf(cw, basicWalls);
             if (host) setIn.set(cw, host);
         }
-        const walls = [...basicWalls, ...curtains.filter((cw) => !setIn.has(cw))];
+        // Revit writes a glazed wall's every panel as a curtain wall of its own: side by side on a
+        // line they are one wall of glass, which a partition can meet.
+        const free = curtains.filter((cw) => !setIn.has(cw));
+        const glassWalls = joinCurtains(free);
+        if (glassWalls.length < free.length) {
+            this.warnings.push(
+                `${free.length} curtain walls standing side by side on a line are joined into ${glassWalls.length} walls of glass: ` +
+                    'Revit writes each panel of a glazed wall as a curtain wall of its own.'
+            );
+        }
+        const walls = [...basicWalls, ...glassWalls];
         const spaces = m.all('IFCSPACE');
 
         // ---- Storeys: the ones rooms stand on.
@@ -330,17 +363,28 @@ class Importer {
         let loop = flagged.length >= 3 ? findLoop(flagged) : null;
         if (!loop) loop = findLoop(onGround);
         // A basement or a plinth with other walls than the house over it: the outline is the
-        // facade of the storey that closes round the most, which the walls under it are not.
+        // facade of the storey that holds the most of the building's rooms — the most it closes
+        // round where the IFC has no rooms — which the walls under it are not.
         const loopArea = (l: typeof loop) =>
             l ? Math.abs(signedArea(l.corners.map((c) => c.at))) : 0;
+        const roomPoints = spaceBoxes
+            .map(({ box }) => box && { x: (box.min.x + box.max.x) / 2, y: (box.min.y + box.max.y) / 2 })
+            .filter((p): p is P2 => !!p);
+        const roomsIn = (l: typeof loop) => {
+            const ring = l?.corners.map((c) => c.at);
+            return ring ? roomPoints.filter((p) => insidePolygon(p, ring)).length : 0;
+        };
         const lowestArea = loopArea(loop);
+        const lowestRooms = roomsIn(loop);
         let outlineStorey = 0;
         living.forEach((st, k) => {
             if (k === 0) return;
             const on = standing.filter((w) => Math.abs(w.zLo - st.elev) <= 400);
             const facade = on.filter((w) => w.isExternal === true);
             const upper = facade.length >= 3 ? findLoop(facade) : findLoop(on);
-            if (loopArea(upper) > OUTLINE_GAIN * loopArea(loop)) {
+            if (!upper) return;
+            const [more, same] = [roomsIn(upper), roomsIn(loop)];
+            if (more > same || (more === same && loopArea(upper) > OUTLINE_GAIN * loopArea(loop))) {
                 loop = upper;
                 outlineStorey = k;
             }
@@ -348,9 +392,9 @@ class Importer {
         if (outlineStorey > 0) {
             const m2 = (a: number) => `${Math.round(a / 1e6).toLocaleString('en')} m²`;
             this.warnings.push(
-                `The outline is read on ${living[outlineStorey]!.name}, whose facade closes round ${m2(loopArea(loop))}; ` +
+                `The outline is read on ${living[outlineStorey]!.name}, whose facade closes round ${m2(loopArea(loop))}${roomPoints.length > 0 ? ` and ${roomsIn(loop)} of the ${roomPoints.length} rooms` : ''}; ` +
                     (lowestArea > 0
-                        ? `the lowest floor's (${living[0]!.name}) closes round only ${m2(lowestArea)}. `
+                        ? `the lowest floor's (${living[0]!.name}) closes round ${m2(lowestArea)}${roomPoints.length > 0 ? ` and ${lowestRooms}` : ''}. `
                         : `the lowest floor's (${living[0]!.name}) closes round nothing. `) +
                     'The house file runs every exterior wall from the lowest floor, so the walls under it are built as partitions.'
             );
@@ -568,6 +612,8 @@ class Importer {
         const filled = new Set<number>();
         /** The windows, kept back to be coupled where only a sliver of wall is between them. */
         const windows: CouplingWindow<Record<string, unknown>>[] = [];
+        /** The windows made of curtain walls, with the panels each holds: measured once placed. */
+        const glass: { entry: Record<string, unknown>; panes: CurtainGrid['panes'] }[] = [];
         /** The doors in curtain walls, by the stretch of the wall's line each takes, mm from `a`. */
         const curtainDoors: { wall: Wall; band: number; tLo: number; tHi: number }[] = [];
         for (const f of fillers) {
@@ -678,6 +724,7 @@ class Importer {
                 mullions,
                 transoms,
             });
+            glass.push({ entry, panes: cw.curtain!.panes });
             setInRead++;
         }
         if (setInRead > 0) {
@@ -708,14 +755,17 @@ class Importer {
                 ...(w.transoms > 0 ? { transoms: w.transoms } : {}),
             };
             const { glazing: _own, ...rest } = w.entry;
-            openings.push({
+            const placed = {
                 ...rest,
                 at: T(add2(w.line.a, mul2(d, w.alongMm))),
                 widthMm: Math.round(w.widthMm),
                 heightMm: Math.round(w.heightMm),
                 sillMm: Math.round(w.sillMm),
                 ...(Object.keys(glazing).length > 0 ? { glazing } : {}),
-            });
+            };
+            openings.push(placed);
+            // A curtain wall's window keeps its glass, under the entry it is written as.
+            for (const g of glass) if (g.entry === w.entry) g.entry = placed;
         }
         // A wall of glass: on each storey, a window in each bay between its mullions, a stud's pier
         // where each mullion stands, under a header below the storey above. A door in it takes
@@ -761,7 +811,7 @@ class Importer {
                             z1
                         ).length
                     );
-                    openings.push({
+                    const entry: Record<string, unknown> = {
                         kind: 'window',
                         at: T(add2(line.a, mul2(d, along(mid)))),
                         widthMm: Math.round(hi - lo),
@@ -769,11 +819,19 @@ class Importer {
                         sillMm: Math.round(z0 - st.elev),
                         ...(storeyName(k) ? { storey: storeyName(k) } : {}),
                         ...(transoms > 0 ? { glazing: { transoms } } : {}),
+                    };
+                    openings.push(entry);
+                    // The panels in the bay, on this storey: the glass that faces its rooms.
+                    const panes = cw.curtain!.panes.filter((g) => {
+                        const t = (g.tLo + g.tHi) / 2;
+                        const z = (g.zLo + g.zHi) / 2;
+                        return t >= cuts[i]! && t <= cuts[i + 1]! && z >= st.elev && z < st.top;
                     });
+                    glass.push({ entry, panes });
                     bays++;
                 }
             });
-            if (bays > before) glazed++;
+            if (bays > before) glazed += cw.curtain!.panels;
         }
         if (glazed > 0) {
             this.warnings.push(
@@ -957,6 +1015,15 @@ class Importer {
             skipped: [...this.skipped.values()],
             trueNorthDeg: trueNorth,
             warnings: this.warnings,
+            curtainGlass: glass
+                .filter((g) => g.panes.length > 0)
+                .map(({ entry, panes }) => ({
+                    at: entry['at'] as [number, number],
+                    ...(typeof entry['storey'] === 'string' ? { storey: entry['storey'] } : {}),
+                    glassAreaM2:
+                        Math.round(panes.reduce((sum, g) => sum + (g.tHi - g.tLo) * (g.zHi - g.zLo), 0) / 1e4) / 100,
+                    panes: panes.length,
+                })),
         };
 
         const file: Record<string, unknown> = {
@@ -1139,16 +1206,17 @@ class Importer {
         const mid = (Math.min(...across) + Math.max(...across)) / 2;
         const axisA = add2(c, add2(mul2(dir, Math.min(...t)), mul2(normal, mid)));
         const axisB = add2(c, add2(mul2(dir, Math.max(...t)), mul2(normal, mid)));
-        const grid: CurtainGrid = { mullions: [], transoms: [] };
+        const grid: CurtainGrid = { mullions: [], transoms: [], panes: [], panels: 1 };
         for (const part of parts) {
-            if (part.type !== 'IFCMEMBER') continue;
+            if (part.type !== 'IFCMEMBER' && part.type !== 'IFCPLATE') continue;
             const ps = m.bodyPoints(part);
             if (ps.length === 0) continue;
             const pt = ps.map((p) => dot2(sub2(p, axisA), dir));
             const pz = ps.map((p) => p.z);
             const [tLo, tHi] = [Math.min(...pt), Math.max(...pt)];
             const [zLo, zHi] = [Math.min(...pz), Math.max(...pz)];
-            if (zHi - zLo > tHi - tLo) grid.mullions.push({ t: (tLo + tHi) / 2, zLo, zHi });
+            if (part.type === 'IFCPLATE') grid.panes.push({ tLo, tHi, zLo, zHi });
+            else if (zHi - zLo > tHi - tLo) grid.mullions.push({ t: (tLo + tHi) / 2, zLo, zHi });
             else grid.transoms.push({ z: (zLo + zHi) / 2, tLo, tHi });
         }
         const z = pts.map((p) => p.z);
@@ -2305,6 +2373,86 @@ function hostWallOf(cw: Wall, walls: readonly Wall[]): Wall | null {
         if (!best || w.thickness > best.thickness) best = w;
     }
     return best;
+}
+
+/**
+ * Curtain walls side by side on one line joined into one wall of glass: in line (within a degree
+ * and `ON_LINE_MM`), at most `JOIN_GAP_MM` apart along it, over most of the same height. Revit
+ * writes each panel of a glazed wall as a curtain wall of its own; left apart, a partition meeting
+ * the glass would end in the gap a mullion leaves between two of them.
+ */
+function joinCurtains(walls: readonly Wall[]): Wall[] {
+    const parent = walls.map((_, i) => i);
+    const root = (i: number): number => (parent[i] === i ? i : (parent[i] = root(parent[i]!)));
+    const along = (w: Wall, p: P2) => dot2(sub2(p, w.a), w.dir);
+    const off = (w: Wall, p: P2) => Math.abs(dot2(sub2(p, w.a), { x: -w.dir.y, y: w.dir.x }));
+    for (let i = 0; i < walls.length; i++) {
+        const a = walls[i]!;
+        const len = dist2(a.a, a.b);
+        for (let j = i + 1; j < walls.length; j++) {
+            const b = walls[j]!;
+            if (Math.abs(dot2(a.dir, b.dir)) < JOIN_COS) continue;
+            if (off(a, b.a) > ON_LINE_MM || off(a, b.b) > ON_LINE_MM) continue;
+            const [t0, t1] = [along(a, b.a), along(a, b.b)].sort((x, y) => x - y) as [number, number];
+            if (t0 > len + JOIN_GAP_MM || t1 < -JOIN_GAP_MM) continue;
+            const shared = Math.min(a.zHi, b.zHi) - Math.max(a.zLo, b.zLo);
+            if (shared < 0.5 * Math.min(a.zHi - a.zLo, b.zHi - b.zLo)) continue;
+            parent[root(j)] = root(i);
+        }
+    }
+    const groups = new Map<number, Wall[]>();
+    walls.forEach((w, i) => groups.set(root(i), [...(groups.get(root(i)) ?? []), w]));
+    return [...groups.values()].map((group) => (group.length === 1 ? group[0]! : joined(group)));
+}
+
+/** One wall of glass from curtain walls on one line, its grid and panels laid along it. */
+function joined(group: readonly Wall[]): Wall {
+    const base = group[0]!;
+    const { dir } = base;
+    const normal = { x: -dir.y, y: dir.x };
+    const t = (p: P2) => dot2(sub2(p, base.a), dir);
+    // Each wall's own positions along its line, onto the joined one's.
+    const onto = (w: Wall, s: number) => t(add2(w.a, mul2(w.dir, s)));
+    const ends = group.flatMap((w) => [t(w.a), t(w.b)]);
+    const lo = Math.min(...ends);
+    const hi = Math.max(...ends);
+    const across =
+        group.reduce((sum, w) => sum + dot2(sub2(w.a, base.a), normal) + dot2(sub2(w.b, base.a), normal), 0) /
+        (2 * group.length);
+    const at = (s: number) => add2(base.a, add2(mul2(dir, s), mul2(normal, across)));
+    const span = (w: Wall, x: number, y: number): [number, number] => {
+        const [p, q] = [onto(w, x) - lo, onto(w, y) - lo];
+        return p <= q ? [p, q] : [q, p];
+    };
+    const grid: CurtainGrid = {
+        mullions: group.flatMap((w) => w.curtain!.mullions.map((g) => ({ ...g, t: onto(w, g.t) - lo }))),
+        transoms: group.flatMap((w) =>
+            w.curtain!.transoms.map((g) => {
+                const [tLo, tHi] = span(w, g.tLo, g.tHi);
+                return { z: g.z, tLo, tHi };
+            })
+        ),
+        panes: group.flatMap((w) =>
+            w.curtain!.panes.map((g) => {
+                const [tLo, tHi] = span(w, g.tLo, g.tHi);
+                return { tLo, tHi, zLo: g.zLo, zHi: g.zHi };
+            })
+        ),
+        panels: group.reduce((n, w) => n + w.curtain!.panels, 0),
+    };
+    const ext = group.map((w) => w.isExternal);
+    return {
+        ...base,
+        axisA: at(lo),
+        axisB: at(hi),
+        a: at(lo),
+        b: at(hi),
+        zLo: Math.min(...group.map((w) => w.zLo)),
+        zHi: Math.max(...group.map((w) => w.zHi)),
+        thickness: Math.max(...group.map((w) => w.thickness)),
+        isExternal: ext.includes(true) ? true : ext.includes(false) ? false : null,
+        curtain: grid,
+    };
 }
 
 /** Positions closer than `GRID_MERGE_MM` taken as one, strictly between `lo` and `hi`, sorted. */
