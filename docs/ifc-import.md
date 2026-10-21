@@ -197,7 +197,12 @@ which also goes into the house file's `notes`.
   `IfcWindowPanelProperties`; glazing bars are not read.
 - **Size**: the opening is the hole in the wall (the rough opening), not the frame's own size.
   Arched or round openings become their bounding rectangle.
-- **Windows in the roof** (skylights, roof windows): left out.
+- **Windows in the roof** (skylights, roof windows): the simple shape has no openings in a roof,
+  so they are left out of the house file. The hole each fills is in the report's `roofOpenings`,
+  by its middle in plan and its size measured on the roof (`widthMm` along the eave, `heightMm`
+  up the slope), for a tool that makes roof windows: a hole cut square to a sloping roof in its
+  own plane, one cut plumb or in a flat roof off its box in plan. The Duplex's two skylights are
+  holes of 1029 × 1081.
 
 **Roof**
 

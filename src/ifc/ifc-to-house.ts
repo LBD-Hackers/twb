@@ -118,6 +118,12 @@ export interface IfcImportReport {
     buildUpTypes: { id: string; layerSet: string }[];
     /** The window and door types, each from the IFC type it was read from (`window-2` ← its name). */
     openingTypes: { id: string; ifcType: string }[];
+    /**
+     * The holes the windows in the roof fill, which the house file has no place for: each by its
+     * middle in plan (as the house file's positions are) and its size measured on the roof —
+     * `widthMm` along the eave, `heightMm` up the slope. A tool that makes roof windows reads them.
+     */
+    roofOpenings: RoofOpening[];
     /** What the floors between storeys and the roof are, read off their cores. */
     structure: { floors: FloorStructure; roof: RoofStructure };
     /** IFC material names no rule knew, with what they were read as. */
@@ -141,6 +147,13 @@ export interface IfcImportReport {
      * glass in curtain walls is counted from. Not in the house file.
      */
     curtainGlass: CurtainGlass[];
+}
+
+/** A hole in the roof a window fills (`IfcImportReport.roofOpenings`). */
+export interface RoofOpening {
+    at: [number, number];
+    widthMm: number;
+    heightMm: number;
 }
 
 export interface IfcImport {
@@ -190,6 +203,10 @@ const ON_LINE_MM = 30;
 const MIN_PIECE_MM = 300;
 /** A point this close to a line is on it. */
 const ON_POINT_MM = 1;
+
+/** Why a window in the roof is left out of the house file; its hole is in `roofOpenings`. */
+const ROOF_WINDOW_SKIPPED =
+    "a window in the roof: the house file's simple shape has no openings in a roof; the hole it fills is in the report's roofOpenings.";
 
 /** What a file picker offers for an IFC model. */
 export const IFC_FILE_ACCEPT = '.ifc,application/x-step';
@@ -684,6 +701,8 @@ class Importer {
             return null;
         };
         const fillers = m.all('IFCDOOR', 'IFCWINDOW');
+        /** The windows in the roof, each with the points of the hole it fills. */
+        const roofHoles: { e: StepEntity; pts: Vec3[] }[] = [];
         const filled = new Set<number>();
         /** The windows, kept back to be coupled where only a sliver of wall is between them. */
         const windows: CouplingWindow<Record<string, unknown>>[] = [];
@@ -701,14 +720,13 @@ class Importer {
             const kind =
                 f.type === 'IFCWINDOW' ? 'window' : this.isGarageDoor(f) ? 'garage-door' : 'door';
             if (!wall) {
-                const where =
-                    host?.type === 'IFCROOF' || host?.type === 'IFCSLAB' ? 'roof' : 'other';
-                this.skip(
-                    f,
-                    where === 'roof'
-                        ? "a window in the roof: the house file's simple shape has no openings in a roof, and arch's roof windows are made for a pitched one."
-                        : 'a window or door in something that is not a wall.'
-                );
+                const inRoof = host?.type === 'IFCROOF' || host?.type === 'IFCSLAB';
+                if (inRoof && kind === 'window') {
+                    roofHoles.push({ e: opening ?? f, pts: m.bodyPoints(opening ?? f) });
+                    this.skip(f, ROOF_WINDOW_SKIPPED);
+                    continue;
+                }
+                this.skip(f, 'a window or door in something that is not a wall.');
                 continue;
             }
             const line = hostLine(wall);
@@ -934,6 +952,7 @@ class Importer {
                     `with a ${MIN_PIER_MM} mm pier of studs at each mullion and a header under the storey above.`
             );
         }
+        const roofOpenings = this.roofOpenings(roofHoles, roofShape, T);
         // An opening nothing fills: a passage, or a hole for something left out.
         for (const op of m.all('IFCOPENINGELEMENT')) {
             if (filled.has(op.id)) continue;
@@ -1226,6 +1245,7 @@ class Importer {
             buildups,
             buildUpTypes,
             openingTypes: [...this.openingTypes.values()].map((t) => ({ id: t.id, ifcType: t.label ?? t.id })),
+            roofOpenings,
             structure,
             guessedMaterials: [...this.guessed].map(([name, as]) => `"${name}" as ${as}`),
             skipped: [...this.skipped.values()],
@@ -1301,6 +1321,60 @@ class Importer {
                 : {}),
         };
         return { house: toTwbHouse(file as unknown as HouseFile), report };
+    }
+
+    // ---- Windows in the roof --------------------------------------------------------------------
+
+    /**
+     * The holes the windows in the roof fill (`IfcImportReport.roofOpenings`): each by its middle
+     * in plan and its size measured on the roof — along the eave, and up the slope. A hole cut
+     * square to a sloping roof is measured in its own plane, its largest face's, so the cut
+     * through the roof's thickness does not count; one cut plumb, or in a flat roof, off its box
+     * in plan, up the slope at the roof's pitch.
+     */
+    private roofOpenings(
+        holes: readonly { e: StepEntity; pts: Vec3[] }[],
+        shape: { type: string; pitchDeg: number; ridge?: string | null; highSide?: string | null },
+        T: (p: P2) => [number, number]
+    ): RoofOpening[] {
+        const flat = shape.type === 'flat';
+        // The eave runs along x under a ridge along x, or a shed roof high on the north or south.
+        const eaveAlongX =
+            flat || shape.ridge === 'x' || shape.highSide === 'north' || shape.highSide === 'south';
+        const slope = flat ? 1 : 1 / Math.cos((shape.pitchDeg * Math.PI) / 180);
+        return holes.flatMap(({ e, pts }) => {
+            const box = box3(pts);
+            if (!box) return [];
+            const face = this.m.bodyFaces(e).sort((x, y) => y.area - x.area)[0];
+            const n = face && (face.normal.z < 0 ? scale(face.normal, -1) : face.normal);
+            if (n && n.z > 0.05 && n.z < 0.996) {
+                // Down the slope in plan, along the eave, and up the roof's plane.
+                const down = norm2({ x: n.x, y: n.y });
+                const eave = { x: -down.y, y: down.x };
+                const [sin, cos] = [Math.hypot(n.x, n.y), n.z];
+                const along = pts.map((p) => dot2(p, eave));
+                const up = pts.map((p) => p.z * sin - dot2(p, down) * cos);
+                const off = pts.map((p) => p.z * cos + dot2(p, down) * sin);
+                const mid = (xs: number[]) => (Math.min(...xs) + Math.max(...xs)) / 2;
+                const [a, s, t] = [mid(along), mid(up), mid(off)];
+                return [
+                    {
+                        at: T(add2(mul2(eave, a), mul2(down, t * sin - s * cos))),
+                        widthMm: Math.round(Math.max(...along) - Math.min(...along)),
+                        heightMm: Math.round(Math.max(...up) - Math.min(...up)),
+                    },
+                ];
+            }
+            const dx = box.max.x - box.min.x;
+            const dy = box.max.y - box.min.y;
+            return [
+                {
+                    at: T({ x: (box.min.x + box.max.x) / 2, y: (box.min.y + box.max.y) / 2 }),
+                    widthMm: Math.round(eaveAlongX ? dx : dy),
+                    heightMm: Math.round((eaveAlongX ? dy : dx) * slope),
+                },
+            ];
+        });
     }
 
     // ---- Reading one wall -----------------------------------------------------------------------
