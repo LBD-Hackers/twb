@@ -23,7 +23,10 @@
  * two dwellings says it is): the exterior walls are the ones whose lines close round the house,
  * each meeting the next at a corner (`findLoop`). Their corners are where their lines meet. The
  * rest are partitions (`interiorWalls`), each on the storeys it stands on, its ends taken to the
- * line of the wall they meet. A wall lining another (a furring wall against a party wall), a wall
+ * line of the wall they meet; a party wall, stood on its middle, is met at its faces and linings
+ * too. Where rooms meet with no wall between them, a separation parts them on the line of the wall
+ * it runs on from, and every end left short of a line is taken to it, so the rooms close. A wall
+ * lining another (a furring wall against a party wall), a wall
  * under 1.2 m (a soffit, a knee wall) and the foundation's walls are left out.
  *
  * **Openings** are read from the hole each door or window fills (`IfcOpeningElement`): its
@@ -63,7 +66,7 @@ import {
     type RoofStructure,
 } from './catalogue';
 import { isEnum, type StepEntity } from './step';
-import { IfcModel, type IfcLayer, type Vec3 } from './ifc-model';
+import { apply, applyDir, IfcModel, scale, type IfcLayer, type Vec3 } from './ifc-model';
 import { isTimber, matchMaterial, type LayerRole } from './ifc-materials';
 
 interface P2 {
@@ -161,6 +164,8 @@ const PARTITION_REACH_MM = 400;
 const LOWERED_MM = 300;
 /** Lines this close are one line. */
 const ON_LINE_MM = 30;
+/** A point this close to a line is on it. */
+const ON_POINT_MM = 1;
 
 /** What a file picker offers for an IFC model. */
 export const IFC_FILE_ACCEPT = '.ifc,application/x-step';
@@ -559,15 +564,24 @@ class Importer {
         }
 
         // ---- Partitions: one run per storey each stands on, its ends on the wall they meet.
-        const allLines: { a: P2; b: P2; band: number[] }[] = [
+        const allLines: PlanLine[] = [
             ...loopLines.map((l) => ({ a: l.a, b: l.b, band: storeys.map((_, i) => i) })),
-            ...partitions.map((w) => ({ a: w.a, b: w.b, band: this.bands(w, storeys) })),
+            // A party wall stood on its middle reaches as far as its faces and the linings on
+            // them: a partition meeting it there ends on its line all the same.
+            ...partitions.map((w) => {
+                const party = isPartyWall(w);
+                const reach = party ? mul2(w.dir, w.thickness) : { x: 0, y: 0 };
+                return {
+                    a: sub2(w.a, reach),
+                    b: add2(w.b, reach),
+                    band: this.bands(w, storeys),
+                    w,
+                    ...(party ? { reach: PARTITION_REACH_MM + w.thickness } : {}),
+                };
+            }),
         ];
-        const interiorWalls: {
-            storey?: string;
-            points: [number, number][];
-            loadBearing?: boolean;
-        }[] = [];
+        /** Each partition's run on each storey it stands on, written once the rooms are parted. */
+        const runs: (PlanLine & { w: Wall })[] = [];
         for (const w of partitions) {
             const bands = this.bands(w, storeys);
             if (bands.length === 0) {
@@ -575,15 +589,13 @@ class Importer {
                 continue;
             }
             for (const k of bands) {
-                const others = allLines.filter(
-                    (l) => l.band.includes(k) && !(l.a === w.a && l.b === w.b)
-                );
-                const a = snapEnd(w.a, w.b, others);
-                const b = snapEnd(w.b, w.a, others);
-                interiorWalls.push({
-                    ...(storeyName(k) ? { storey: storeyName(k) } : {}),
-                    points: [T(a), T(b)],
-                    ...(w.loadBearing !== null ? { loadBearing: w.loadBearing } : {}),
+                const others = allLines.filter((l) => l.band.includes(k) && l.w !== w);
+                runs.push({
+                    a: snapEnd(w.a, w.b, others),
+                    b: snapEnd(w.b, w.a, others),
+                    band: [k],
+                    w,
+                    ...(isPartyWall(w) ? { reach: PARTITION_REACH_MM + w.thickness } : {}),
                 });
             }
         }
@@ -983,7 +995,26 @@ class Importer {
 
         // ---- Rooms, fittings, posts and beams.
         const zones = this.zones(spaces, storeys, bandOf, T, storeyName);
-        const zoneSeparations = this.separations(spaces, storeys, bandOf, allLines, T, storeyName);
+        const parts = this.separations(spaces, storeys, bandOf, allLines);
+        // Every end left in the middle of a room taken to the line it stops short of, or that
+        // line on to it: the rooms close, found from the lines alone.
+        closeEnds(
+            [...runs, ...parts],
+            allLines.filter((l) => !l.w)
+        );
+        const interiorWalls: {
+            storey?: string;
+            points: [number, number][];
+            loadBearing?: boolean;
+        }[] = runs.map(({ a, b, band, w }) => ({
+            ...(storeyName(band[0]!) ? { storey: storeyName(band[0]!) } : {}),
+            points: [T(a), T(b)],
+            ...(w.loadBearing !== null ? { loadBearing: w.loadBearing } : {}),
+        }));
+        const zoneSeparations = parts.map(({ a, b, band }) => ({
+            ...(storeyName(band[0]!) ? { storey: storeyName(band[0]!) } : {}),
+            points: [T(a), T(b)],
+        }));
         const fixtures = this.fixtures(walls, role, storeys, bandOf, T, storeyName);
         const linesOut = this.lines(base, ox, oy);
         this.skipTheRest();
@@ -1788,16 +1819,16 @@ class Importer {
 
     /**
      * Where two rooms meet with no wall between them (a kitchen open to the living room): the
-     * edge their footprints share, taken out to the walls at its ends.
+     * edge their footprints share, taken out to the walls at its ends. A room's footprint stops
+     * at the walls' faces, so an edge running on from a wall's end is moved onto that wall's line,
+     * where the house file has the wall.
      */
     private separations(
         spaces: readonly StepEntity[],
         storeys: readonly LivingStorey[],
         bandOf: (z: number) => number,
-        walls: readonly { a: P2; b: P2; band: number[] }[],
-        T: (p: P2) => [number, number],
-        storeyName: (k: number) => string | undefined
-    ): { storey?: string; points: [number, number][] }[] {
+        walls: readonly PlanLine[]
+    ): PlanLine[] {
         const rooms: { k: number; ring: P2[] }[] = [];
         for (const s of spaces) {
             const b = box3(this.m.bodyPoints(s));
@@ -1810,10 +1841,9 @@ class Importer {
                 continue;
             rooms.push({ k: bandOf(b.min.z + 50), ring });
         }
-        const out: { storey?: string; points: [number, number][] }[] = [];
         const seen = new Set<string>();
         // Separations already found, which a later one may end on.
-        const found: { a: P2; b: P2; band: number[] }[] = [];
+        const found: PlanLine[] = [];
         for (let i = 0; i < rooms.length; i++) {
             for (let j = i + 1; j < rooms.length; j++) {
                 const [r, q] = [rooms[i]!, rooms[j]!];
@@ -1821,8 +1851,9 @@ class Importer {
                 const onStorey = [...walls, ...found].filter((w) => w.band.includes(r.k));
                 for (const [a, b] of edges(r.ring)) {
                     for (const [c, d] of edges(q.ring)) {
-                        const shared = sharedEdge(a, b, c, d);
-                        if (!shared) continue;
+                        const edge = sharedEdge(a, b, c, d);
+                        if (!edge) continue;
+                        const shared = ontoWallLine(edge, onStorey);
                         const mid = mul2(add2(shared[0], shared[1]), 0.5);
                         // A wall on the edge already parts the rooms.
                         const dir = norm2(sub2(shared[1], shared[0]));
@@ -1838,25 +1869,25 @@ class Importer {
                             snapEnd(shared[0], shared[1], onStorey),
                             snapEnd(shared[1], shared[0], onStorey),
                         ];
-                        const points = ends.map(T);
-                        const key = `${r.k}:${points.flat().join(',')}`;
+                        const key = `${r.k}:${ends.map((p) => `${Math.round(p.x)},${Math.round(p.y)}`).join(';')}`;
                         if (seen.has(key)) continue;
                         seen.add(key);
                         found.push({ a: ends[0]!, b: ends[1]!, band: [r.k] });
-                        out.push({
-                            ...(storeyName(r.k) ? { storey: storeyName(r.k) } : {}),
-                            points,
-                        });
                     }
                 }
             }
         }
-        return out;
+        return found;
     }
 
-    /** A product's footprint in plan: the profile of its first upright extrusion. */
+    /**
+     * A product's footprint in plan: the profile of its first upright extrusion; else what one
+     * pushed sideways sweeps over (Revit draws a room over a stair as its section, pushed across
+     * the stair).
+     */
     private footprint(e: StepEntity): P2[] | null {
-        for (const x of this.m.extrusions(e)) {
+        const extrusions = this.m.extrusions(e);
+        for (const x of extrusions) {
             const world = x.profile.map((p) => {
                 const q = {
                     x: x.frame.o.x + x.frame.x.x * p.x + x.frame.y.x * p.y,
@@ -1865,6 +1896,21 @@ class Importer {
                 return q;
             });
             if (Math.abs(x.frame.z.z) > 0.99 && world.length >= 3) return world;
+        }
+        for (const x of extrusions) {
+            const d3 = scale(applyDir(x.frame, x.dir), x.depth);
+            const d = { x: d3.x, y: d3.y };
+            if (Math.abs(d3.z) > 1 || Math.hypot(d.x, d.y) < 100 || x.profile.length < 2) continue;
+            const pts = x.profile.map((p) => apply(x.frame, p));
+            const dn = norm2(d);
+            const u = { x: -dn.y, y: dn.x };
+            const across = pts.map((p) => dot2(p, u));
+            const along = pts.reduce((sum, p) => sum + dot2(p, dn), 0) / pts.length;
+            const [lo, hi] = [Math.min(...across), Math.max(...across)];
+            if (hi - lo < 100) continue;
+            const at = (s: number, t: number) => add2(mul2(u, s), mul2(dn, t));
+            const len = Math.hypot(d.x, d.y);
+            return [at(lo, along), at(hi, along), at(hi, along + len), at(lo, along + len)];
         }
         return null;
     }
@@ -2118,6 +2164,15 @@ function isMirrored(layers: readonly IfcLayer[]): boolean {
             l.material === layers[n - 1 - i]!.material &&
             Math.abs(l.thickness - layers[n - 1 - i]!.thickness) < 1
     );
+}
+
+/** A party wall named as one: "lejlighedsskel", "party wall", "separating wall". */
+const PARTY_NAME = /party|lejligheds|separating|brandsektion|skelvæg/i;
+
+/** Whether a wall parts two dwellings: named so, or heavy with its leaves laid mirror-wise. */
+function isPartyWall(w: Wall): boolean {
+    if (PARTY_NAME.test(w.layerSetName) || PARTY_NAME.test(w.name)) return true;
+    return w.heavy && isMirrored(w.layers);
 }
 
 /** Whether a wall's first layer is its facade: brick or cladding first, a board last. */
@@ -2522,8 +2577,21 @@ function sharedEdge(a: P2, b: P2, c: P2, d: P2): [P2, P2] | null {
     return [add2(a, mul2(u, t0)), add2(a, mul2(u, t1))];
 }
 
+/**
+ * A line in plan that bounds rooms on the storeys of `band`: an exterior wall's, a partition's, a
+ * separation's. `w` is the partition it is the line of; `reach` how far an end may be from it and
+ * still meet it (`PARTITION_REACH_MM`, more for a party wall, whose faces and linings stand off its line).
+ */
+interface PlanLine {
+    a: P2;
+    b: P2;
+    band: number[];
+    w?: Wall;
+    reach?: number;
+}
+
 /** A partition's end taken to the nearest line it runs into within reach, along its own line. */
-function snapEnd(end: P2, other: P2, lines: readonly { a: P2; b: P2 }[]): P2 {
+function snapEnd(end: P2, other: P2, lines: readonly PlanLine[]): P2 {
     const d = norm2(sub2(end, other));
     let best: P2 = end;
     let bestT = Infinity;
@@ -2536,13 +2604,116 @@ function snapEnd(end: P2, other: P2, lines: readonly { a: P2; b: P2 }[]): P2 {
         const u = (q.x * d.y - q.y * d.x) / cross;
         const len = Math.hypot(ld.x, ld.y);
         if (u * len < -ON_LINE_MM || u * len > len + ON_LINE_MM) continue;
-        if (Math.abs(t) > PARTITION_REACH_MM) continue;
+        if (Math.abs(t) > (l.reach ?? PARTITION_REACH_MM)) continue;
         if (Math.abs(t) < Math.abs(bestT)) {
             bestT = t;
             best = add2(end, mul2(d, t));
         }
     }
     return best;
+}
+
+/**
+ * An edge of a room's footprint that runs on from a partition's end, in line with one of its
+ * faces, moved across onto the partition's line; else as it is.
+ */
+function ontoWallLine(edge: [P2, P2], lines: readonly PlanLine[]): [P2, P2] {
+    const [p, q] = edge;
+    const d = norm2(sub2(q, p));
+    const n = { x: -d.y, y: d.x };
+    let best: number | null = null;
+    for (const l of lines) {
+        const w = l.w;
+        if (!w || Math.abs(w.dir.x * d.y - w.dir.y * d.x) > 0.02) continue;
+        // The wall's own line and ends, not the reach a party wall's lines are given.
+        const across = dot2(sub2(w.a, p), n);
+        const faces = [w.offset, w.offset + w.sense * w.thickness].map((f) => f - w.lineY);
+        const half = Math.max(...faces.map(Math.abs));
+        if (Math.abs(across) > half + ON_LINE_MM) continue;
+        const [e0, e1] = [dot2(sub2(w.a, p), d), dot2(sub2(w.b, p), d)];
+        const len = dist2(p, q);
+        const gap = Math.max(Math.min(e0, e1) - len, -Math.max(e0, e1));
+        if (gap < -ON_LINE_MM || gap > PARTITION_REACH_MM) continue;
+        if (best === null || Math.abs(across) < Math.abs(best)) best = across;
+    }
+    if (best === null) return edge;
+    const by = mul2(n, best);
+    return [add2(p, by), add2(q, by)];
+}
+
+/**
+ * Every end of `movable` left in the middle of a room — on no other line of its storey — taken
+ * to the line it stops short of: along its own line onto one it runs into, or onto the end of
+ * one in line with it; or, where it stops on the line of one that ends short of it (a partition
+ * on a party wall's line past the party wall's end, two separations set out on two walls' faces
+ * a little apart), that one run on to it. The nearest within reach wins. The exterior walls'
+ * `fixed` lines are met, never moved.
+ */
+function closeEnds(movable: PlanLine[], fixed: readonly PlanLine[]): void {
+    const onLine = (p: P2, l: PlanLine) => distToSegment(p, l.a, l.b) <= ON_POINT_MM;
+    for (let pass = 0; pass < 3; pass++) {
+        let moved = false;
+        for (const s of movable) {
+            for (const endKey of ['a', 'b'] as const) {
+                const end = s[endKey];
+                const other = endKey === 'a' ? s.b : s.a;
+                const k = s.band[0]!;
+                const lines = [...movable, ...fixed].filter((l) => l !== s && l.band.includes(k));
+                // On one already: exactly, on its end if it is at one.
+                const on = lines.find((l) => onLine(end, l));
+                if (on) {
+                    s[endKey] =
+                        [on.a, on.b].find((q) => dist2(q, end) <= 2 * ON_POINT_MM) ??
+                        nearestOnSegment(end, on.a, on.b);
+                    continue;
+                }
+                const d = norm2(sub2(end, other));
+                const n = { x: -d.y, y: d.x };
+                const found: { cost: number; to: P2; extend?: { l: PlanLine; key: 'a' | 'b' } }[] =
+                    [];
+                for (const l of lines) {
+                    const ld = sub2(l.b, l.a);
+                    const len = Math.hypot(ld.x, ld.y);
+                    if (len < ON_POINT_MM) continue;
+                    const reach = Math.max(
+                        s.reach ?? PARTITION_REACH_MM,
+                        l.reach ?? PARTITION_REACH_MM
+                    );
+                    const cross = d.x * ld.y - d.y * ld.x;
+                    if (Math.abs(cross) / len < 0.5) {
+                        // In line: onto its nearer end, ahead of this one or just short of it.
+                        for (const q of [l.a, l.b]) {
+                            if (Math.abs(dot2(sub2(q, end), n)) > ON_POINT_MM) continue;
+                            const t = dot2(sub2(q, end), d);
+                            if (t >= -ON_LINE_MM && t <= reach) found.push({ cost: t, to: q });
+                        }
+                        continue;
+                    }
+                    const q = sub2(l.a, end);
+                    const t = (q.x * ld.y - q.y * ld.x) / cross;
+                    const u = (q.x * d.y - q.y * d.x) / cross;
+                    if (Math.abs(t) > reach) continue;
+                    const to = add2(end, mul2(d, t));
+                    const past = Math.max(-u * len, (u - 1) * len);
+                    if (past <= ON_POINT_MM) {
+                        found.push({ cost: Math.abs(t), to });
+                    } else if (!fixed.includes(l) && past <= (l.reach ?? PARTITION_REACH_MM)) {
+                        found.push({
+                            cost: Math.abs(t) + past,
+                            to,
+                            extend: { l, key: u < 0 ? 'a' : 'b' },
+                        });
+                    }
+                }
+                const pick = found.sort((x, y) => x.cost - y.cost)[0];
+                if (!pick) continue;
+                s[endKey] = pick.to;
+                if (pick.extend) pick.extend.l[pick.extend.key] = pick.to;
+                moved = true;
+            }
+        }
+        if (!moved) break;
+    }
 }
 
 // ---- Plan geometry ---------------------------------------------------------------------------------
@@ -2592,11 +2763,16 @@ function norm2(a: P2): P2 {
     return l < 1e-12 ? { x: 1, y: 0 } : { x: a.x / l, y: a.y / l };
 }
 
-function distToSegment(p: P2, a: P2, b: P2): number {
+function nearestOnSegment(p: P2, a: P2, b: P2): P2 {
     const ab = sub2(b, a);
-    const l2 = dot2(ab, ab);
-    const t = l2 === 0 ? 0 : Math.max(0, Math.min(1, dot2(sub2(p, a), ab) / l2));
-    return dist2(p, add2(a, mul2(ab, t)));
+    const len2 = dot2(ab, ab);
+    if (len2 === 0) return a;
+    const t = Math.max(0, Math.min(1, dot2(sub2(p, a), ab) / len2));
+    return add2(a, mul2(ab, t));
+}
+
+function distToSegment(p: P2, a: P2, b: P2): number {
+    return dist2(p, nearestOnSegment(p, a, b));
 }
 
 /** How far points spread along a direction. */
