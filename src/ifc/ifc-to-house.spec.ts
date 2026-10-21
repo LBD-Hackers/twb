@@ -128,6 +128,18 @@ describeDuplex('the Duplex (buildingSMART sample, Revit IFC2X3)', () => {
         expect(onFaces + parsed.interiorOpenings.length).toBe(28);
     });
 
+    it('reports the two skylights in the flat roof by the holes they fill, and leaves them out', () => {
+        // The IFC's generic "M_Skylight 1180 x 1170mm" fills a hole of 1029 × 1081.
+        expect(report.roofOpenings).toEqual([
+            { at: [1112.5, 6871.5], widthMm: 1029, heightMm: 1081 },
+            { at: [7145.5, 10401.5], widthMm: 1029, heightMm: 1081 },
+        ]);
+        expect(report.skipped.find((s) => s.type === 'IFCWINDOW')).toMatchObject({
+            count: 2,
+            reason: expect.stringMatching(/roofOpenings/),
+        });
+    });
+
     it('couples the stairs’ windows, three over each other with 66 mm of wall between, into one', () => {
         const openings = h['openings'] as Json[];
         expect(openings).toContainEqual({
@@ -354,6 +366,12 @@ describe('a light house: timber frame, gable roof', () => {
         });
     });
 
+    it('measures a roof window’s hole on the slope, in its own plane', () => {
+        // 780 along the eave and 1180 up the slope, the cut through the slab's 250 not counted;
+        // its middle half way through the slab, 153.5 in from the walls' lines' corner.
+        expect(report.roofOpenings).toEqual([{ at: [5346.5, 784], widthMm: 780, heightMm: 1180 }]);
+    });
+
     it('places the window, the front door and the door in the partition', () => {
         const openings = h['openings'] as Json[];
         expect(openings).toContainEqual({
@@ -523,7 +541,7 @@ function timberHouseIfc(): string {
     };
     // Counter-clockwise, the axis on each wall's middle, the layers from the outside (−y) in.
     const h = t / 2;
-    const south = wall('S', [0, h], [W, h], extSet, t, -h);
+    const southWall = wall('S', [0, h], [W, h], extSet, t, -h);
     wall('E', [W - h, 0], [W - h, D], extSet, t, -h);
     wall('N', [W, D - h], [0, D - h], extSet, t, -h);
     wall('W', [h, D], [h, 0], extSet, t, -h);
@@ -560,8 +578,8 @@ function timberHouseIfc(): string {
         contained.push(filler);
     };
     // The window 1200 wide, its middle 2000 from the south-west corner over the cladding.
-    hole(south, 'Vindue', 2000 - 600, 1200, 900, 1200, t, 'IFCWINDOW');
-    hole(south, 'Hoveddør', 6000, 1000, 0, 2100, t, 'IFCDOOR');
+    hole(southWall, 'Vindue', 2000 - 600, 1200, 900, 1200, t, 'IFCWINDOW');
+    hole(southWall, 'Hoveddør', 6000, 1000, 0, 2100, t, 'IFCDOOR');
     hole(partition, 'Indvendig dør', 1500, 900, 0, 2100, 121, 'IFCDOOR');
 
     // Two slopes of 30°, falling south and north from a ridge along x.
@@ -582,9 +600,13 @@ function timberHouseIfc(): string {
         const shape = e(
             `IFCPRODUCTDEFINITIONSHAPE($,$,(${e(`IFCSHAPEREPRESENTATION(${context},'Body','SweptSolid',(${solid}))`)}))`
         );
-        return e(`IFCSLAB('${name}',$,'${name}',$,$,${placement},${shape},$,.ROOF.)`);
+        return { w: e(`IFCSLAB('${name}',$,'${name}',$,$,${placement},${shape},$,.ROOF.)`), placement };
     };
-    const slabs = [slope(-1, 'Tag syd'), slope(1, 'Tag nord')];
+    const south = slope(-1, 'Tag syd');
+    const slabs = [south.w, slope(1, 'Tag nord').w];
+    // A roof window in the south slope: 780 along the eave, 1180 up the slope, cut through the
+    // slab, its middle 1500 east of the house's middle, half way up the slab.
+    hole(south, 'Ovenlys', 1500 - 390, 780, 0, 250, 1180, 'IFCWINDOW');
     const roof = e(`IFCROOF('roof',$,'Tag',$,$,${storeyPlacement},$,$,.GABLE_ROOF.)`);
     rels.push(e(`IFCRELAGGREGATES('ra',$,$,$,${roof},(${slabs.join(',')}))`));
     contained.push(roof);

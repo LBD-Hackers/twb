@@ -8,6 +8,7 @@ export {
     type IfcImport,
     type IfcImportOptions,
     type IfcImportReport,
+    type RoofOpening,
     type SkippedGroup,
 } from './ifc-to-house';
 export { matchMaterial, isTimber, isMetal, type LayerRole, type MaterialMatch } from './ifc-materials';
