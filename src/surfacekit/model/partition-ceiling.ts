@@ -221,7 +221,15 @@ export function partitionCeilingFits(
         if (keeps < 0) continue;
         pieces.forEach((ring, i) => {
             if (i === keeps) reshape.push({ id: p.surface.id, boundaryMm: ring });
-            else add.push({ boundaryMm: ring, kindOverride: null, roofGroupId: null });
+            else
+                add.push({
+                    boundaryMm: ring,
+                    kindOverride: null,
+                    roofGroupId: null,
+                    // A stretch of a partition is the kind of wall the partition is.
+                    partitionKind: p.surface.partitionKind ?? null,
+                    buildUpType: p.surface.buildUpType ?? null,
+                });
         });
     }
     return { removeIds: [], reshape, add };

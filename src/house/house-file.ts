@@ -25,6 +25,13 @@
  * - `storeys` — name, elevation and height. Left out, one is made from the geometry's extent.
  * - `interiorWalls` — partitions as plan polylines on the storey they start on, built into wall
  *   faces once the rest has loaded (`load.ts`'s `buildInteriorWalls`).
+ * - A wall that is another kind than the house's own partition says so with `partition`, on its
+ *   face or on its `interiorWalls` run: `"light"` (a partition of studs), `"heavy"` (of masonry)
+ *   or `"party"` (a party wall between two dwellings). Its build-up is the kind's in `envelope`
+ *   (`lightPartition`, `heavyPartition`, `partyWall`). A face dressed in one more build-up of its
+ *   kind — the bathrooms' plumbing walls — says so with `buildUpType`: the id of that build-up in
+ *   `envelope`, `"<kind>:<key>"` (`"interiorWall:plumbing"`). Left out, a partition is the house's
+ *   own (`interiorWall`); a pin to a build-up the file does not have is reported and left out.
  * - `zones` — rooms: a name, a room kind, the storey, and one `[x, y]` point inside the room. The
  *   room itself is found around that point from the walls and the `zoneSeparations` (plan lines
  *   dividing two zones where there is no wall), so a file never carries an outline that could
@@ -50,6 +57,7 @@ import type { Point3Mm, Vec2Mm } from '../surfacekit/core';
 import {
     DOOR_LEAVES,
     OPENING_KINDS,
+    PARTITION_KINDS,
     SURFACE_KINDS,
     openingFromRing3,
     openingRing3,
@@ -62,6 +70,7 @@ import {
     type DoorLeaves,
     type OpeningGlazing,
     type OpeningKind,
+    type PartitionKind,
     type Surface,
     type SurfaceKind,
     type SurfaceOpening,
@@ -163,6 +172,10 @@ export interface FileSurface {
     roofGroup?: string;
     /** A stud section pinned for this one wall — a catalogue id. Omit for Auto. */
     studSection?: string;
+    /** The kind of wall this one is, where it is not the house's own partition. */
+    partition?: PartitionKind;
+    /** The build-up type it is dressed in — an `envelope` id, `"interiorWall:plumbing"`. */
+    buildUpType?: string;
 }
 
 /** A door that is not the plain one: hinged on its far jamb, opening to the back, more leaves. */
@@ -196,6 +209,10 @@ export interface FileInteriorWall {
     points: [number, number][];
     /** Whether the run carries load; left out, Auto. */
     loadBearing?: boolean;
+    /** The kind of wall the run is (`FileSurface.partition`); left out, the house's own partition. */
+    partition?: PartitionKind;
+    /** The build-up type the run is dressed in (`FileSurface.buildUpType`). Omit for its kind's own. */
+    buildUpType?: string;
 }
 
 /** A room: what it is for, and a point inside it. */
@@ -253,6 +270,8 @@ export interface FileEnvelopeLayer {
 
 /** A build-up (a TWB recipe): its layers inside → outside. */
 export interface FileAssembly {
+    /** A build-up type's name, as its source had it: `"Interior - Plumbing (152mm Stud)"`. */
+    name?: string;
     /** `exterior` (default), `ground` or `unheated`. */
     boundary?: string;
     airGapLevel?: number;
@@ -360,6 +379,10 @@ export interface ParsedInteriorWall {
     pointsMm: Vec2Mm[];
     /** Null for Auto. */
     loadBearing: boolean | null;
+    /** Null for the house's own partition. */
+    partitionKind: PartitionKind | null;
+    /** Null for its kind's own build-up. */
+    buildUpType: string | null;
 }
 
 export interface ParseResult {
@@ -517,6 +540,10 @@ export function parseHouseFile(input: string | Record<string, unknown>): ParseRe
             roofGroupId: typeof raw['roofGroup'] === 'string' ? raw['roofGroup'] : null,
             studSectionOverride: typeof raw['studSection'] === 'string' ? raw['studSection'] : null,
         };
+        const partition = readPartitionKind(raw['partition'], `${where}.partition`, errors);
+        if (partition) surface.partitionKind = partition;
+        const buildUpType = readBuildUpTypePin(raw['buildUpType'], `${where}.buildUpType`, errors);
+        if (buildUpType) surface.buildUpType = buildUpType;
 
         const kind = raw['kind'];
         if (kind !== undefined) {
@@ -715,10 +742,41 @@ export function parseHouseFile(input: string | Record<string, unknown>): ParseRe
                     storeyName,
                     pointsMm,
                     loadBearing: typeof loadBearing === 'boolean' ? loadBearing : null,
+                    partitionKind: readPartitionKind(
+                        raw['partition'],
+                        `${where}.partition`,
+                        errors
+                    ),
+                    buildUpType: readBuildUpTypePin(
+                        raw['buildUpType'],
+                        `${where}.buildUpType`,
+                        errors
+                    ),
                 });
             });
         }
     }
+
+    // A pin to a build-up the file does not have is no pin: the face is its kind's own.
+    const envelope = isRecord(json['envelope']) ? json['envelope'] : {};
+    surfaces.forEach((s, i) => {
+        if (s.buildUpType && !(s.buildUpType in envelope)) {
+            errors.push(
+                `surfaces[${i}].buildUpType ${JSON.stringify(s.buildUpType)} is not a build-up in ` +
+                    '"envelope" — dressed in its kind\'s own.'
+            );
+            delete s.buildUpType;
+        }
+    });
+    interiorWalls.forEach((w, i) => {
+        if (w.buildUpType && !(w.buildUpType in envelope)) {
+            errors.push(
+                `interiorWalls[${i}].buildUpType ${JSON.stringify(w.buildUpType)} is not a build-up in ` +
+                    '"envelope" — dressed in its kind\'s own.'
+            );
+            w.buildUpType = null;
+        }
+    });
 
     const zones = readZones(json['zones'], storeys, surfaces, errors);
     const zoneSeparations = readZoneSeparations(json['zoneSeparations'], storeys, errors);
@@ -802,6 +860,8 @@ export function toHouseFile(geometry: HouseGeometry, more: HouseFileMore = {}): 
         }
         if (s.roofGroupId) fs.roofGroup = s.roofGroupId;
         if (s.studSectionOverride) fs.studSection = s.studSectionOverride;
+        if (s.partitionKind) fs.partition = s.partitionKind;
+        if (s.buildUpType) fs.buildUpType = s.buildUpType;
         out.surfaces.push(fs);
     }
     // Two lists, because they are two different things to a reader: scratch lines, and timber.
@@ -1147,3 +1207,23 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
     typeof v === 'object' && v !== null && !Array.isArray(v);
 
 const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+/** A wall's `partition` (`FileSurface.partition`), or null where there is none or it cannot be read. */
+function readPartitionKind(raw: unknown, where: string, errors: string[]): PartitionKind | null {
+    if (raw === undefined || raw === null) return null;
+    if ((PARTITION_KINDS as readonly unknown[]).includes(raw)) return raw as PartitionKind;
+    errors.push(
+        `${where} must be one of ${PARTITION_KINDS.join(', ')} — the house's own partition is used.`
+    );
+    return null;
+}
+
+/** A face's `buildUpType`: a build-up's id, `"<kind>:<key>"`, or null. */
+function readBuildUpTypePin(raw: unknown, where: string, errors: string[]): string | null {
+    if (raw === undefined || raw === null) return null;
+    if (typeof raw === 'string' && /^[A-Za-z]+:[a-z0-9]+(?:-[a-z0-9]+)*$/.test(raw)) return raw;
+    errors.push(
+        `${where} must be a build-up type's id, "<build-up>:<key>" — dressed in its kind's own.`
+    );
+    return null;
+}

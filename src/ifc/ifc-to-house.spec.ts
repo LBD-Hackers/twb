@@ -162,6 +162,22 @@ describeDuplex('the Duplex (buildingSMART sample, Revit IFC2X3)', () => {
         expect((h['zoneSeparations'] as Json[]).length).toBeGreaterThan(0);
     });
 
+    it('keeps the party walls and the plumbing walls as their own build-ups', () => {
+        const envelope = h['envelope'] as Record<string, { name?: string; layers: { thickness: number }[] }>;
+        const thick = (id: string) => envelope[id]!.layers.reduce((s, l) => s + l.thickness, 0);
+        expect(thick('interiorWall')).toBe(124);
+        expect(thick('partyWall')).toBe(550);
+        const plumbing = report.buildUpTypes.find((t) => /Plumbing/.test(t.layerSet))!;
+        expect(plumbing.id).toMatch(/^interiorWall:/);
+        expect(thick(plumbing.id)).toBe(184);
+        const runs = h['interiorWalls'] as { partition?: string; buildUpType?: string }[];
+        expect(runs.filter((r) => r.partition === 'party')).toHaveLength(4);
+        expect(runs.filter((r) => r.buildUpType === plumbing.id)).toHaveLength(2);
+        expect(report.warnings.join(' ')).not.toMatch(/one partition build-up|written as partitions/);
+        const loaded = loadHouse(house, { snapToModule: false });
+        expect(loaded.store.surfaces().filter((s) => s.partitionKind === 'party').length).toBeGreaterThan(3);
+    });
+
     it('closes every room: partitions on the party wall, separations on the walls they continue', () => {
         const loaded = loadHouse(house, { snapToModule: false });
         const zones = loaded.zones.zones();
@@ -182,6 +198,9 @@ describeDuplex('the Duplex (buildingSMART sample, Revit IFC2X3)', () => {
         expect(area('A103 Kitchen')).toBeCloseTo(area('B103 Kitchen'), 1);
         expect(area('B104 Bathroom 1')).toBeLessThan(6);
         expect(area('B102 Living Room')).toBeLessThan(35);
+        // The hallways' b-reps leave the stair's opening out, as Revit's rooms do (6.89 m² net).
+        expect(area('A201 Hallway')).toBeLessThan(8);
+        expect(area('A201 Hallway')).toBeCloseTo(area('B201 Hallway'), 1);
     });
 
     it('says what it left out', () => {

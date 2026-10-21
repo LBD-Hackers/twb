@@ -42,6 +42,7 @@ import { validateModularRing, type Violation } from '../grid';
 import {
     OPENING_LABELS,
     type OpeningKind,
+    type PartitionKind,
     type Surface,
     type SurfaceOpening,
     type SurfaceId,
@@ -1179,6 +1180,16 @@ export class SurfaceStore {
         return this.patch(id, { loadBearing });
     }
 
+    /** What kind of wall one wall is pinned to be, `null` for Auto. See `Surface.partitionKind`. */
+    setPartitionKind(id: SurfaceId, kind: PartitionKind | null): boolean {
+        return this.patch(id, { partitionKind: kind });
+    }
+
+    /** The build-up type one face is pinned to, `null` for its kind's own. See `Surface.buildUpType`. */
+    setBuildUpType(id: SurfaceId, type: string | null): boolean {
+        return this.patch(id, { buildUpType: type });
+    }
+
     /** Manual stud-section pin for one wall, `null` for Auto. See `Surface.studSectionOverride`. */
     setStudSectionOverride(id: SurfaceId, sectionId: string | null): boolean {
         return this.patch(id, { studSectionOverride: sectionId });
@@ -1254,6 +1265,8 @@ export class SurfaceStore {
                 spanDirectionOverride: null,
                 roofGroupId: face.roofGroupId,
                 studSectionOverride: null,
+                ...(face.partitionKind ? { partitionKind: face.partitionKind } : {}),
+                ...(face.buildUpType ? { buildUpType: face.buildUpType } : {}),
             });
             touched.push(next[next.length - 1]!.id);
         }

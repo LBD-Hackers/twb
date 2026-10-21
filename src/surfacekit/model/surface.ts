@@ -170,7 +170,25 @@ export interface Surface {
      * those applies" — the behaviour before this existed. Ignored on a non-wall face.
      */
     studSectionOverride: string | null;
+    /**
+     * What kind of wall this one is pinned to be, where it is not what the house's own partition
+     * is: a `light` partition (studs), a `heavy` one (masonry), or a `party` wall between two
+     * dwellings — the house's build-ups for each decide its layers. Absent or null means "derive
+     * it": a partition is the house's partition, an exterior wall an exterior wall. Ignored on a
+     * non-wall face.
+     */
+    partitionKind?: PartitionKind | null;
+    /**
+     * The build-up type this face is pinned to, where it is not its kind's own build-up: the id
+     * of one more build-up of its kind — `interiorWall:plumbing` — that the house's envelope
+     * holds. Absent or null means "its kind's own".
+     */
+    buildUpType?: string | null;
 }
+
+/** The kinds of wall a wall can be pinned to be, besides what it is read as (`Surface.partitionKind`). */
+export const PARTITION_KINDS = ['light', 'heavy', 'party'] as const;
+export type PartitionKind = (typeof PARTITION_KINDS)[number];
 
 /** A typical storey, mm — 2 modules. Used to bias the camera framing towards wall height. */
 export const DEFAULT_WALL_HEIGHT_MM = 2400;

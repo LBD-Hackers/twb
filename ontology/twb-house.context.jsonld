@@ -244,6 +244,11 @@
         "loadBearing": "twb:loadBearing",
         "roofGroup": "twb:roofGroupName",
         "studSection": "twb:pinnedStudSection",
+        "partition": "twb:pinnedPartitionKind",
+        "recipe": {
+            "@id": "twb:hasRecipe",
+            "@type": "@id"
+        },
         "detail": {
             "@id": "twb:hasOwnOpeningDetail",
             "@type": "@vocab",

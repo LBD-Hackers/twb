@@ -48,6 +48,9 @@ twbsh:SurfaceShape
         sh:path twb:hasRecipe ; sh:maxCount 1 ; sh:class twb:Recipe ;
         sh:message "A surface carries at most one recipe." ] ;
     sh:property [
+        sh:path twb:pinnedPartitionKind ; sh:maxCount 1 ; sh:in ( "light" "heavy" "party" ) ;
+        sh:message "A wall's pinned partition kind is one of \"light\", \"heavy\" or \"party\"." ] ;
+    sh:property [
         sh:path twb:hasRecipe ; sh:minCount 1 ; sh:severity sh:Warning ;
         sh:message "A surface without a recipe cannot be compiled into construction." ] ;
     sh:sparql [

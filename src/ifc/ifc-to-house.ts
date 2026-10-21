@@ -34,8 +34,11 @@
  * come from its type (`IfcDoorStyle`/`IfcWindowStyle`, IFC4's `OperationType` and
  * `PartitioningType`).
  *
- * **Build-ups** (`envelope`): the exterior wall's and the partitions' from the layer set most of
- * their length has, the roof's from the roof, the ground floor's from its slab with the finish
+ * **Build-ups** (`envelope`): the exterior wall's from the layer set most of its length has; the
+ * partitions' by kind — the house's own (`interiorWall`), the other kind's (`lightPartition`,
+ * `heavyPartition`) and the party walls' (`partyWall`) — each from the layer set most of its
+ * walls' length has, every other layer set of a kind a build-up type of it (`interiorWall:<key>`)
+ * its walls are dressed in (`partition`, `buildUpType` on the run); the roof's from the roof, the ground floor's from its slab with the finish
  * laid on it, and the floor between storeys' (`deck`) from the upper storeys' slab with its finish
  * — each inside → outside, the core marked, studs as timber members c/c 600. A floor's or a roof's
  * heavy core is a slab: hollow-core slabs where the IFC names them so, else concrete cast in place.
@@ -65,6 +68,7 @@ import {
     type FloorStructure,
     type RoofStructure,
 } from './catalogue';
+import type { PartitionKind } from '../surfacekit/model';
 import { isEnum, type StepEntity } from './step';
 import { apply, applyDir, IfcModel, scale, type IfcLayer, type Vec3 } from './ifc-model';
 import { isTimber, matchMaterial, type LayerRole } from './ifc-materials';
@@ -101,7 +105,9 @@ export interface IfcImportReport {
     fixtures: number;
     lines: number;
     /** The IFC layer set each build-up was read from. */
-    buildups: Partial<Record<'exteriorWall' | 'interiorWall' | 'roof' | 'floor' | 'deck', string>>;
+    buildups: Partial<Record<'exteriorWall' | PartitionBuildUp | 'roof' | 'floor' | 'deck', string>>;
+    /** The partitions' other build-ups, each a type of its kind (`interiorWall:plumbing`). */
+    buildUpTypes: { id: string; layerSet: string }[];
     /** What the floors between storeys and the roof are, read off their cores. */
     structure: { floors: FloorStructure; roof: RoofStructure };
     /** IFC material names no rule knew, with what they were read as. */
@@ -197,6 +203,11 @@ export function ifcImportSummary(r: IfcImportReport): string[] {
     const buildups = Object.entries(r.buildups);
     if (buildups.length > 0) {
         lines.push(`Build-ups from: ${buildups.map(([k, v]) => `${k} ← "${v}"`).join('; ')}.`);
+    }
+    if (r.buildUpTypes.length > 0) {
+        lines.push(
+            `Build-up types from: ${r.buildUpTypes.map((t) => `${t.id} ← "${t.layerSet}"`).join('; ')}.`
+        );
     }
     if (r.guessedMaterials.length > 0) {
         lines.push(`Materials guessed: ${r.guessedMaterials.join('; ')}.`);
@@ -599,14 +610,6 @@ class Importer {
                 });
             }
         }
-        const heavyPartitions = partitions.filter((w) => w.heavy);
-        if (heavyPartitions.length > 0) {
-            this.warnings.push(
-                `${heavyPartitions.length} heavy partition${heavyPartitions.length === 1 ? '' : 's'} (${unique(heavyPartitions.map((w) => w.layerSetName)).join(', ')}) ` +
-                    'written as partitions: arch builds every partition with one build-up, of studs.'
-            );
-        }
-
         // ---- Openings.
         const openings: Record<string, unknown>[] = [];
         let doorSides = 0;
@@ -916,22 +919,45 @@ class Importer {
         } else if (exterior.length > 0) {
             heavy = exterior.some((w) => w.heavy);
         }
-        const partWall = longestBy(
-            partitions.filter((w) => w.layers.length > 0),
+        // One build-up per kind of wall: the house's own partition (`interiorWall`, the kind most
+        // of the partitions' length is), the other kind's (`lightPartition` or `heavyPartition`)
+        // and the party wall's — each from the layer set most of its walls' length has. Every
+        // other layer set of a kind is a type of it (`interiorWall:plumbing`), its walls dressed
+        // in it, so each partition keeps its own thickness.
+        const ownPick = longestBy(
+            partitions.filter((w) => w.layers.length > 0 && !isPartyWall(w)),
             (w) => w.layerSetName
         );
-        if (partWall) {
-            envelope['interiorWall'] = {
-                layers: this.fileLayers(partWall.layers, partWall.core, 'wall'),
-            };
-            buildups.interiorWall = partWall.layerSetName;
-            const others = unique(partitions.map((w) => w.layerSetName)).filter(
-                (n) => n && n !== partWall.layerSetName
-            );
-            if (others.length > 0) {
-                this.warnings.push(
-                    `Partitions of other build-ups (${others.join(', ')}) are built as "${partWall.layerSetName}": arch has one partition build-up.`
-                );
+        const ownKind: 'light' | 'heavy' = ownPick?.heavy ? 'heavy' : 'light';
+        const kindOf = (w: Wall): PartitionKind =>
+            isPartyWall(w) ? 'party' : w.heavy ? 'heavy' : 'light';
+        const kindBuildUp = (kind: PartitionKind): PartitionBuildUp =>
+            kind === 'party'
+                ? 'partyWall'
+                : kind === ownKind
+                  ? 'interiorWall'
+                  : kind === 'heavy'
+                    ? 'heavyPartition'
+                    : 'lightPartition';
+        const buildUpTypes: IfcImportReport['buildUpTypes'] = [];
+        /** The type each kind's other layer sets are, by `<build-up>|<layer set>`. */
+        const typeOf = new Map<string, string>();
+        for (const kind of PARTITION_KINDS) {
+            const key = kindBuildUp(kind);
+            const of = partitions.filter((w) => kindOf(w) === kind && w.layers.length > 0);
+            const pick = longestBy(of, (w) => w.layerSetName);
+            if (!pick) continue;
+            envelope[key] = { layers: this.fileLayers(pick.layers, pick.core, 'wall') };
+            buildups[key] = pick.layerSetName;
+            for (const name of unique(of.map((w) => w.layerSetName))) {
+                if (!name || name === pick.layerSetName) continue;
+                const w = of.find((x) => x.layerSetName === name)!;
+                // Named as the layer set, short of a family Revit puts before it ("Basic Wall:").
+                const own = name.slice(name.lastIndexOf(':') + 1).trim() || name;
+                const id = `${key}:${typeKeyFor(envelope, key, own)}`;
+                envelope[id] = { name: own, layers: this.fileLayers(w.layers, w.core, 'wall') };
+                typeOf.set(`${key}|${name}`, id);
+                buildUpTypes.push({ id, layerSet: name });
             }
         }
         const roofUsage = this.roofLayers(roofs);
@@ -1002,15 +1028,24 @@ class Importer {
             [...runs, ...parts],
             allLines.filter((l) => !l.w)
         );
+        parts.push(...bridgeEnds([...runs, ...parts], allLines.filter((l) => !l.w)));
         const interiorWalls: {
             storey?: string;
             points: [number, number][];
             loadBearing?: boolean;
-        }[] = runs.map(({ a, b, band, w }) => ({
-            ...(storeyName(band[0]!) ? { storey: storeyName(band[0]!) } : {}),
-            points: [T(a), T(b)],
-            ...(w.loadBearing !== null ? { loadBearing: w.loadBearing } : {}),
-        }));
+            partition?: PartitionKind;
+            buildUpType?: string;
+        }[] = runs.map(({ a, b, band, w }) => {
+            const kind = kindOf(w);
+            const type = typeOf.get(`${kindBuildUp(kind)}|${w.layerSetName}`);
+            return {
+                ...(storeyName(band[0]!) ? { storey: storeyName(band[0]!) } : {}),
+                points: [T(a), T(b)],
+                ...(w.loadBearing !== null ? { loadBearing: w.loadBearing } : {}),
+                ...(kind !== ownKind ? { partition: kind } : {}),
+                ...(type ? { buildUpType: type } : {}),
+            };
+        });
         const zoneSeparations = parts.map(({ a, b, band }) => ({
             ...(storeyName(band[0]!) ? { storey: storeyName(band[0]!) } : {}),
             points: [T(a), T(b)],
@@ -1041,6 +1076,7 @@ class Importer {
             fixtures: fixtures.length,
             lines: linesOut.length,
             buildups,
+            buildUpTypes,
             structure,
             guessedMaterials: [...this.guessed].map(([name, as]) => `"${name}" as ${as}`),
             skipped: [...this.skipped.values()],
@@ -1819,9 +1855,10 @@ class Importer {
 
     /**
      * Where two rooms meet with no wall between them (a kitchen open to the living room): the
-     * edge their footprints share, taken out to the walls at its ends. A room's footprint stops
-     * at the walls' faces, so an edge running on from a wall's end is moved onto that wall's line,
-     * where the house file has the wall.
+     * edge their footprints share, taken out to the walls at its ends; and every other stretch of
+     * a room's edge no wall stands on (the room beyond is not in the IFC). A room's footprint
+     * stops at the walls' faces, so an edge running on from a wall's end is moved onto that
+     * wall's line, where the house file has the wall.
      */
     private separations(
         spaces: readonly StepEntity[],
@@ -1877,13 +1914,28 @@ class Importer {
                 }
             }
         }
+        // A room's edge no wall and no separation stands on bounds it all the same: the room
+        // beyond it is not in the IFC (a room Revit has not placed), or is no room at all.
+        for (const r of rooms) {
+            for (const [a, b] of edges(r.ring)) {
+                const onStorey = [...walls, ...found].filter((w) => w.band.includes(r.k));
+                for (const piece of uncovered(a, b, onStorey)) {
+                    const shared = ontoWallLine(piece, onStorey);
+                    const ends = [
+                        snapEnd(shared[0], shared[1], onStorey),
+                        snapEnd(shared[1], shared[0], onStorey),
+                    ];
+                    found.push({ a: ends[0]!, b: ends[1]!, band: [r.k] });
+                }
+            }
+        }
         return found;
     }
 
     /**
      * A product's footprint in plan: the profile of its first upright extrusion; else what one
      * pushed sideways sweeps over (Revit draws a room over a stair as its section, pushed across
-     * the stair).
+     * the stair); else, for a b-rep, its largest level face at its floor.
      */
     private footprint(e: StepEntity): P2[] | null {
         const extrusions = this.m.extrusions(e);
@@ -1912,7 +1964,13 @@ class Importer {
             const len = Math.hypot(d.x, d.y);
             return [at(lo, along), at(hi, along), at(hi, along + len), at(lo, along + len)];
         }
-        return null;
+        // A b-rep (Revit writes a room over a stair as one): its largest level face at its floor.
+        const level = this.m.bodyFaces(e).filter((f) => Math.abs(f.normal.z) > 0.99);
+        const floorZ = Math.min(...level.map((f) => f.points[0]!.z));
+        const floor = level
+            .filter((f) => f.points.every((p) => Math.abs(p.z - floorZ) <= 50))
+            .sort((x, y) => y.area - x.area)[0];
+        return floor ? floor.points.map((p) => ({ x: p.x, y: p.y })) : null;
     }
 
     // ---- Fittings -----------------------------------------------------------------------------------
@@ -2614,6 +2672,39 @@ function snapEnd(end: P2, other: P2, lines: readonly PlanLine[]): P2 {
 }
 
 /**
+ * The stretches of the edge `a`–`b`, 300 mm or longer, that no line of `lines` runs along: none
+ * parallel to it within 400 mm across (a wall's line stands half its thickness off a room's edge).
+ */
+function uncovered(a: P2, b: P2, lines: readonly PlanLine[]): [P2, P2][] {
+    const len = dist2(a, b);
+    if (len < 300) return [];
+    const d = norm2(sub2(b, a));
+    const n = { x: -d.y, y: d.x };
+    const covered = lines
+        .filter((l) => {
+            const ld = norm2(sub2(l.b, l.a));
+            return (
+                Math.abs(ld.x * d.y - ld.y * d.x) < 0.05 &&
+                Math.abs(dot2(sub2(l.a, a), n)) < 400 &&
+                Math.abs(dot2(sub2(l.b, a), n)) < 400
+            );
+        })
+        .map((l) => {
+            const [t0, t1] = [dot2(sub2(l.a, a), d), dot2(sub2(l.b, a), d)];
+            return [Math.max(0, Math.min(t0, t1)), Math.min(len, Math.max(t0, t1))] as const;
+        })
+        .filter(([t0, t1]) => t1 > t0)
+        .sort((x, y) => x[0] - y[0]);
+    const out: [P2, P2][] = [];
+    let at = 0;
+    for (const [t0, t1] of [...covered, [len, len] as const]) {
+        if (t0 - at >= 300) out.push([add2(a, mul2(d, at)), add2(a, mul2(d, t0))]);
+        at = Math.max(at, t1);
+    }
+    return out;
+}
+
+/**
  * An edge of a room's footprint that runs on from a partition's end, in line with one of its
  * faces, moved across onto the partition's line; else as it is.
  */
@@ -2714,6 +2805,39 @@ function closeEnds(movable: PlanLine[], fixed: readonly PlanLine[]): void {
         }
         if (!moved) break;
     }
+}
+
+/** How far apart two loose ends may be and still be joined by a separation of their own, mm. */
+const BRIDGE_MM = 300;
+
+/**
+ * A separation for each two loose ends left near each other — on no other line of their storey,
+ * at least one a separation's: a room's boundary that steps across from a partition's end to a
+ * separation set out off its line (Revit's room separation drawn a little beside the wall).
+ */
+function bridgeEnds(lines: readonly PlanLine[], fixed: readonly PlanLine[]): PlanLine[] {
+    const all = [...lines, ...fixed];
+    const loose = (p: P2, own: PlanLine) =>
+        !all.some(
+            (l) => l !== own && l.band.includes(own.band[0]!) && distToSegment(p, l.a, l.b) <= ON_LINE_MM
+        );
+    const ends = lines.flatMap((l) =>
+        [l.a, l.b].filter((p) => loose(p, l)).map((p) => ({ p, l, separation: !l.w }))
+    );
+    const out: PlanLine[] = [];
+    const used = new Set<P2>();
+    for (const e of ends) {
+        if (!e.separation || used.has(e.p)) continue;
+        const near = ends
+            .filter((f) => f.l !== e.l && !used.has(f.p) && f.l.band.includes(e.l.band[0]!))
+            .map((f) => ({ f, d: dist2(e.p, f.p) }))
+            .filter(({ d }) => d > ON_POINT_MM && d <= BRIDGE_MM)
+            .sort((x, y) => x.d - y.d)[0];
+        if (!near) continue;
+        used.add(e.p).add(near.f.p);
+        out.push({ a: e.p, b: near.f.p, band: [e.l.band[0]!] });
+    }
+    return out;
 }
 
 // ---- Plan geometry ---------------------------------------------------------------------------------
@@ -2826,6 +2950,29 @@ function interiorPoint(ring: readonly P2[]): P2 {
         }
     }
     return best;
+}
+
+/** A partition's build-up in `envelope`, by its kind. */
+type PartitionBuildUp = 'interiorWall' | 'lightPartition' | 'heavyPartition' | 'partyWall';
+
+/** The kinds of wall a partition is read as (`Surface.partitionKind`). */
+const PARTITION_KINDS: readonly PartitionKind[] = ['light', 'heavy', 'party'];
+
+/** A build-up type's key made from `label`, unique among `kind`'s types in `envelope`. */
+function typeKeyFor(envelope: Readonly<Record<string, unknown>>, kind: string, label: string): string {
+    const base =
+        label
+            .toLowerCase()
+            .replace(/æ/g, 'ae')
+            .replace(/ø/g, 'oe')
+            .replace(/å/g, 'aa')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '') || 'type';
+    let key = base;
+    for (let n = 2; `${kind}:${key}` in envelope; n++) key = `${base}-${n}`;
+    return key;
 }
 
 function unique<T>(xs: readonly T[]): T[] {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loadHouse } from './load';
+import { loadHouse, serializeLoadedHouse } from './load';
 
 /** A 10 × 8 m box on the module, with a partition at 5000 — off it. */
 const house = {
@@ -24,5 +24,50 @@ describe('loadHouse', () => {
 
     it('keeps it where the file put it with snapToModule: false', () => {
         expect(partitionX(false)).toEqual([5000]);
+    });
+});
+
+describe('loadHouse: a partition of another kind or build-up', () => {
+    const typed = {
+        ...house,
+        interiorWalls: [
+            { points: [[5000, 0], [5000, 8000]], partition: 'party' },
+            { points: [[0, 4000], [5000, 4000]], buildUpType: 'interiorWall:plumbing' },
+            { points: [[5000, 4000], [10000, 4000]], buildUpType: 'interiorWall:gone' },
+        ],
+        envelope: {
+            interiorWall: { layers: [{ material: 'gypsum', thickness: 124, core: true }] },
+            'interiorWall:plumbing': {
+                name: 'Plumbing',
+                layers: [{ material: 'gypsum', thickness: 184, core: true }],
+            },
+        },
+    };
+
+    it('builds its faces as that kind, dressed in that build-up', () => {
+        const loaded = loadHouse(typed, { snapToModule: false });
+        const listed = new Set(loaded.parsed.surfaces.map((s) => s.id));
+        const faces = loaded.store.surfaces().filter((s) => !listed.has(s.id));
+        expect(faces.filter((s) => s.partitionKind === 'party').length).toBeGreaterThan(0);
+        expect(faces.filter((s) => s.buildUpType === 'interiorWall:plumbing').length).toBeGreaterThan(0);
+        expect(faces.every((s) => s.buildUpType !== 'interiorWall:gone')).toBe(true);
+    });
+
+    it('says a pin to a build-up the file does not have is left out', () => {
+        const loaded = loadHouse(typed, { snapToModule: false });
+        expect(loaded.problems.join(' ')).toContain('"interiorWall:gone" is not a build-up in "envelope"');
+    });
+
+    it('writes both back on its faces', () => {
+        const loaded = loadHouse(typed, { snapToModule: false });
+        const saved = JSON.parse(serializeLoadedHouse(loaded)) as Record<string, unknown>;
+        const text = JSON.stringify(saved);
+        expect(text).toContain('"party"');
+        expect(text).toContain('recipe/interiorWall:plumbing');
+        const reopened = loadHouse(saved, { snapToModule: false });
+        expect(reopened.store.surfaces().some((s) => s.partitionKind === 'party')).toBe(true);
+        expect(reopened.store.surfaces().some((s) => s.buildUpType === 'interiorWall:plumbing')).toBe(
+            true
+        );
     });
 });

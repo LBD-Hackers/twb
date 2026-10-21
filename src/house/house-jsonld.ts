@@ -207,6 +207,8 @@ export const TWB_HOUSE_CONTEXT = {
     loadBearing: 'twb:loadBearing',
     roofGroup: 'twb:roofGroupName',
     studSection: 'twb:pinnedStudSection',
+    partition: 'twb:pinnedPartitionKind',
+    recipe: ref('twb:hasRecipe'),
     detail: vocab('twb:hasOwnOpeningDetail', {
         '@vocab': `${CAT}opening-detail/`,
         plain: 'twb:PlainOpening',
@@ -447,8 +449,10 @@ export function toTwbHouse(file: HouseFile): Json {
                     'spanDirection',
                     'roofGroup',
                     'studSection',
+                    'partition',
                 ])
             );
+            if (s.buildUpType) o['recipe'] = recipeRef(s.buildUpType);
             return o;
         });
     if (file.guides) out['guides'] = file.guides;
@@ -597,9 +601,10 @@ export function fromTwbHouse(doc: Json): Json {
     if (Array.isArray(doc['surfaces'])) {
         out['surfaces'] = doc['surfaces'].map((raw) => {
             if (!isRecord(raw)) return raw;
-            const { type: _type, openings, pinnedKind, ...s } = raw;
+            const { type: _type, openings, pinnedKind, recipe, ...s } = raw;
             const o: Json = { ...s };
             if (pinnedKind !== undefined) o['kind'] = pinnedKind;
+            if (recipe !== undefined) o['buildUpType'] = recipeIdOf(recipe);
             const ops = list(openings).filter(isRecord);
             if (ops.length > 0) {
                 o['openings'] = ops.map((h) => h['points']);
