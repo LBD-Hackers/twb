@@ -105,7 +105,15 @@ export interface IfcImportReport {
     schema: string;
     /** Heavy: the exterior walls' core is masonry or concrete. Light: studs. */
     construction: 'heavy' | 'light';
+    /** The storeys, each by its floor's elevation on `originMm` and its height to the next. */
     storeys: { name: string; elevationMm: number; heightMm: number }[];
+    /**
+     * Where the house file's origin is in the IFC's own coordinates, mm: `x` and `y` the
+     * south-west corner of the exterior walls' lines, `z` the lowest storey's floor. A point `p`
+     * of the IFC is at `p − originMm` in the house file, to 0.1 mm in plan, so a tool that reads
+     * more of the IFC itself (its stairs) lays that out on the house.
+     */
+    originMm: { x: number; y: number; z: number };
     exteriorWalls: number;
     partitions: number;
     openings: number;
@@ -1217,6 +1225,7 @@ class Importer {
                 elevationMm: Z(st.elev),
                 heightMm: Math.round(st.top - st.elev),
             })),
+            originMm: { x: Math.round(ox * 1000) / 1000, y: Math.round(oy * 1000) / 1000, z: Math.round(base * 1000) / 1000 },
             exteriorWalls: wallLines.length,
             partitions: interiorWalls.length,
             openings: openings.length,
