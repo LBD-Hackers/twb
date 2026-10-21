@@ -280,7 +280,7 @@ interface FigureLayer {
 
 /** The two walls the wall line is shown in, inside → outside, and which layer carries. */
 const WALL_FIGURES: Readonly<
-    Record<'timber' | 'masonry', { layers: FigureLayer[]; core: number }>
+    Record<'timber' | 'masonry' | 'party', { layers: FigureLayer[]; core: number }>
 > = {
     timber: {
         layers: [
@@ -301,13 +301,27 @@ const WALL_FIGURES: Readonly<
         ],
         core: 0,
     },
+    // The Duplex's party wall: two leaves of block, lined each side, set out on the first.
+    party: {
+        layers: [
+            { kind: 'board', mm: 16 },
+            { kind: 'stud', mm: 41 },
+            { kind: 'block', mm: 193 },
+            { kind: 'wool', mm: 50 },
+            { kind: 'block', mm: 193 },
+            { kind: 'stud', mm: 41 },
+            { kind: 'board', mm: 16 },
+        ],
+        core: 2,
+    },
 };
 
 /**
- * A plan section through one wall, inside on the left: its layers to scale, and the wall line
- * dashed through the middle of the layer that carries — where TWB's thin surface lies.
+ * A plan section through one wall, inside (a partition's front) on the left: its layers to scale,
+ * and the wall line dashed through the middle of the layer that carries — where TWB's thin
+ * surface lies.
  */
-function WallSection({ which, lang }: { which: 'timber' | 'masonry'; lang: Lang }) {
+function WallSection({ which, lang }: { which: 'timber' | 'masonry' | 'party'; lang: Lang }) {
     const { layers, core } = WALL_FIGURES[which];
     const f = modelCopy.wallLine.figure;
     const scale = 0.5;
@@ -344,22 +358,22 @@ function WallSection({ which, lang }: { which: 'timber' | 'masonry'; lang: Lang 
                 {f.line[lang]}
             </text>
             <text className="ws-side" x={4} y={12}>
-                {f.inside[lang]}
+                {(which === 'party' ? f.front : f.inside)[lang]}
             </text>
             <text className="ws-side" x={width - 4} y={12} textAnchor="end">
-                {f.outside[lang]}
+                {(which === 'party' ? f.back : f.outside)[lang]}
             </text>
         </svg>
     );
 }
 
-/** Where the thin wall lies, in a timber wall and in a cavity wall, side by side. */
+/** Where the thin wall lies: in a timber wall, a cavity wall and a party wall between two dwellings. */
 function WallLine({ lang }: { lang: Lang }) {
     const w = modelCopy.wallLine;
     return (
         <>
             <div className="open-split wall-line">
-                {(['timber', 'masonry'] as const).map((which) => (
+                {(['timber', 'masonry', 'party'] as const).map((which) => (
                     <div key={which}>
                         <WallSection which={which} lang={lang} />
                         <h3>{w[which].title[lang]}</h3>

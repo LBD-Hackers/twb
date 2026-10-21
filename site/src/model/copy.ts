@@ -132,6 +132,13 @@ export const modelCopy = {
                 'In a cavity wall the inner leaf carries the roof and its wall plate; the facing brick is a skin outside it. So the line runs through the middle of the inner leaf, and that is what is set out in brick measure: whole half bricks, 120, line to line. The cavity is made as wide as puts the facing brick on the module too — so the length over the brick is n × 120 − 12, whole bricks with standard joints. With a 100 mm inner leaf and 108 mm brick the cavity is 196 mm, and the line lies 354 mm in from the face.'
             ),
         },
+        party: {
+            title: t('Skillevægge og lejlighedsskel: midt i det bærende lag', 'Partitions and party walls: through the layer that carries'),
+            body: t(
+                'En skillevæg står på samme måde midt i det, der bærer: stolperne eller muren. Dens opbygning går fra fladens forside — til højre, set langs væggen mod +x, eller +y for en væg langs y — over kernen til bagsiden, så lagene efter kernen ligger på bagsiden. Et lejlighedsskel af to bærende vanger står på den ene: mellem to rum den, der har den anden på sin bagside; i facaden sin egen boligs. En forsatsvæg op ad en væg er en del af den vægs opbygning, dér hvor den står. Så måles rummene på begge sider af skellet ens, til væggenes flader.',
+                'A partition stands the same way, through the middle of what carries: the studs or the masonry. Its build-up runs from the surface’s front — to the right looking along the wall towards +x, or +y for a wall along y — across the core to its back, so the layers past the core lie on the back. A party wall of two leaves that carry stands on one: between two rooms the one with the other on its back; on the outline its own dwelling’s. A lining against a wall is part of that wall’s build-up where it stands. So the rooms on both sides of the party wall measure alike, to the walls’ faces.'
+            ),
+        },
         rule: t(
             'Én regel for begge: linjen er konstruktionens, modulet gælder linjen, og alt andet er afstande fra den, som opbygningen giver. Hulmurens bredde er en standard, programmet regner ud; vælger man en anden, gemmes den i husfilen og vinder.',
             'One rule for both: the line is the structure’s, the module applies to the line, and everything else is a distance from it that the build-up gives. The cavity’s width is a default the program works out; choose another and it is saved in the house file and wins.'
@@ -140,6 +147,8 @@ export const modelCopy = {
             line: t('linjen', 'the line'),
             inside: t('inde', 'inside'),
             outside: t('ude', 'outside'),
+            front: t('forside', 'front'),
+            back: t('bagside', 'back'),
         },
     },
     modules: {

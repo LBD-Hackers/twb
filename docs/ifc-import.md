@@ -21,9 +21,10 @@ npx twb validate model.ifc     # read it, then check the house file it makes (ne
 
 The test model is the buildingSMART **Duplex** (Revit 2011, IFC2X3; see
 [`fixtures/README.md`](../fixtures/README.md)). It reads in well under a second as a two-storey masonry house: four exterior
-walls on the middle of the concrete block, 28 windows and doors (the stair windows coupled), 22
-partition runs, 20 rooms (with the open kitchen/living rooms parted by `zoneSeparations`), 21
-fittings, a flat green roof behind a parapet, and build-ups for the exterior wall, partitions,
+walls on the middle of the concrete block, 28 windows and doors (the stair windows coupled), 26
+partition runs (the party wall on one of its leaves, cut where its linings start and stop), 20
+rooms (with the open kitchen/living rooms parted by `zoneSeparations`), 21 fittings, a flat green
+roof behind a parapet, and build-ups for the exterior wall, each kind of partition and its types,
 roof, ground floor and the floor between storeys.
 
 The house file it writes opens in any TWB tool. In [arch](https://twb.madsholten.dk), the

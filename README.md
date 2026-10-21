@@ -104,7 +104,7 @@ const { house, report } = ifcToHouse(readFileSync('Duplex.ifc', 'utf8'));
 writeFileSync('duplex.twb.jsonld', JSON.stringify(house, null, 2));
 console.log(ifcImportSummary(report).join('\n'));
 // Read from IFC (IFC2X3): heavy (masonry) construction, 2 storeys, 4 exterior walls,
-// 22 partition runs, 28 windows and doors, 20 rooms, 21 fittings. …
+// 26 partition runs, 28 windows and doors, 20 rooms, 21 fittings. …
 ```
 
 **Open a house file** — parse it, expand the simple shape, build the partitions and cut their
@@ -203,6 +203,12 @@ opening:
     "roof": { "type": "gable", "pitchDeg": 30 }
 }
 ```
+
+A wall that is not the house's own partition or facade says what it is — `"partition": "light"`,
+`"heavy"` or `"party"` — and a wall of another build-up than its kind's names it, `"buildUpType":
+"interiorWall:plumbing"`, a build-up in `envelope`. A partition's build-up runs from its positive
+side (to the right looking along it towards +x, or +y) across its core to its back; a party wall
+of two leaves stands on one of them.
 
 The format is described in full in [`src/house/house-file.ts`](src/house/house-file.ts) and
 [`src/house/simple-house.ts`](src/house/simple-house.ts), and as JSON-LD in
