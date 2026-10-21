@@ -2260,15 +2260,25 @@ class Importer {
                 size: [Math.round(width), Math.round(depth)],
                 facing: facingOf(facing),
             });
-            // A sink cut into the worktop: the hole it is in.
+            // A sink cut into the worktop: the hole it is in. Revit writes the hole of a worktop
+            // turned half round the wrong way round, through the worktop's origin and out of it:
+            // turned back through that origin, it is in the worktop again.
             if (isKitchenRun) {
+                const inside = (p: P2) =>
+                    p.x >= b.min.x && p.x <= b.max.x && p.y >= b.min.y && p.y <= b.max.y;
+                const origin = m.placementOf(e).o;
                 for (const hole of m.openingsIn(e)) {
                     const hb = box3(m.bodyPoints(hole));
                     if (!hb) continue;
+                    let at = { x: (hb.min.x + hb.max.x) / 2, y: (hb.min.y + hb.max.y) / 2 };
+                    if (!inside(at)) {
+                        const back = { x: 2 * origin.x - at.x, y: 2 * origin.y - at.y };
+                        at = inside(back) ? back : centre;
+                    }
                     out.push({
                         kind: 'sink',
                         ...(storeyName(k) ? { storey: storeyName(k) } : {}),
-                        at: T({ x: (hb.min.x + hb.max.x) / 2, y: (hb.min.y + hb.max.y) / 2 }),
+                        at: T(at),
                         facing: facingOf(facing),
                     });
                 }

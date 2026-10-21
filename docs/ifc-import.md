@@ -151,7 +151,8 @@ and corner the same way it does for a house read from drawings.
   only where its `IfcCovering` ceiling hangs more than 300 mm under the slab or roof over it; a
   ceiling fixed under the joists is arch's flat ceiling.
 - **Fittings** (`fixtures`) from the furniture and sanitary terminals by name: wc, basin, sink,
-  worktop (an island where no wall stands behind it), the sink cut into a worktop, fridge,
+  worktop (an island where no wall stands behind it), the sink cut into a worktop (where Revit
+  writes a half-turned worktop's hole out of it, turned back through the worktop's origin), fridge,
   dishwasher, washer, dryer, hob, shower, bathtub, floor drain, tall cabinet. Each faces away from
   the nearest wall. Base and wall cabinets are part of the kitchen run; beds, sofas and tables
   are loose furniture.
