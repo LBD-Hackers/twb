@@ -132,6 +132,13 @@ export const modelCopy = {
                 'In a cavity wall the inner leaf carries the roof and its wall plate; the facing brick is a skin outside it. So the line runs through the middle of the inner leaf, and that is what is set out in brick measure: whole half bricks, 120, line to line. The cavity is made as wide as puts the facing brick on the module too — so the length over the brick is n × 120 − 12, whole bricks with standard joints. With a 100 mm inner leaf and 108 mm brick the cavity is 196 mm, and the line lies 354 mm in from the face.'
             ),
         },
+        party: {
+            title: t('Skillevægge og lejlighedsskel: midt i det bærende lag', 'Partitions and party walls: through the layer that carries'),
+            body: t(
+                'En skillevæg står på samme måde midt i det, der bærer: stolperne eller muren. Dens opbygning går fra fladens forside — til højre, set langs væggen mod +x, eller +y for en væg langs y — over kernen til bagsiden, så lagene efter kernen ligger på bagsiden. Et lejlighedsskel af to bærende vanger står på den ene: mellem to rum den, der har den anden på sin bagside; i facaden sin egen boligs. En forsatsvæg op ad en væg er en del af den vægs opbygning, dér hvor den står. Så måles rummene på begge sider af skellet ens, til væggenes flader.',
+                'A partition stands the same way, through the middle of what carries: the studs or the masonry. Its build-up runs from the surface’s front — to the right looking along the wall towards +x, or +y for a wall along y — across the core to its back, so the layers past the core lie on the back. A party wall of two leaves that carry stands on one: between two rooms the one with the other on its back; on the outline its own dwelling’s. A lining against a wall is part of that wall’s build-up where it stands. So the rooms on both sides of the party wall measure alike, to the walls’ faces.'
+            ),
+        },
         rule: t(
             'Én regel for begge: linjen er konstruktionens, modulet gælder linjen, og alt andet er afstande fra den, som opbygningen giver. Hulmurens bredde er en standard, programmet regner ud; vælger man en anden, gemmes den i husfilen og vinder.',
             'One rule for both: the line is the structure’s, the module applies to the line, and everything else is a distance from it that the build-up gives. The cavity’s width is a default the program works out; choose another and it is saved in the house file and wins.'
@@ -140,10 +147,43 @@ export const modelCopy = {
             line: t('linjen', 'the line'),
             inside: t('inde', 'inside'),
             outside: t('ude', 'outside'),
+            front: t('forside', 'front'),
+            back: t('bagside', 'back'),
+        },
+    },
+    types: {
+        kicker: t('03 · Typerne', '03 · The types'),
+        title: t('Én type, mange forekomster', 'One type, many instances'),
+        lead: t(
+            'En type er en prototype: den holder det, der gælder for alle dens forekomster, sat én gang og delt. Vægge, tage og dæk er forekomster af en opbygning — dens lag — og vinduer og døre af en vindues- eller dørtype. Hver slags har en standardtype, som en forekomst uden andet er; en forekomst knyttes til en anden type ved dens id; det, en forekomst selv siger, vinder over typens; og en type gemmes kun med det, der afviger fra standarden.',
+            'A type is a prototype: it holds what holds for every instance of it, set once and shared. Walls, roofs and slabs are instances of a build-up — its layers — and windows and doors of a window or door type. Each kind has a default type, which an instance pinned to no other is; an instance is pinned to another type by its id; what an instance states itself wins over its type’s; and a type is saved with only what differs from the default.'
+        ),
+        buildUps: {
+            title: t('Opbygninger: vægge, tage, dæk', 'Build-ups: walls, roofs, slabs'),
+            body: t(
+                'En opbygning (twb:Recipe) er lagene, en flade er lavet af, indefra og ud, med kernen markeret. Hver slags flade har sin i envelope — ydervæggen, husets skillevæg, lejlighedsskellet, taget, dækket — og én mere af en slags er "<slags>:<nøgle>", fx "lightPartition:plumbing". En flade knyttes til den med buildUpType. Så har badets installationsvæg sine 184 mm og lejlighedsskellet sine 550, uden at nogen af væggene gemmer en tykkelse.',
+                'A build-up (twb:Recipe) is the layers a face is made of, inside to outside, the core marked. Each kind of face has its own in envelope — the exterior wall, the house’s partition, the party wall, the roof, the deck — and one more of a kind is "<kind>:<key>", such as "lightPartition:plumbing". A face is pinned to it with buildUpType. So the bathroom’s plumbing wall has its 184 mm and the party wall its 550, with no wall storing a thickness.'
+            ),
+        },
+        openings: {
+            title: t('Vindues- og dørtyper', 'Window and door types'),
+            body: t(
+                'En vindues- eller dørtype (twb:OpeningType) er produktet, rammen og karmen, rudelagene, U-værdien, farverne og opdelingen — det, alle vinduer af typen deler. Den hører til en plads: vinduer i en væg, ovenlys, hoveddøre, terrassedøre, garageporte. Pladsens standard har pladsens id, "window"; flere hedder "window-2" og videre. Et vindue knyttes til sin type med typeId; har det sin egen opdeling, vinder den.',
+                'A window or door type (twb:OpeningType) is the product, the frame and sash, the panes, the U-value, the colours and the division — what every window of the type shares. It belongs to a slot: windows in a wall, roof windows, entrance doors, terrace doors, garage doors. The slot’s default has the slot’s id, "window"; more are "window-2" and on. A window is pinned to its type with typeId; where it has a division of its own, that wins.'
+            ),
+        },
+        rule: t(
+            'Fra IFC: hver vægtype og hvert lagsæt bliver en opbygning, hver IfcWindowType og IfcDoorType (IfcWindowStyle, IfcDoorStyle i IFC2X3) en vindues- eller dørtype, og hver væg, hvert vindue og hver dør knyttes til sin.',
+            'From IFC: every wall type and layer set becomes a build-up, every IfcWindowType and IfcDoorType (IfcWindowStyle, IfcDoorStyle in IFC2X3) a window or door type, and every wall, window and door is pinned to its own.'
+        ),
+        figure: {
+            type: t('typen', 'the type'),
+            instances: t('forekomsterne', 'the instances'),
+            own: t('egen opdeling', 'own division'),
         },
     },
     modules: {
-        kicker: t('03 · Modulerne', '03 · The modules'),
+        kicker: t('04 · Modulerne', '04 · The modules'),
         title: t('Én ontologi, taget i dele', 'One ontology, taken in parts'),
         lead: t(
             'TWB er bygget som SEAS-ontologierne (Smart Energy Aware Systems): ét navnerum, twb:, delt af alle moduler; hvert modul er en ontologi for sig, der kun importerer de moduler, den bygger på; og hvert begreb siger, hvilket modul der definerer det (rdfs:isDefinedBy). https://w3id.org/twb importerer dem alle. Vil man kun have huset som flader, kanter og zoner, importerer man kernen alene.',
@@ -238,7 +278,7 @@ export const modelCopy = {
         ),
     },
     schema: {
-        kicker: t('04 · Skemaet', '04 · The schema'),
+        kicker: t('05 · Skemaet', '05 · The schema'),
         title: t('Hele ontologien, til at trække i', 'The whole ontology, to pull at'),
         lead: t(
             'Klasserne og relationerne i alle TWB’s moduler, tegnet i VOWL-notationen fra WebVOWL. Træk i en klasse, zoom og panorer, klik for at se, hvad den er, hvad den hænger sammen med, og hvor mange af den casehuset har.',
@@ -290,7 +330,7 @@ export const modelCopy = {
         ),
     },
     examples: {
-        kicker: t('05 · Modellering', '05 · Modelling'),
+        kicker: t('06 · Modellering', '06 · Modelling'),
         title: t(
             'Dele af et hus, som filen og som graf',
             'Parts of a house, as the file and as a graph'
@@ -354,7 +394,7 @@ export const modelCopy = {
         ),
     },
     checks: {
-        kicker: t('06 · Regeltjek', '06 · Rule checks'),
+        kicker: t('07 · Regeltjek', '07 · Rule checks'),
         title: t('Regler, du kan læse og køre', 'Rules you can read and run'),
         lead: t(
             'Reglerne er data og SPARQL, ikke kode. Her kører de på casehuset med Oxigraph i din browser: først udleder reglerne kravene fra hvad hver flade adskiller, så tjekker SHACL-reglerne, om konstruktionen opfylder dem. Skift noget, og alt køres igen.',
@@ -445,7 +485,7 @@ export const modelCopy = {
         } as Record<string, Text>,
     },
     open: {
-        kicker: t('07 · Åbent', '07 · Open'),
+        kicker: t('08 · Åbent', '08 · Open'),
         title: t('Det åbne og det lukkede', 'What is open, what is closed'),
         lead: t(
             'Reglen er enkel: åbent er det, der definerer et blueprint og lader alle tegne, læse og udveksle det. Lukket er det, der gør et blueprint til en bygning.',

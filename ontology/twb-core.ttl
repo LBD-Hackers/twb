@@ -599,6 +599,60 @@ twb:area
     rdfs:isDefinedBy <https://w3id.org/twb/core> .
 
 # =================================================================================================
+#  Types
+# =================================================================================================
+
+twb:Type
+    a owl:Class ;
+    rdfs:label "Type"@en ;
+    rdfs:comment """A prototype: what holds for every instance of it, set once and shared. A wall, a roof or a slab is an
+instance of a recipe (twb:Recipe) — its layers; a window or a door of an opening type (twb:OpeningType) — its product,
+frame and glazing. Each kind has a default type, which an instance not pinned to another is; what an instance states
+itself (a window's own division) wins over its type's; and a type is written with only what differs from its kind's
+default."""@en ;
+    twb:archTerm "Assembly / BuildUpTypeId, FenestrationTypeDef" ;
+    twb:ifcCounterpart "IfcTypeObject (IfcWallType, IfcSlabType, IfcWindowType / IfcWindowStyle, IfcDoorType / IfcDoorStyle)" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/core> .
+
+twb:OpeningType
+    a owl:Class ;
+    rdfs:subClassOf twb:Type ;
+    rdfs:label "Opening type"@en ;
+    rdfs:comment """The type of a window or a door: the product it is made as, its frame and sash, its panes and U-value,
+its colours and its division, shared by every opening of the type. It belongs to a slot (twb:openingSlot) — a kind of
+opening in one place — whose default type an opening not pinned to another is."""@en ;
+    twb:archTerm "FenestrationTypeDef (fenestration/fenestration-types.ts)" ;
+    twb:ifcCounterpart "IfcWindowType / IfcDoorType (IFC2X3: IfcWindowStyle / IfcDoorStyle)" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/core> .
+
+twb:hasOpeningType
+    a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "has opening type"@en ;
+    rdfs:comment "The type an opening is an instance of. Left out, its slot's default."@en ;
+    rdfs:domain twb:Opening ;
+    rdfs:range twb:OpeningType ;
+    twb:archTerm "SurfaceOpening.typeId" ;
+    twb:ifcCounterpart "IfcRelDefinesByType" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/core> .
+
+twb:openingSlot
+    a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "opening slot"@en ;
+    rdfs:comment "Where an opening type belongs: \"window\" (in a wall), \"roof-window\", \"flat-roof-window\", \"door\" (an entrance door), \"terrace-door\" or \"garage-door\". The slot's default type has the slot's id."@en ;
+    rdfs:domain twb:OpeningType ;
+    rdfs:range xsd:string ;
+    twb:archTerm "FenestrationSlot" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/core> .
+
+twb:glazed
+    a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "glazed"@en ;
+    rdfs:comment "A door type with glass in its leaf."@en ;
+    rdfs:domain twb:OpeningType ;
+    rdfs:range xsd:boolean ;
+    rdfs:isDefinedBy <https://w3id.org/twb/core> .
+
+# =================================================================================================
 #  Openings
 # =================================================================================================
 

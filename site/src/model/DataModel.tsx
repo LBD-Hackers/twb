@@ -202,11 +202,20 @@ export function DataModelPage({ lang }: { lang: Lang }) {
                 <WallLine lang={lang} />
             </Part>
 
-            <Part id="moduler" kicker={md.kicker[lang]} title={md.title[lang]} lead={md.lead[lang]}>
+            <Part
+                id="typer"
+                kicker={modelCopy.types.kicker[lang]}
+                title={modelCopy.types.title[lang]}
+                lead={modelCopy.types.lead[lang]}
+            >
+                <Types lang={lang} />
+            </Part>
+
+            <Part id="moduler" kicker={md.kicker[lang]} title={md.title[lang]} lead={md.lead[lang]} tint>
                 <Modules lang={lang} />
             </Part>
 
-            <Part id="skema" kicker={s.kicker[lang]} title={s.title[lang]} lead={s.lead[lang]} tint>
+            <Part id="skema" kicker={s.kicker[lang]} title={s.title[lang]} lead={s.lead[lang]}>
                 {mounted ? (
                     <Suspense fallback={<div className="schema-wait">{s.loading[lang]}</div>}>
                         <SchemaGraph lang={lang} />
@@ -216,7 +225,7 @@ export function DataModelPage({ lang }: { lang: Lang }) {
                 )}
             </Part>
 
-            <Part id="eksempler" kicker={e.kicker[lang]} title={e.title[lang]} lead={e.lead[lang]}>
+            <Part id="eksempler" kicker={e.kicker[lang]} title={e.title[lang]} lead={e.lead[lang]} tint>
                 {mounted && (
                     <Suspense fallback={<div className="schema-wait">{e.loading[lang]}</div>}>
                         <Examples lang={lang} />
@@ -229,7 +238,6 @@ export function DataModelPage({ lang }: { lang: Lang }) {
                 kicker={c.kicker[lang]}
                 title={c.title[lang]}
                 lead={c.lead[lang]}
-                tint
             >
                 {mounted && (
                     <Suspense fallback={<div className="schema-wait">{c.loading[lang]}</div>}>
@@ -238,7 +246,7 @@ export function DataModelPage({ lang }: { lang: Lang }) {
                 )}
             </Part>
 
-            <Part id="aabent" kicker={o.kicker[lang]} title={o.title[lang]} lead={o.lead[lang]}>
+            <Part id="aabent" kicker={o.kicker[lang]} title={o.title[lang]} lead={o.lead[lang]} tint>
                 <div className="open-split">
                     <div>
                         <h3>{o.openTitle[lang]}</h3>
@@ -280,7 +288,7 @@ interface FigureLayer {
 
 /** The two walls the wall line is shown in, inside → outside, and which layer carries. */
 const WALL_FIGURES: Readonly<
-    Record<'timber' | 'masonry', { layers: FigureLayer[]; core: number }>
+    Record<'timber' | 'masonry' | 'party', { layers: FigureLayer[]; core: number }>
 > = {
     timber: {
         layers: [
@@ -301,13 +309,27 @@ const WALL_FIGURES: Readonly<
         ],
         core: 0,
     },
+    // The Duplex's party wall: two leaves of block, lined each side, set out on the first.
+    party: {
+        layers: [
+            { kind: 'board', mm: 16 },
+            { kind: 'stud', mm: 41 },
+            { kind: 'block', mm: 193 },
+            { kind: 'wool', mm: 50 },
+            { kind: 'block', mm: 193 },
+            { kind: 'stud', mm: 41 },
+            { kind: 'board', mm: 16 },
+        ],
+        core: 2,
+    },
 };
 
 /**
- * A plan section through one wall, inside on the left: its layers to scale, and the wall line
- * dashed through the middle of the layer that carries — where TWB's thin surface lies.
+ * A plan section through one wall, inside (a partition's front) on the left: its layers to scale,
+ * and the wall line dashed through the middle of the layer that carries — where TWB's thin
+ * surface lies.
  */
-function WallSection({ which, lang }: { which: 'timber' | 'masonry'; lang: Lang }) {
+function WallSection({ which, lang }: { which: 'timber' | 'masonry' | 'party'; lang: Lang }) {
     const { layers, core } = WALL_FIGURES[which];
     const f = modelCopy.wallLine.figure;
     const scale = 0.5;
@@ -344,22 +366,22 @@ function WallSection({ which, lang }: { which: 'timber' | 'masonry'; lang: Lang 
                 {f.line[lang]}
             </text>
             <text className="ws-side" x={4} y={12}>
-                {f.inside[lang]}
+                {(which === 'party' ? f.front : f.inside)[lang]}
             </text>
             <text className="ws-side" x={width - 4} y={12} textAnchor="end">
-                {f.outside[lang]}
+                {(which === 'party' ? f.back : f.outside)[lang]}
             </text>
         </svg>
     );
 }
 
-/** Where the thin wall lies, in a timber wall and in a cavity wall, side by side. */
+/** Where the thin wall lies: in a timber wall, a cavity wall and a party wall between two dwellings. */
 function WallLine({ lang }: { lang: Lang }) {
     const w = modelCopy.wallLine;
     return (
         <>
             <div className="open-split wall-line">
-                {(['timber', 'masonry'] as const).map((which) => (
+                {(['timber', 'masonry', 'party'] as const).map((which) => (
                     <div key={which}>
                         <WallSection which={which} lang={lang} />
                         <h3>{w[which].title[lang]}</h3>
@@ -368,6 +390,83 @@ function WallLine({ lang }: { lang: Lang }) {
                 ))}
             </div>
             <p className="aside">{w.rule[lang]}</p>
+        </>
+    );
+}
+
+/** A layer stack, to scale across, `height` tall: a build-up as a figure. */
+function Stack({ x, y, height, scale }: { x: number; y: number; height: number; scale: number }) {
+    let at = x;
+    return (
+        <>
+            {WALL_FIGURES.party.layers.map((l, i) => {
+                const w = l.mm * scale;
+                const r = <rect key={i} className={`ws-${l.kind}`} x={at} y={y} width={w} height={height} />;
+                at += w;
+                return r;
+            })}
+        </>
+    );
+}
+
+/** A window seen from outside: its frame, and `transoms` bars across it. */
+function Pane({ x, y, transoms = 0, own = false }: { x: number; y: number; transoms?: number; own?: boolean }) {
+    const [w, h] = [40, 54];
+    return (
+        <g className={own ? 'tp-window is-own' : 'tp-window'}>
+            <rect x={x} y={y} width={w} height={h} />
+            {Array.from({ length: transoms }, (_, i) => {
+                const by = y + ((i + 1) * h) / (transoms + 1);
+                return <line key={i} x1={x} x2={x + w} y1={by} y2={by} />;
+            })}
+        </g>
+    );
+}
+
+/**
+ * The two families of types, side by side: a build-up shared by three stretches of wall, and a
+ * window type shared by three windows, one of them divided otherwise by itself.
+ */
+function Types({ lang }: { lang: Lang }) {
+    const ty = modelCopy.types;
+    const f = ty.figure;
+    const instances = [70, 120, 170];
+    return (
+        <>
+            <div className="open-split wall-line">
+                <div>
+                    <svg className="types-figure" viewBox="0 0 340 230" role="img" aria-label={ty.buildUps.title[lang]}>
+                        <text className="ws-side" x={20} y={14}>{f.type[lang]}</text>
+                        <Stack x={20} y={24} height={190} scale={0.16} />
+                        <text className="ws-side" x={200} y={14}>{f.instances[lang]}</text>
+                        {instances.map((y) => (
+                            <g key={y}>
+                                <line className="tp-link" x1={110} x2={196} y1={y} y2={y} />
+                                <Stack x={200} y={y - 8} height={16} scale={0.16} />
+                            </g>
+                        ))}
+                    </svg>
+                    <h3>{ty.buildUps.title[lang]}</h3>
+                    <p>{ty.buildUps.body[lang]}</p>
+                </div>
+                <div>
+                    <svg className="types-figure" viewBox="0 0 340 230" role="img" aria-label={ty.openings.title[lang]}>
+                        <text className="ws-side" x={20} y={14}>{f.type[lang]}</text>
+                        <Pane x={40} y={90} />
+                        <text className="ws-side" x={200} y={14}>{f.instances[lang]}</text>
+                        {[0, 1, 2].map((i) => (
+                            <g key={i}>
+                                <line className="tp-link" x1={84} x2={176} y1={117} y2={51 + i * 66} />
+                                <Pane x={180} y={24 + i * 66} transoms={i === 2 ? 2 : 0} own={i === 2} />
+                            </g>
+                        ))}
+                        <text className="ws-label" x={228} y={187}>{f.own[lang]}</text>
+                    </svg>
+                    <h3>{ty.openings.title[lang]}</h3>
+                    <p>{ty.openings.body[lang]}</p>
+                </div>
+            </div>
+            <p className="aside">{ty.rule[lang]}</p>
         </>
     );
 }

@@ -21,9 +21,10 @@ npx twb validate model.ifc     # read it, then check the house file it makes (ne
 
 The test model is the buildingSMART **Duplex** (Revit 2011, IFC2X3; see
 [`fixtures/README.md`](../fixtures/README.md)). It reads in well under a second as a two-storey masonry house: four exterior
-walls on the middle of the concrete block, 28 windows and doors (the stair windows coupled), 22
-partition runs, 20 rooms (with the open kitchen/living rooms parted by `zoneSeparations`), 21
-fittings, a flat green roof behind a parapet, and build-ups for the exterior wall, partitions,
+walls on the middle of the concrete block, 28 windows and doors (the stair windows coupled), 26
+partition runs (the party wall on one of its leaves, cut where its linings start and stop), 20
+rooms (with the open kitchen/living rooms parted by `zoneSeparations`), 21 fittings, a flat green
+roof behind a parapet, and build-ups for the exterior wall, each kind of partition and its types,
 roof, ground floor and the floor between storeys.
 
 The house file it writes opens in any TWB tool. In [arch](https://twb.madsholten.dk), the
@@ -94,6 +95,13 @@ and corner the same way it does for a house read from drawings.
   `PartitioningType` (IFC4) or its style's `OperationType` (IFC2X3); a door's leaves from its
   `OperationType` (`DOUBLE_DOOR_*` is a double door). An opening nothing fills is written as a
   door if it reaches the floor, else a window, and reported.
+- **Window and door types**: each IFC type or style (`IfcWindowType`, `IfcDoorType`; IFC2X3's
+  `IfcWindowStyle`, `IfcDoorStyle`) is a type in `fenestrationTypes`, named as the IFC names it,
+  one per name and slot — Revit writes some types more than once — `window-2`, `door-2` and on (the
+  slot's own id is its default's). A door type is `glazed` where it or its doors are named so
+  (glass, glazed, glas; not fibreglass), and a type takes the U-value its property set gives
+  (`Pset_WindowCommon` / `Pset_DoorCommon` `ThermalTransmittance`). Every window and door the IFC
+  types is pinned to its type (`typeId`); the report lists them (`openingTypes`).
 - **Coupled windows**: windows on one wall and storey with less than 150 mm of wall between them
   (`COUPLE_GAP_MM`) leave no pier: they are one window, their frames joined. Two stacked
   over each other, as wide and in line, become one window with a transom between; two beside each

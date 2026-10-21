@@ -91,7 +91,7 @@ const copy = (store: OxStore) => new ox.Store(store.match(null, null, null, null
 describe('the SHACL engine against pyshacl', () => {
     it('compiles every shape of twb-shapes.ttl', () => {
         expect(prepared.shapes).toBeInstanceOf(ShaclValidator);
-        expect((prepared.shapes as ShaclValidator).roots.length).toBe(15);
+        expect((prepared.shapes as ShaclValidator).roots.length).toBe(16);
     });
 
     it.each(EXPECTED.caseHouse.map((c) => [c.name, c] as const))(

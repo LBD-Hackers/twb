@@ -2842,6 +2842,71 @@ p.violation.is-ok {
     font-size: 10px;
 }
 
+/* The types: one type, its instances linked to it. */
+.wall-line .types-figure {
+    width: 100%;
+    max-width: 360px;
+    height: auto;
+    display: block;
+    margin-bottom: 16px;
+}
+
+.types-figure rect {
+    stroke: var(--line-strong);
+    stroke-width: 0.5;
+}
+
+.types-figure .tp-link {
+    stroke: var(--accent);
+    stroke-width: 1;
+    stroke-dasharray: 4 3;
+}
+
+.types-figure .tp-window rect {
+    fill: #dbe9f4;
+    stroke: var(--ink, #2b2f36);
+    stroke-width: 3;
+}
+
+.types-figure .tp-window line {
+    stroke: var(--ink, #2b2f36);
+    stroke-width: 2;
+}
+
+.types-figure .tp-window.is-own line {
+    stroke: var(--accent);
+}
+
+.types-figure .ws-side,
+.types-figure .ws-label {
+    font-family: var(--mono);
+    font-size: 10px;
+}
+
+.types-figure .ws-side {
+    fill: var(--muted);
+}
+
+.types-figure .ws-label {
+    fill: var(--accent-strong);
+}
+
+.types-figure .ws-board {
+    fill: #d9c7a3;
+}
+
+.types-figure .ws-stud {
+    fill: #c49a5a;
+}
+
+.types-figure .ws-wool {
+    fill: #efe3a6;
+}
+
+.types-figure .ws-block {
+    fill: #c9c9c4;
+}
+
 .wall-line p {
     color: #3d434b;
 }

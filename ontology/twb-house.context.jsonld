@@ -48,6 +48,7 @@
         "Column": "twb:Column",
         "Beam": "twb:Beam",
         "Recipe": "twb:Recipe",
+        "OpeningType": "twb:OpeningType",
         "JointDetail": "twb:JointDetail",
         "JointTemplate": "twb:JointTemplate",
         "JointStandard": "twb:JointStandard",
@@ -79,6 +80,22 @@
             "@container": "@index",
             "@index": "twb:archTerm"
         },
+        "fenestrationTypes": {
+            "@id": "twb:hasBlueprintPart"
+        },
+        "ofType": {
+            "@id": "twb:hasOpeningType",
+            "@type": "@id"
+        },
+        "slot": "twb:openingSlot",
+        "uWm2K": "twb:uValue",
+        "glazed": "twb:glazed",
+        "productId": "arch:productId",
+        "frameFaceMm": "arch:frameFaceMm",
+        "sashFaceMm": "arch:sashFaceMm",
+        "glazingLayers": "arch:glazingLayers",
+        "colourOutside": "arch:colourOutside",
+        "colourInside": "arch:colourInside",
         "edgeJoints": {
             "@id": "twb:hasBlueprintPart"
         },

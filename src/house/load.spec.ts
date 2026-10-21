@@ -76,3 +76,45 @@ describe('loadHouse: a partition of another kind or build-up', () => {
         );
     });
 });
+
+describe('loadHouse: window and door types', () => {
+    const typed = {
+        ...house,
+        openings: [
+            { kind: 'window', at: [2400, 0], widthMm: 1200, heightMm: 1200, typeId: 'window-2' },
+            { kind: 'window', at: [7200, 0], widthMm: 1200, heightMm: 1200 },
+            { kind: 'door', at: [2400, 8000], widthMm: 1000, heightMm: 2100, typeId: 'door-9' },
+        ],
+        fenestrationTypes: [
+            { id: 'window-2', slot: 'window', label: 'Fixed glazing', uWm2K: 0.8, glazingLayers: 3 },
+        ],
+    };
+
+    it('pins each opening to its type, and its kind’s default where it names none', () => {
+        const loaded = loadHouse(typed, { snapToModule: false });
+        const openings = loaded.store.surfaces().flatMap((s) => s.openings);
+        expect(openings.filter((o) => o.typeId === 'window-2')).toHaveLength(1);
+        expect(openings.filter((o) => o.kind === 'window' && !o.typeId)).toHaveLength(1);
+    });
+
+    it('says a pin to a type the file does not have is left out', () => {
+        const loaded = loadHouse(typed, { snapToModule: false });
+        expect(loaded.problems.join(' ')).toContain('pinned to "door-9", which is not in "fenestrationTypes"');
+        expect(loaded.store.surfaces().flatMap((s) => s.openings).some((o) => o.typeId === 'door-9')).toBe(false);
+    });
+
+    it('writes the types and the pins back, the type as an OpeningType', () => {
+        const loaded = loadHouse(typed, { snapToModule: false });
+        const saved = JSON.parse(serializeLoadedHouse(loaded)) as Record<string, unknown>;
+        expect(saved['fenestrationTypes']).toEqual([
+            expect.objectContaining({ type: 'OpeningType', id: 'opening-type/window-2', name: 'Fixed glazing', uWm2K: 0.8 }),
+        ]);
+        expect(JSON.stringify(saved)).toContain('"ofType":"opening-type/window-2"');
+        expect(fromTwbHouse(saved)['fenestrationTypes']).toEqual([
+            { id: 'window-2', label: 'Fixed glazing', slot: 'window', uWm2K: 0.8, glazingLayers: 3 },
+        ]);
+        const reopened = loadHouse(saved, { snapToModule: false });
+        expect(reopened.problems).toEqual([]);
+        expect(reopened.store.surfaces().flatMap((s) => s.openings).filter((o) => o.typeId === 'window-2')).toHaveLength(1);
+    });
+});

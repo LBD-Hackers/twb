@@ -120,6 +120,12 @@ export interface SurfaceOpening {
     leaves?: DoorLeaves;
     /** How the frame is divided (`OpeningGlazing`). Absent is one undivided pane. */
     glazing?: OpeningGlazing;
+    /**
+     * The window or door type it is an instance of (`fenestrationTypes` in the house file): the
+     * prototype holding what every opening of the type shares — its product, frame, glazing,
+     * colours. Absent is its kind's default type. What it sets itself (`glazing`) wins.
+     */
+    typeId?: string;
 }
 
 export interface Surface {

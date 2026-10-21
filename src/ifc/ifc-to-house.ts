@@ -57,7 +57,7 @@
  * Pure: no DOM, no three.js.
  */
 
-import type { HouseFile } from '../house/house-file';
+import type { FileOpeningType, HouseFile } from '../house/house-file';
 import { toTwbHouse } from '../house/house-jsonld';
 import {
     DETAILED_OPENING_KINDS,
@@ -116,6 +116,8 @@ export interface IfcImportReport {
     buildups: Partial<Record<'exteriorWall' | PartitionBuildUp | 'roof' | 'floor' | 'deck', string>>;
     /** The partitions' other build-ups, each a type of its kind (`interiorWall:plumbing`). */
     buildUpTypes: { id: string; layerSet: string }[];
+    /** The window and door types, each from the IFC type it was read from (`window-2` ← its name). */
+    openingTypes: { id: string; ifcType: string }[];
     /** What the floors between storeys and the roof are, read off their cores. */
     structure: { floors: FloorStructure; roof: RoofStructure };
     /** IFC material names no rule knew, with what they were read as. */
@@ -219,6 +221,11 @@ export function ifcImportSummary(r: IfcImportReport): string[] {
     const buildups = Object.entries(r.buildups);
     if (buildups.length > 0) {
         lines.push(`Build-ups from: ${buildups.map(([k, v]) => `${k} ← "${v}"`).join('; ')}.`);
+    }
+    if (r.openingTypes.length > 0) {
+        lines.push(
+            `Window and door types from: ${r.openingTypes.map((t) => `${t.id} ← "${t.ifcType}"`).join('; ')}.`
+        );
     }
     if (r.buildUpTypes.length > 0) {
         lines.push(
@@ -726,6 +733,8 @@ class Importer {
             if (kind === 'window') {
                 const glazing = this.windowGlazing(f);
                 if (glazing) entry['glazing'] = glazing;
+                const typeId = this.openingType(f, 'window');
+                if (typeId) entry['typeId'] = typeId;
                 const d = norm2(sub2(line.b, line.a));
                 windows.push({
                     entry,
@@ -744,6 +753,15 @@ class Importer {
                 if (op && /^DOUBLE_DOOR/.test(op) && role.get(wall) === 'exterior')
                     entry['leaves'] = 'double';
                 if (op && /LEFT|RIGHT/.test(op)) doorSides++;
+                const typeId = this.openingType(
+                    f,
+                    kind === 'garage-door'
+                        ? 'garage-door'
+                        : entry['leaves'] === 'double'
+                          ? 'terrace-door'
+                          : 'door'
+                );
+                if (typeId) entry['typeId'] = typeId;
             }
             openings.push(entry);
             // A door in a curtain wall takes the place of the panel it stands in.
@@ -1132,14 +1150,18 @@ class Importer {
          */
         const linedTypes = new Map<string, string>();
         const linedType = (key: string, w: Wall, linings: readonly Wall[]): string => {
-            const sig = `${key}|${w.layerSetName}|${linings.map((l) => `${l.layerSetName}@${Math.round(acrossOf(w, [l]))}`).sort().join('|')}`;
+            const { layers, core } = linedLayers(w, linings);
+            const fileLayers = this.fileLayers(layers, core, 'wall');
+            // One type per build-up: stretches lined alike are dressed in the same one.
+            const sig = `${key}|${JSON.stringify(fileLayers)}`;
             const known = linedTypes.get(sig);
             if (known) return known;
             const short = (n: string) => n.slice(n.lastIndexOf(':') + 1).trim() || n;
-            const own = `${short(w.layerSetName)}, lined with ${unique(linings.map((l) => short(l.layerSetName))).join(' and ')}`;
+            const sides = unique(linings.map((l) => (liningSide(w, l) > 0 ? 'front' : 'back')));
+            const where = sides.length > 1 ? 'on both sides' : `on its ${sides[0]}`;
+            const own = `${short(w.layerSetName)}, lined ${where} with ${unique(linings.map((l) => short(l.layerSetName))).join(' and ')}`;
             const id = `${key}:${typeKeyFor(envelope, key, own)}`;
-            const { layers, core } = linedLayers(w, linings);
-            envelope[id] = { name: own, layers: this.fileLayers(layers, core, 'wall') };
+            envelope[id] = { name: own, layers: fileLayers };
             linedTypes.set(sig, id);
             buildUpTypes.push({ id, layerSet: `${w.layerSetName} + ${unique(linings.map((l) => l.layerSetName)).join(' + ')}` });
             return id;
@@ -1203,6 +1225,7 @@ class Importer {
             lines: linesOut.length,
             buildups,
             buildUpTypes,
+            openingTypes: [...this.openingTypes.values()].map((t) => ({ id: t.id, ifcType: t.label ?? t.id })),
             structure,
             guessedMaterials: [...this.guessed].map(([name, as]) => `"${name}" as ${as}`),
             skipped: [...this.skipped.values()],
@@ -1251,6 +1274,9 @@ class Importer {
                 };
             }),
             ...(openings.length > 0 ? { openings } : {}),
+            ...(this.openingTypes.size > 0
+                ? { fenestrationTypes: [...this.openingTypes.values()] }
+                : {}),
             roof,
             roofOverhang: overhang,
             ...(interiorWalls.length > 0 ? { interiorWalls } : {}),
@@ -1562,6 +1588,45 @@ class Importer {
                 this.typeName(f)
             ) || op === 'ROLLINGUP'
         );
+    }
+
+    /** The window and door types read, by the IFC type (or style) each is read from. */
+    private readonly openingTypes = new Map<string, FileOpeningType>();
+
+    /**
+     * The window or door type `f` is an instance of: one per IFC type or style (`IfcWindowType`,
+     * `IfcDoorStyle`, …) by name in `slot`, `<slot>-2` on — `<slot>` alone is the slot's default — named
+     * as the IFC type, a door's glazed where it or its type is named so, with the U-value its
+     * property set gives. Undefined for one with no type: its slot's default.
+     */
+    private openingType(f: StepEntity, slot: FileOpeningType['slot']): string | undefined {
+        const t = this.m.typeObject(f);
+        if (!t) return undefined;
+        // Revit writes a type more than once under one name: one type each name and slot.
+        const own = this.m.name(t).replace(/:\d+$/, '').trim();
+        const key = `${slot}|${own || t.id}`;
+        const known = this.openingTypes.get(key);
+        if (known) return known.id;
+        const n = [...this.openingTypes.values()].filter((x) => x.slot === slot).length + 2;
+        const props = this.m.properties(f);
+        const u = props.get('Pset_WindowCommon')?.get('ThermalTransmittance') ??
+            props.get('Pset_DoorCommon')?.get('ThermalTransmittance');
+        const type: FileOpeningType = {
+            id: `${slot}-${n}`,
+            slot,
+            ...(own ? { label: own } : {}),
+            ...(slot !== 'window' && this.isGlazedDoor(f) ? { glazed: true } : {}),
+            ...(typeof u === 'number' && u > 0 ? { uWm2K: Math.round(u * 100) / 100 } : {}),
+        };
+        this.openingTypes.set(key, type);
+        return type.id;
+    }
+
+    /** Whether a door is named glazed — "Glass", "Glazed", Danish "Glas" — or its type is. */
+    private isGlazedDoor(f: StepEntity): boolean {
+        const names = [this.m.name(f), this.m.name(this.m.typeObject(f))];
+        // A fibreglass door is a solid one.
+        return names.some((n) => /glas|glaz/i.test(n) && !/fib(er|re) ?glass/i.test(n));
     }
 
     /** A door's `OperationType`: IFC4's on the door or its type, IFC2X3's on its style. */
@@ -2414,6 +2479,11 @@ function linedLayers(w: Wall, linings: readonly Wall[]): { layers: IfcLayer[]; c
     }
     const ordered = spans.sort((x, y) => y.hi - x.hi).map((x) => x.layer);
     return { layers: ordered, core: Math.max(0, ordered.indexOf(coreLayer!)) };
+}
+
+/** Which side of `w` a lining against it stands on: 1 its positive side, -1 its back. */
+function liningSide(w: Wall, lining: Wall): 1 | -1 {
+    return spansOn(w, lining).reduce((sum, x) => sum + x.lo + x.hi, 0) > 0 ? 1 : -1;
 }
 
 /** How far `w`'s faces, and those of the linings against it, stand off its line at most, mm. */
