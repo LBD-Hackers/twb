@@ -293,6 +293,16 @@ describeDuplex('the Duplex (buildingSMART sample, Revit IFC2X3)', () => {
         expect(notes).toContain('Left out: 2 × IFCSTAIR');
         expect(ifcImportSummary(report)[0]).toMatch(/^Read from IFC \(IFC2X3\): heavy/);
     });
+
+    it('puts the sink of the worktop turned half round in that worktop', () => {
+        // Revit writes that worktop's hole turned the wrong way round, out of the worktop.
+        const fixtures = h['fixtures'] as { fixtureKind: string; storey: string; at: number[] }[];
+        const sinks = fixtures.filter((f) => f.fixtureKind === 'sink' && f.storey === 'st1');
+        expect(sinks.map((f) => f.at)).toEqual([
+            [5570.4, 10395.5],
+            [2702.6, 6877.5],
+        ]);
+    });
 });
 
 describeDuplex('the Duplex’s floors between storeys', () => {
