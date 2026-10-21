@@ -434,6 +434,21 @@ export class IfcModel {
         return null;
     }
 
+    /**
+     * Every point of a product's `'Axis'` curve in the world, in order — a stair flight's walking
+     * line, round its turns; null where it has none.
+     */
+    axisPoints(e: StepEntity): Vec3[] | null {
+        const frame = this.placementOf(e);
+        for (const rep of this.representations(e).get('Axis') ?? []) {
+            for (const item of this.refs(rep, 3)) {
+                const pts = this.curvePoints(item, IDENTITY);
+                if (pts.length >= 2) return pts.map((p) => apply(frame, p));
+            }
+        }
+        return null;
+    }
+
     /** The corners of a product's body in the world — enough for its box and its footprint. */
     bodyPoints(e: StepEntity): Vec3[] {
         const frame = this.placementOf(e);

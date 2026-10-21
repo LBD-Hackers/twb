@@ -36,6 +36,15 @@ describeDuplex('the Duplex (buildingSMART sample, Revit IFC2X3)', () => {
         ]);
     });
 
+    it('reports where its origin is in the IFC, for what a tool reads of the IFC itself', () => {
+        // The south-west corner of the walls' lines, on the middle of the block; Level 1's floor.
+        expect(report.originMm).toEqual({ x: 263.5, y: -17536.5, z: 0 });
+        expect(report.storeys).toEqual([
+            { name: 'Level 1', elevationMm: 0, heightMm: 3100 },
+            { name: 'Level 2', elevationMm: 3100, heightMm: 2900 },
+        ]);
+    });
+
     it('reads its brick-on-block walls as heavy: a masonry house', () => {
         expect(report.construction).toBe('heavy');
         expect(h['constructionSystem']).toBe('masonry');
@@ -332,6 +341,10 @@ describe('a light house: timber frame, gable roof', () => {
     it('reads the stud walls as light: a timber frame', () => {
         expect(report.construction).toBe('light');
         expect(h['constructionSystem']).toBe('timber-frame');
+    });
+
+    it('reports its origin: the corner of the walls’ lines, 153.5 mm in from the cladding’s', () => {
+        expect(report.originMm).toEqual({ x: 153.5, y: 153.5, z: 0 });
     });
 
     it('puts the walls through the middle of the studs, 153.5 mm in from the cladding', () => {

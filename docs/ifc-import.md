@@ -158,6 +158,10 @@ and corner the same way it does for a house read from drawings.
 - **Posts and beams** of timber are written as `lines`.
 - **Coordinates**: x east, y north, z up, in mm; the origin at the south-west corner of the
   exterior walls' lines and the lowest storey's floor. The IFC's project north is taken as north.
+  The report says where that origin is in the IFC (`originMm`), and the storeys' elevations on it
+  (`storeys`), so a tool that reads more of the IFC itself lays it out on the house: arch reads
+  the stairs with the same `IfcModel` (`@lbd-hackers/twb/ifc`), each flight's walking line from
+  its `'Axis'` (`axisPoints`).
 
 Every choice above is a default computed by the importer, and every value it writes is an
 ordinary house-file value, so it can be changed in a tool or in the file like any other.
