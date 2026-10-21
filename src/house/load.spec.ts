@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { fromTwbHouse } from './house-jsonld';
 import { loadHouse, serializeLoadedHouse } from './load';
 
 /** A 10 × 8 m box on the module, with a partition at 5000 — off it. */
@@ -64,6 +65,10 @@ describe('loadHouse: a partition of another kind or build-up', () => {
         const text = JSON.stringify(saved);
         expect(text).toContain('"party"');
         expect(text).toContain('recipe/interiorWall:plumbing');
+        // A type keeps its name, as `rdfs:label` on its recipe.
+        expect(fromTwbHouse(saved)['envelope']).toMatchObject({
+            'interiorWall:plumbing': { name: 'Plumbing' },
+        });
         const reopened = loadHouse(saved, { snapToModule: false });
         expect(reopened.store.surfaces().some((s) => s.partitionKind === 'party')).toBe(true);
         expect(reopened.store.surfaces().some((s) => s.buildUpType === 'interiorWall:plumbing')).toBe(

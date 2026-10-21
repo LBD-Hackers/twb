@@ -11,7 +11,12 @@
  * - A face is the **reference plane of the structure** — through the middle of a timber frame's
  *   studs, joists or rafters, or of a masonry wall's inner leaf — before insulation and cladding.
  *   The file carries no wall thickness and no finishes: 7200 × 9600 means the frame's
- *   centrelines are 7200 apart.
+ *   centrelines are 7200 apart. A wall of two leaves that carry — a party wall — stands on one of
+ *   them: on the outline its own dwelling's, between two rooms the one with the other on its back.
+ * - A partition's build-up runs from its **positive side** — the way its normal points: to the
+ *   right looking along it towards +X, or +Y for a wall along Y (`surfaceFrame`) — across its core
+ *   to its back, so the layers past the core lie on its back. An exterior wall's runs from the
+ *   room's side out.
  * - Openings are the same concept again: four corners lying on the face.
  * - A house can also be written in a simpler shape still (`simple-house.ts`): `walls` as plan
  *   lines, a `wallHeightMm`, `openings` by their centre and size, and a `roof` by its type and

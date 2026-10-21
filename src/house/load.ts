@@ -105,7 +105,8 @@ export function loadHouse(
  * top storey (`interiorWallSegmentRings`). A file being opened has no grid-snap toggle to follow,
  * so the storey decides: on a storey whose walls and floor all stand on the module grid, the
  * partition is put on it too; on one drawn to its measurements (a wall at 7930), it keeps the
- * file's numbers (`storeyOnModule`). Snapping it there would pull an end the saturation had just
+ * file's numbers (`storeyOnModule`). An end that lies on another of the file's runs stays where
+ * the file put it, built or not yet: it meets that run, not a corner of the storey near it. Snapping it there would pull an end the saturation had just
  * put on an outer wall back off it — leaving the partition short of the wall, or poking out
  * through it and up through the roof's overhang, with no T where it meets the wall or the roof.
  *
@@ -137,8 +138,24 @@ export function buildInteriorWalls(
             continue;
         }
         const pointsUv: Vec2Mm[] = [];
+        // An end on another of the file's runs on the storey stays where the file put it, whether
+        // or not that run is built yet: it meets that run, not a corner near it.
+        const others = walls.filter(
+            (w) =>
+                w !== wall &&
+                (w.storeyName ?? '').trim().toLowerCase() ===
+                    (wall.storeyName ?? '').trim().toLowerCase()
+        );
+        const onRun = (p: Vec2Mm) =>
+            others.some((w) =>
+                w.pointsMm.some(
+                    (q, k) =>
+                        k + 1 < w.pointsMm.length &&
+                        distance2(p, nearestPointOnSegment2(p, q, w.pointsMm[k + 1]!)) <= ON_RUN_MM
+                )
+            );
         for (const raw of wall.pointsMm) {
-            const p = saturateInteriorWallPoint(store.surfaces(), storey, raw);
+            const p = onRun(raw) ? raw : saturateInteriorWallPoint(store.surfaces(), storey, raw);
             const last = pointsUv[pointsUv.length - 1];
             if (last && distance2(last, p) < 1) continue;
             pointsUv.push(p);
@@ -206,6 +223,9 @@ export function storeyOnModule(surfaces: readonly Surface[], storey: Storey): bo
         floorFootprintsInStorey(surfaces, storey).every((f) => f.ringMm.every(onModule))
     );
 }
+
+/** How near a run's end must be to another run of the file to stand on it, mm: its rounding. */
+const ON_RUN_MM = 1;
 
 /** One straight piece of a partition run, on its storey, and the faces it was built into. */
 interface BuiltSegment {

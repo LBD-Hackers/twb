@@ -16,15 +16,16 @@
  * of the inner leaf that carries the roof. IFC gives a wall's axis and
  * how its layers lie on it (`IfcMaterialLayerSetUsage`), so the line is put through the middle of
  * the core, wherever it is in the wall: 263 mm in from the brick face of a brick-on-block wall,
- * on the axis of a stud partition. A heavy wall with its layers mirrored (a party wall of two
- * leaves) is put on its middle instead.
+ * on the axis of a stud partition. A wall of two leaves that carry (a party wall) stands on one
+ * of them, as the house file has it: between two rooms the one with the other on its back, on
+ * the outline its own dwelling's (`onLeftLeaf`, `onRoomLeaf`).
  *
  * **Which walls are exterior** is read off the geometry, not `IsExternal` (a party wall between
  * two dwellings says it is): the exterior walls are the ones whose lines close round the house,
  * each meeting the next at a corner (`findLoop`). Their corners are where their lines meet. The
  * rest are partitions (`interiorWalls`), each on the storeys it stands on, its ends taken to the
- * line of the wall they meet; a party wall, stood on its middle, is met at its faces and linings
- * too. Where rooms meet with no wall between them, a separation parts them on the line of the wall
+ * line of the wall they meet; a party wall, stood on one leaf, is met at its other leaf and its
+ * linings too. Where rooms meet with no wall between them, a separation parts them on the line of the wall
  * it runs on from, and every end left short of a line is taken to it, so the rooms close. A wall
  * lining another (a furring wall against a party wall), a wall
  * under 1.2 m (a soffit, a knee wall) and the foundation's walls are left out.
@@ -93,6 +94,13 @@ export interface SkippedGroup {
     names: string[];
 }
 
+/** One change the import made from what the model says (`IfcImportReport.changes`). */
+export interface ImportChange {
+    id: string;
+    title: string;
+    detail: string;
+}
+
 export interface IfcImportReport {
     schema: string;
     /** Heavy: the exterior walls' core is masonry or concrete. Light: studs. */
@@ -120,6 +128,12 @@ export interface IfcImportReport {
      */
     trueNorthDeg: number | null;
     warnings: string[];
+    /**
+     * What the import changed from what the model says so the house file can hold it, each once
+     * by a stable id (`outline/storey`, `curtain-walls/joined`, `opening/<step id>`, …), with a
+     * title and the detail that is also among the `warnings`. A tool lists them for its user.
+     */
+    changes: ImportChange[];
     /**
      * The glass of each window made of a curtain wall, measured off its panels: what a room's
      * glass in curtain walls is counted from. Not in the house file.
@@ -170,6 +184,8 @@ const PARTITION_REACH_MM = 400;
 const LOWERED_MM = 300;
 /** Lines this close are one line. */
 const ON_LINE_MM = 30;
+/** The shortest stretch of a partition cut where a lining starts or stops, mm: a shorter one goes with its neighbour. */
+const MIN_PIECE_MM = 300;
 /** A point this close to a line is on it. */
 const ON_POINT_MM = 1;
 
@@ -296,6 +312,17 @@ interface Corner {
 class Importer {
     private readonly skipped = new Map<string, SkippedGroup>();
     private readonly warnings: string[] = [];
+    private readonly changes: ImportChange[] = [];
+
+    /**
+     * A change from what the model says, made so the house file can hold it: reported once under
+     * `id` (`report.changes`), its detail with the warnings.
+     */
+    private change(id: string, title: string, detail: string): void {
+        if (this.changes.some((c) => c.id === id)) return;
+        this.changes.push({ id, title, detail });
+        if (!this.warnings.includes(detail)) this.warnings.push(detail);
+    }
     private readonly guessed = new Map<string, string>();
 
     constructor(
@@ -325,7 +352,9 @@ class Importer {
         const free = curtains.filter((cw) => !setIn.has(cw));
         const glassWalls = joinCurtains(free);
         if (glassWalls.length < free.length) {
-            this.warnings.push(
+            this.change(
+                'curtain-walls/joined',
+                `${free.length} curtain walls joined into ${glassWalls.length}`,
                 `${free.length} curtain walls standing side by side on a line are joined into ${glassWalls.length} walls of glass: ` +
                     'Revit writes each panel of a glazed wall as a curtain wall of its own.'
             );
@@ -355,7 +384,9 @@ class Importer {
         if (living.length === 0) {
             const lowest = tall.length > 0 ? Math.min(...tall.map((w) => w.zLo)) : 0;
             living = [{ name: 'Ground floor', elev: lowest }];
-            this.warnings.push(
+            this.change(
+                'storeys',
+                'One storey assumed',
                 'No storey with walls standing on it was found; one storey is assumed.'
             );
         }
@@ -407,7 +438,9 @@ class Importer {
         });
         if (outlineStorey > 0) {
             const m2 = (a: number) => `${Math.round(a / 1e6).toLocaleString('en')} m²`;
-            this.warnings.push(
+            this.change(
+                'outline/storey',
+                `The outline read on ${living[outlineStorey]!.name}`,
                 `The outline is read on ${living[outlineStorey]!.name}, whose facade closes round ${m2(loopArea(loop))}${roomPoints.length > 0 ? ` and ${roomsIn(loop)} of the ${roomPoints.length} rooms` : ''}; ` +
                     (lowestArea > 0
                         ? `the lowest floor's (${living[0]!.name}) closes round ${m2(lowestArea)}${roomPoints.length > 0 ? ` and ${lowestRooms}` : ''}. `
@@ -415,8 +448,17 @@ class Importer {
                     'The house file runs every exterior wall from the lowest floor, so the walls under it are built as partitions.'
             );
         }
+        // A party wall on the outline (one dwelling of a pair) stands on the middle of its own
+        // dwelling's leaf; its corners are found again from that line.
+        if (loop) {
+            const ring = loop.corners.map((c) => c.at);
+            const moved = loop.walls.filter((w) => isPartyWall(w) && onRoomLeaf(w, ring));
+            if (moved.length > 0) loop = findLoop(loop.walls) ?? loop;
+        }
         if (!loop) {
-            this.warnings.push(
+            this.change(
+                'outline',
+                'Every wall on the lowest floor written as an exterior wall',
                 'The exterior walls do not close round the house: every wall standing on the lowest floor is written as an exterior wall, and arch will say where the outline breaks.'
             );
         }
@@ -449,7 +491,9 @@ class Importer {
             return findLoop(upper)?.walls ?? [];
         });
         if (offOutline.length > 0 && loop) {
-            this.warnings.push(
+            this.change(
+                'upper-walls',
+                `${offOutline.length} exterior wall${offOutline.length === 1 ? '' : 's'} of an upper storey built as partitions`,
                 `${offOutline.length} exterior wall${offOutline.length === 1 ? '' : 's'} of an upper storey off the ground floor's outline (a setback or an overhang): ` +
                     'the house file runs every exterior wall from the lowest floor to the eaves, so they are written as partitions.'
             );
@@ -482,7 +526,9 @@ class Importer {
                 .map((r) => box3(m.bodyPoints(r))?.min.z)
                 .filter((z): z is number => z !== undefined && z >= topFloor.elev + STOREY_WALL_MM);
             const raised = over.length > 0 ? Math.min(...over) : wallTop;
-            this.warnings.push(
+            this.change(
+                'eave',
+                `The eave put over ${topFloor.name}`,
                 `The facade or a roof stops at ${Math.round(eave - base)} mm, under the top storey (${topFloor.name}, at ${Math.round(topFloor.elev - base)} mm): ` +
                     `the house file has one eave over every storey, so it is put at ${Math.round(raised - base)} mm` +
                     (over.length > 0 ? ', under the lowest roof over the top storey' : ', the top of the highest wall') +
@@ -509,21 +555,23 @@ class Importer {
 
         // ---- Partitions: the rest, less the linings.
         const rest = walls.filter((w) => !role.has(w));
+        /** The linings against each wall: part of its build-up where they stand (`linedLayers`). */
+        const liningsOf = new Map<Wall, Wall[]>();
         for (const w of rest) {
             const lined = walls.find(
                 (v) => v !== w && role.get(v) !== 'foundation' && isLining(w, v)
             );
-            if (lined) role.set(w, 'lining');
+            if (lined) {
+                role.set(w, 'lining');
+                liningsOf.set(lined, [...(liningsOf.get(lined) ?? []), w]);
+            }
         }
         const partitions = rest.filter((w) => !role.has(w));
         for (const w of partitions) {
             role.set(w, 'partition');
-            // A heavy wall of two mirrored leaves stands on its middle, not on one leaf.
-            if (w.heavy && isMirrored(w.layers)) {
-                w.lineY = w.offset + (w.sense * w.thickness) / 2;
-                w.a = add2(w.axisA, mul2(w.normal, w.lineY));
-                w.b = add2(w.axisB, mul2(w.normal, w.lineY));
-            }
+            // A party wall stands on a leaf, as every wall stands on its core: the one with the
+            // other on its back, where a partition's layers past its core lie.
+            if (isPartyWall(w)) onLeftLeaf(w);
         }
         for (const [w, r] of role) {
             if (r === 'foundation')
@@ -541,18 +589,22 @@ class Importer {
                     w.e,
                     'a wall under 1.2 m (a soffit, a bulkhead or a knee wall): not a wall of a room.'
                 );
-            if (r === 'lining')
-                this.skip(
-                    w.e,
-                    'a lining against another wall: its layers belong to that wall, which arch builds with one build-up.'
-                );
+        }
+        const linings = [...liningsOf.values()].flat();
+        if (linings.length > 0) {
+            this.change(
+                'linings',
+                `${linings.length} lining${linings.length === 1 ? '' : 's'} built into the walls ${linings.length === 1 ? 'it lines' : 'they line'}`,
+                `${linings.length} wall${linings.length === 1 ? '' : 's'} lining another (${unique(linings.map((w) => w.layerSetName)).join(', ')}) ` +
+                    `${linings.length === 1 ? 'is' : 'are'} built into the wall ${linings.length === 1 ? 'it lines' : 'they line'}: where a lining stands, that wall is of the lining's layers on that side instead of its own, a build-up type of its own.`
+            );
         }
 
         // ---- The origin: the south-west corner of the exterior walls' lines.
         const planPts = outline.length > 0 ? outline : walls.flatMap((w) => [w.a, w.b]);
         const ox = Math.min(...planPts.map((p) => p.x));
         const oy = Math.min(...planPts.map((p) => p.y));
-        const T = (p: P2): [number, number] => [Math.round(p.x - ox), Math.round(p.y - oy)];
+        const T = (p: P2): [number, number] => [Math.round((p.x - ox) * 10) / 10, Math.round((p.y - oy) * 10) / 10];
         const Z = (z: number): number => Math.round(z - base);
         const storeyName = (k: number): string | undefined =>
             storeys.length > 1 ? storeys[k]!.name : undefined;
@@ -577,8 +629,8 @@ class Importer {
         // ---- Partitions: one run per storey each stands on, its ends on the wall they meet.
         const allLines: PlanLine[] = [
             ...loopLines.map((l) => ({ a: l.a, b: l.b, band: storeys.map((_, i) => i) })),
-            // A party wall stood on its middle reaches as far as its faces and the linings on
-            // them: a partition meeting it there ends on its line all the same.
+            // A party wall stood on one leaf reaches as far as its other leaf and the linings on
+            // it: a partition meeting it there ends on its line all the same.
             ...partitions.map((w) => {
                 const party = isPartyWall(w);
                 const reach = party ? mul2(w.dir, w.thickness) : { x: 0, y: 0 };
@@ -587,6 +639,7 @@ class Importer {
                     b: add2(w.b, reach),
                     band: this.bands(w, storeys),
                     w,
+                    across: acrossOf(w, liningsOf.get(w) ?? []),
                     ...(party ? { reach: PARTITION_REACH_MM + w.thickness } : {}),
                 };
             }),
@@ -743,7 +796,9 @@ class Importer {
             setInRead++;
         }
         if (setInRead > 0) {
-            this.warnings.push(
+            this.change(
+                'curtain-walls/set-in',
+                `${setInRead} curtain wall${setInRead === 1 ? '' : 's'} set in walls read as windows`,
                 `${setInRead} curtain wall${setInRead === 1 ? '' : 's'} set in a wall (a glazed panel drawn as a curtain wall) ` +
                     `${setInRead === 1 ? 'is' : 'are'} read as a window in that wall, divided by ${setInRead === 1 ? 'its' : 'their'} mullions and transoms.`
             );
@@ -751,14 +806,18 @@ class Importer {
         // Windows with only a sliver of wall between them are one coupled window.
         const coupled = coupleWindows(windows);
         if (coupled.length < windows.length) {
-            this.warnings.push(
+            this.change(
+                'windows/coupled',
+                `${windows.length - coupled.length + coupled.filter((w) => w.coupled).length} windows coupled into ${coupled.filter((w) => w.coupled).length}`,
                 `${windows.length - coupled.length + coupled.filter((w) => w.coupled).length} windows with less than ${COUPLE_GAP_MM} mm of wall between them ` +
                     `are coupled into ${coupled.filter((w) => w.coupled).length}: one window each, their frames joined by mullions or transoms.`
             );
         }
         const close = tooClose(coupled);
         if (close.length > 0) {
-            this.warnings.push(
+            this.change(
+                'windows/close',
+                `${close.length} pair${close.length === 1 ? '' : 's'} of windows too close for a pier`,
                 `${close.length} pair${close.length === 1 ? '' : 's'} of windows with only ${unique(close.map((g) => `${g} mm`)).join(', ')} of wall between them are kept apart: ` +
                     'arch divides a window into equal panes, and theirs are not. Make them one window, or move them apart, in Draw.'
             );
@@ -849,7 +908,9 @@ class Importer {
             if (bays > before) glazed += cw.curtain!.panels;
         }
         if (glazed > 0) {
-            this.warnings.push(
+            this.change(
+                'curtain-walls/glazed',
+                `${glazed} curtain wall${glazed === 1 ? '' : 's'} built as glazed walls`,
                 `${glazed} curtain wall${glazed === 1 ? '' : 's'} standing on ${glazed === 1 ? 'its' : 'their'} own ${glazed === 1 ? 'is' : 'are'} built as ` +
                     `${glazed === 1 ? 'a wall' : 'walls'} of the house's frame glazed bay by bay: ${bays} windows, one in each bay between the mullions on each storey, ` +
                     `with a ${MIN_PIER_MM} mm pier of studs at each mullion and a header under the storey above.`
@@ -873,12 +934,16 @@ class Importer {
                 sillMm: door ? 0 : o.sill,
                 ...(storeyName(o.band) ? { storey: storeyName(o.band) } : {}),
             });
-            this.warnings.push(
+            this.change(
+                `opening/${op.id}`,
+                `An empty opening built as a ${door ? 'door' : 'window'}`,
                 `An opening with nothing in it (#${op.id} in "${wall.name}") is written as a ${door ? 'door' : 'window'}.`
             );
         }
         if (doorSides > 0) {
-            this.warnings.push(
+            this.change(
+                'doors/hinges',
+                `${doorSides} door${doorSides === 1 ? '' : 's'} hung by the house's rule`,
                 `The hinge side of ${doorSides} door${doorSides === 1 ? '' : 's'} is not carried over: arch hangs each door from its own rule.`
             );
         }
@@ -895,40 +960,69 @@ class Importer {
         // ---- Build-ups.
         const envelope: Record<string, unknown> = {};
         const buildups: IfcImportReport['buildups'] = {};
+        const buildUpTypes: IfcImportReport['buildUpTypes'] = [];
+        /** The type each kind's other layer sets are, by `<build-up>|<layer set>`. */
+        const typeOf = new Map<string, string>();
+        /**
+         * The walls of build-up `key` other than `pick`'s layer set: each other layer set a type
+         * of it (`interiorWall:plumbing`, `exteriorWall:timber-gable`) its walls are dressed in,
+         * heavy or light as the IFC has it, so every wall keeps its own build-up.
+         */
+        const typesOf = (
+            key: string,
+            of: readonly Wall[],
+            pick: Wall,
+            layersOf: (w: Wall) => Record<string, unknown>[]
+        ): void => {
+            for (const name of unique(of.map((w) => w.layerSetName))) {
+                if (!name || name === pick.layerSetName) continue;
+                const w = longestBy(
+                    of.filter((x) => x.layerSetName === name && x.layers.length > 0),
+                    (x) => x.layerSetName
+                );
+                if (!w) continue;
+                // Named as the layer set, short of a family Revit puts before it ("Basic Wall:").
+                const own = name.slice(name.lastIndexOf(':') + 1).trim() || name;
+                const id = `${key}:${typeKeyFor(envelope, key, own)}`;
+                envelope[id] = { name: own, layers: layersOf(w) };
+                typeOf.set(`${key}|${name}`, id);
+                buildUpTypes.push({ id, layerSet: name });
+            }
+        };
+        // The house is heavy where its exterior walls are — the layer set most of their length
+        // has, party walls left out — and its own partitions are of that kind.
+        const facades = exterior.filter((w) => !isPartyWall(w));
         const extWall = longestBy(
-            exterior.filter((w) => w.layers.length > 0),
+            facades.filter((w) => w.layers.length > 0),
             (w) => w.layerSetName
         );
-        let heavy = false;
+        const heavy = extWall ? extWall.heavy : facades.some((w) => w.heavy);
         let facade: string | null = null;
         let insulated = false;
         if (extWall) {
-            heavy = extWall.heavy;
-            const inside = this.insideOut(extWall, outline);
-            const layers = this.fileLayers(
-                inside,
-                inside.indexOf(extWall.layers[extWall.core]!),
-                'wall'
-            );
-            envelope['exteriorWall'] = { layers };
+            const exteriorLayers = (w: Wall) => {
+                const inside = this.insideOut(w, outline);
+                return this.fileLayers(inside, inside.indexOf(w.layers[w.core]!), 'wall');
+            };
+            envelope['exteriorWall'] = { layers: exteriorLayers(extWall) };
             buildups.exteriorWall = extWall.layerSetName;
+            typesOf(
+                'exteriorWall',
+                facades.filter((w) => w.layers.length > 0),
+                extWall,
+                exteriorLayers
+            );
+            const inside = this.insideOut(extWall, outline);
             facade = facadeOf(inside);
             insulated = inside.some(
                 (l) => matchMaterial(l.material).role === 'insulation' && l.thickness >= 30
             );
-        } else if (exterior.length > 0) {
-            heavy = exterior.some((w) => w.heavy);
         }
-        // One build-up per kind of wall: the house's own partition (`interiorWall`, the kind most
-        // of the partitions' length is), the other kind's (`lightPartition` or `heavyPartition`)
-        // and the party wall's — each from the layer set most of its walls' length has. Every
-        // other layer set of a kind is a type of it (`interiorWall:plumbing`), its walls dressed
-        // in it, so each partition keeps its own thickness.
-        const ownPick = longestBy(
-            partitions.filter((w) => w.layers.length > 0 && !isPartyWall(w)),
-            (w) => w.layerSetName
-        );
-        const ownKind: 'light' | 'heavy' = ownPick?.heavy ? 'heavy' : 'light';
+        // One build-up per kind of wall: the house's own partition (`interiorWall`, of the
+        // house's kind), the other kind's (`lightPartition` in a heavy house, `heavyPartition` in
+        // a light one) and the party wall's — each from the layer set most of its walls' length
+        // has, every other layer set of the kind a type of it, so each wall keeps its own.
+        const ownKind: 'light' | 'heavy' = heavy ? 'heavy' : 'light';
         const kindOf = (w: Wall): PartitionKind =>
             isPartyWall(w) ? 'party' : w.heavy ? 'heavy' : 'light';
         const kindBuildUp = (kind: PartitionKind): PartitionBuildUp =>
@@ -939,26 +1033,27 @@ class Importer {
                   : kind === 'heavy'
                     ? 'heavyPartition'
                     : 'lightPartition';
-        const buildUpTypes: IfcImportReport['buildUpTypes'] = [];
-        /** The type each kind's other layer sets are, by `<build-up>|<layer set>`. */
-        const typeOf = new Map<string, string>();
+        const exteriorParty = exterior.filter((w) => isPartyWall(w));
         for (const kind of PARTITION_KINDS) {
             const key = kindBuildUp(kind);
-            const of = partitions.filter((w) => kindOf(w) === kind && w.layers.length > 0);
-            const pick = longestBy(of, (w) => w.layerSetName);
+            const of = [
+                ...partitions.filter((w) => kindOf(w) === kind),
+                ...(kind === 'party' ? exteriorParty : []),
+            ];
+            const pick = longestBy(
+                of.filter((w) => w.layers.length > 0),
+                (w) => w.layerSetName
+            );
             if (!pick) continue;
-            envelope[key] = { layers: this.fileLayers(pick.layers, pick.core, 'wall') };
+            // A partition's from its positive side to its back; a party wall on the outline's
+            // from its own dwelling's side out.
+            const layersOf = (w: Wall) => {
+                const own = exteriorParty.includes(w) ? partyLayers(w) : linedLayers(w, []);
+                return this.fileLayers(own.layers, own.core, 'wall');
+            };
+            envelope[key] = { layers: layersOf(pick) };
             buildups[key] = pick.layerSetName;
-            for (const name of unique(of.map((w) => w.layerSetName))) {
-                if (!name || name === pick.layerSetName) continue;
-                const w = of.find((x) => x.layerSetName === name)!;
-                // Named as the layer set, short of a family Revit puts before it ("Basic Wall:").
-                const own = name.slice(name.lastIndexOf(':') + 1).trim() || name;
-                const id = `${key}:${typeKeyFor(envelope, key, own)}`;
-                envelope[id] = { name: own, layers: this.fileLayers(w.layers, w.core, 'wall') };
-                typeOf.set(`${key}|${name}`, id);
-                buildUpTypes.push({ id, layerSet: name });
-            }
+            typesOf(key, of, pick, layersOf);
         }
         const roofUsage = this.roofLayers(roofs);
         let covering: string | null = null;
@@ -993,7 +1088,9 @@ class Importer {
         const def = expressionDef(expressionId)!;
         let roofCovering = covering ?? def.roofs[0]!;
         if (!def.roofs.includes(roofCovering)) {
-            this.warnings.push(
+            this.change(
+                'roof/covering',
+                `Roof covered with ${def.roofs[0]}, not ${roofCovering}`,
                 `The roof's covering (${roofCovering}) is not one a ${def.label.toLowerCase()} takes; written as ${def.roofs[0]}.`
             );
             roofCovering = def.roofs[0]!;
@@ -1029,23 +1126,50 @@ class Importer {
             allLines.filter((l) => !l.w)
         );
         parts.push(...bridgeEnds([...runs, ...parts], allLines.filter((l) => !l.w)));
+        /**
+         * The build-up type a stretch of `w` with `linings` against it is: its own layers, those
+         * past each lining's inner face replaced by the lining's — what that stretch is built of.
+         */
+        const linedTypes = new Map<string, string>();
+        const linedType = (key: string, w: Wall, linings: readonly Wall[]): string => {
+            const sig = `${key}|${w.layerSetName}|${linings.map((l) => `${l.layerSetName}@${Math.round(acrossOf(w, [l]))}`).sort().join('|')}`;
+            const known = linedTypes.get(sig);
+            if (known) return known;
+            const short = (n: string) => n.slice(n.lastIndexOf(':') + 1).trim() || n;
+            const own = `${short(w.layerSetName)}, lined with ${unique(linings.map((l) => short(l.layerSetName))).join(' and ')}`;
+            const id = `${key}:${typeKeyFor(envelope, key, own)}`;
+            const { layers, core } = linedLayers(w, linings);
+            envelope[id] = { name: own, layers: this.fileLayers(layers, core, 'wall') };
+            linedTypes.set(sig, id);
+            buildUpTypes.push({ id, layerSet: `${w.layerSetName} + ${unique(linings.map((l) => l.layerSetName)).join(' + ')}` });
+            return id;
+        };
         const interiorWalls: {
             storey?: string;
             points: [number, number][];
             loadBearing?: boolean;
             partition?: PartitionKind;
             buildUpType?: string;
-        }[] = runs.map(({ a, b, band, w }) => {
-            const kind = kindOf(w);
-            const type = typeOf.get(`${kindBuildUp(kind)}|${w.layerSetName}`);
-            return {
-                ...(storeyName(band[0]!) ? { storey: storeyName(band[0]!) } : {}),
-                points: [T(a), T(b)],
-                ...(w.loadBearing !== null ? { loadBearing: w.loadBearing } : {}),
-                ...(kind !== ownKind ? { partition: kind } : {}),
-                ...(type ? { buildUpType: type } : {}),
-            };
-        });
+        }[] = runs.flatMap((run) =>
+            linedPieces(run, (liningsOf.get(run.w) ?? []).filter((l) => this.bands(l, storeys).includes(run.band[0]!))).map(
+                ({ a, b, linings }) => {
+                    const { w, band } = run;
+                    const kind = kindOf(w);
+                    const key = kindBuildUp(kind);
+                    const type =
+                        linings.length > 0
+                            ? linedType(key, w, linings)
+                            : typeOf.get(`${key}|${w.layerSetName}`);
+                    return {
+                        ...(storeyName(band[0]!) ? { storey: storeyName(band[0]!) } : {}),
+                        points: [T(a), T(b)] as [number, number][],
+                        ...(w.loadBearing !== null ? { loadBearing: w.loadBearing } : {}),
+                        ...(kind !== ownKind ? { partition: kind } : {}),
+                        ...(type ? { buildUpType: type } : {}),
+                    };
+                }
+            )
+        );
         const zoneSeparations = parts.map(({ a, b, band }) => ({
             ...(storeyName(band[0]!) ? { storey: storeyName(band[0]!) } : {}),
             points: [T(a), T(b)],
@@ -1056,7 +1180,9 @@ class Importer {
 
         const trueNorth = this.trueNorthDeg();
         if (trueNorth !== null && Math.abs(trueNorth) > 0.5) {
-            this.warnings.push(
+            this.change(
+                'north',
+                'Project north taken as north',
                 `The IFC's true north is ${trueNorth.toFixed(1)}° from its project north; arch takes project north as north.`
             );
         }
@@ -1082,6 +1208,7 @@ class Importer {
             skipped: [...this.skipped.values()],
             trueNorthDeg: trueNorth,
             warnings: this.warnings,
+            changes: this.changes,
             curtainGlass: glass
                 .filter((g) => g.panes.length > 0)
                 .map(({ entry, panes }) => ({
@@ -1107,7 +1234,22 @@ class Importer {
                   }
                 : {}),
             wallHeightMm: Z(eave),
-            walls: wallLines.map((l) => ({ id: l.id, points: [T(l.a), T(l.b)] })),
+            walls: wallLines.map((l) => {
+                const party = l.walls.some((w) => isPartyWall(w));
+                // The layer set most of the line has, where it is a type of its kind.
+                const most = longestBy(
+                    l.walls.filter((w) => w.layers.length > 0 && isPartyWall(w) === party),
+                    (w) => w.layerSetName
+                );
+                const key = party ? 'partyWall' : 'exteriorWall';
+                const type = most ? typeOf.get(`${key}|${most.layerSetName}`) : undefined;
+                return {
+                    id: l.id,
+                    points: [T(l.a), T(l.b)],
+                    ...(party ? { partition: 'party' } : {}),
+                    ...(type ? { buildUpType: type } : {}),
+                };
+            }),
             ...(openings.length > 0 ? { openings } : {}),
             roof,
             roofOverhang: overhang,
@@ -1504,7 +1646,9 @@ class Importer {
         const slopedArea = sloped.reduce((s, f) => s + f.area, 0);
         const levelArea = level.reduce((s, f) => s + f.area, 0);
         if (roofs.length === 0) {
-            this.warnings.push(
+            this.change(
+                'roof/assumed',
+                'A flat roof assumed',
                 'The IFC has no roof: a flat roof is assumed at the top of the walls.'
             );
             return { type: 'flat', pitchDeg: 0 };
@@ -1549,13 +1693,17 @@ class Importer {
         }
         if (main.length >= 3) {
             if (main.length !== 4) {
-                this.warnings.push(
+                this.change(
+                    'roof/shape',
+                    'The roof built as a hip roof',
                     `The roof has ${main.length} slopes; it is written as a hip roof.`
                 );
             }
             return { type: 'hip', pitchDeg };
         }
-        this.warnings.push(
+        this.change(
+            'roof/shape',
+            'The roof built as a gable roof',
             "The roof's slopes could not be read as a shed, gable or hip roof; written as a gable roof."
         );
         return { type: 'gable', pitchDeg };
@@ -1751,7 +1899,7 @@ class Importer {
         if (metal) {
             const w =
                 'Steel studs, joists or framing are built as timber members (45 mm c/c 600): arch frames in timber.';
-            if (!this.warnings.includes(w)) this.warnings.push(w);
+            this.change('steel-studs', 'Steel studs and joists built as timber', w);
         }
         return out;
     }
@@ -2224,13 +2372,179 @@ function isMirrored(layers: readonly IfcLayer[]): boolean {
     );
 }
 
+/** The way a wall's positive side lies in plan: right looking along it towards +x, or +y. */
+function positiveOf(w: Wall): P2 {
+    const u =
+        w.dir.x > 1e-9 || (Math.abs(w.dir.x) <= 1e-9 && w.dir.y > 0) ? w.dir : mul2(w.dir, -1);
+    return { x: u.y, y: -u.x };
+}
+
+/**
+ * Where each of `of`'s layers lies across `w`'s line, mm towards `w`'s positive side: `lo` to
+ * `hi`. `of` is `w` itself or a wall lining it.
+ */
+function spansOn(w: Wall, of: Wall): { layer: IfcLayer; lo: number; hi: number }[] {
+    const p = positiveOf(w);
+    let at = of.offset;
+    return of.layers.map((layer) => {
+        const from = at;
+        at += of.sense * layer.thickness;
+        const [y0, y1] = [from, at].map((y) => dot2(sub2(add2(of.axisA, mul2(of.normal, y)), w.a), p));
+        return { layer, lo: Math.min(y0!, y1!), hi: Math.max(y0!, y1!) };
+    });
+}
+
+/**
+ * `w`'s layers from its positive side to its back, with `linings` standing against it: on each
+ * lining's side, the layers past the lining's inner face give way to the lining's own. Its core
+ * is `w`'s.
+ */
+function linedLayers(w: Wall, linings: readonly Wall[]): { layers: IfcLayer[]; core: number } {
+    const coreLayer = w.layers[w.core];
+    let spans = spansOn(w, w);
+    for (const l of linings) {
+        const ls = spansOn(w, l);
+        const positive = ls.reduce((s, x) => s + x.lo + x.hi, 0) > 0;
+        const inner = positive ? Math.min(...ls.map((x) => x.lo)) : Math.max(...ls.map((x) => x.hi));
+        spans = spans.filter((x) => {
+            const mid = (x.lo + x.hi) / 2;
+            return x.layer === coreLayer || (positive ? mid < inner : mid > inner);
+        });
+        spans.push(...ls);
+    }
+    const ordered = spans.sort((x, y) => y.hi - x.hi).map((x) => x.layer);
+    return { layers: ordered, core: Math.max(0, ordered.indexOf(coreLayer!)) };
+}
+
+/** How far `w`'s faces, and those of the linings against it, stand off its line at most, mm. */
+function acrossOf(w: Wall, linings: readonly Wall[]): number {
+    return Math.max(...[w, ...linings].flatMap((x) => spansOn(w, x).flatMap((s) => [Math.abs(s.lo), Math.abs(s.hi)])));
+}
+
+/**
+ * A partition's run cut where the linings against it start and stop: each stretch with the
+ * linings that stand along it.
+ */
+function linedPieces(
+    run: { a: P2; b: P2 },
+    linings: readonly Wall[]
+): { a: P2; b: P2; linings: Wall[] }[] {
+    const len = dist2(run.a, run.b);
+    if (linings.length === 0 || len < 1) return [{ a: run.a, b: run.b, linings: [] }];
+    const d = norm2(sub2(run.b, run.a));
+    const extent = linings.map((l) => {
+        const [t0, t1] = [l.axisA, l.axisB].map((q) => dot2(sub2(q, run.a), d));
+        return { l, lo: Math.max(0, Math.min(t0!, t1!)), hi: Math.min(len, Math.max(t0!, t1!)) };
+    });
+    const cuts = unique([0, len, ...extent.flatMap((e) => [e.lo, e.hi])])
+        .filter((t) => t >= 0 && t <= len)
+        .sort((x, y) => x - y);
+    const pieces: { a: P2; b: P2; linings: Wall[] }[] = [];
+    for (let i = 0; i + 1 < cuts.length; i++) {
+        const [t0, t1] = [cuts[i]!, cuts[i + 1]!];
+        const mid = (t0 + t1) / 2;
+        const on = extent.filter((e) => e.lo <= mid && mid <= e.hi).map((e) => e.l);
+        const last = pieces[pieces.length - 1];
+        // A stretch too short to build as a face of its own goes with the one before it.
+        const same = last && last.linings.length === on.length && last.linings.every((l) => on.includes(l));
+        if (last && (same || t1 - t0 < MIN_PIECE_MM)) {
+            last.b = add2(run.a, mul2(d, t1));
+            continue;
+        }
+        pieces.push({ a: add2(run.a, mul2(d, t0)), b: add2(run.a, mul2(d, t1)), linings: on });
+    }
+    // A first stretch too short goes with the one after it.
+    if (pieces.length > 1 && dist2(pieces[0]!.a, pieces[0]!.b) < MIN_PIECE_MM) {
+        pieces[1]!.a = pieces[0]!.a;
+        pieces.shift();
+    }
+    return pieces.length > 0 ? pieces : [{ a: run.a, b: run.b, linings: [] }];
+}
+
 /** A party wall named as one: "lejlighedsskel", "party wall", "separating wall". */
 const PARTY_NAME = /party|lejligheds|separating|brandsektion|skelvæg/i;
 
 /** Whether a wall parts two dwellings: named so, or heavy with its leaves laid mirror-wise. */
 function isPartyWall(w: Wall): boolean {
     if (PARTY_NAME.test(w.layerSetName) || PARTY_NAME.test(w.name)) return true;
-    return w.heavy && isMirrored(w.layers);
+    return isMirrored(w.layers) && leaves(w.layers).length >= 2;
+}
+
+/**
+ * The leaves of a wall that carry: its leaves of masonry or concrete of 75 mm or more where it
+ * has any — the studs of a lining on them are no leaf — else its layers of studs.
+ */
+function leaves(layers: readonly IfcLayer[]): number[] {
+    const roles = layers.map((l) => matchMaterial(l.material).role);
+    const heavy = layers
+        .map((_, i) => i)
+        .filter((i) => roles[i] === 'heavy' && layers[i]!.thickness >= MIN_LEAF_MM);
+    if (heavy.length > 0) return heavy;
+    return layers.map((_, i) => i).filter((i) => roles[i] === 'studs');
+}
+
+/** Where across the axis layer `i` of `w` is in the middle. */
+function layerMidY(w: Wall, i: number): number {
+    const before = w.layers.slice(0, i).reduce((s, l) => s + l.thickness, 0);
+    return w.offset + w.sense * (before + w.layers[i]!.thickness / 2);
+}
+
+/** `w`'s line moved onto the middle of layer `i`, which becomes its core. */
+function setOnLayer(w: Wall, i: number): void {
+    w.core = i;
+    w.lineY = layerMidY(w, i);
+    w.a = add2(w.axisA, mul2(w.normal, w.lineY));
+    w.b = add2(w.axisB, mul2(w.normal, w.lineY));
+}
+
+/**
+ * A party wall on the outline set out on its own dwelling's leaf — the one inside `ring`. Whether
+ * its line moved.
+ */
+function onRoomLeaf(w: Wall, ring: readonly P2[]): boolean {
+    const ls = leaves(w.layers);
+    if (ls.length < 2) return false;
+    const mid = mul2(add2(w.axisA, w.axisB), 0.5);
+    const inside = ls.filter((i) =>
+        insidePolygon(add2(mid, mul2(w.normal, layerMidY(w, i))), ring)
+    );
+    const pick = inside.length > 0 ? inside[0]! : ls[0]!;
+    if (pick === w.core) return false;
+    setOnLayer(w, pick);
+    return true;
+}
+
+/**
+ * A party wall's layers as its build-up lists them, and which is the core: from the far side of
+ * the leaf it is set out on, across that leaf to the other — on the outline, the room's side
+ * first, since its own dwelling's leaf is the one it is set out on.
+ */
+function partyLayers(w: Wall): { layers: IfcLayer[]; core: number } {
+    const core = w.core >= 0 ? w.core : (leaves(w.layers)[0] ?? 0);
+    const other = leaves(w.layers).find((i) => i !== core);
+    const forward = other === undefined || other > core;
+    return forward
+        ? { layers: [...w.layers], core }
+        : { layers: [...w.layers].reverse(), core: w.layers.length - 1 - core };
+}
+
+/**
+ * A party wall between two rooms set out on the leaf that has the other on its back: a
+ * partition's layers past its core lie on the back of its face — on the left looking along the
+ * wall towards +x, or +y for a wall along y (`surfaceFrame`) — so the leaf the line goes through
+ * is the one that puts the other where the IFC has it.
+ */
+function onLeftLeaf(w: Wall): void {
+    const ls = leaves(w.layers);
+    if (ls.length < 2) return;
+    // The canonical direction along the wall, and its left.
+    const u =
+        w.dir.x > 1e-9 || (Math.abs(w.dir.x) <= 1e-9 && w.dir.y > 0) ? w.dir : mul2(w.dir, -1);
+    const left = { x: -u.y, y: u.x };
+    const across = (i: number) => layerMidY(w, i) * dot2(w.normal, left);
+    // The leaf furthest right is the one with every other on its left.
+    const pick = ls.reduce((best, i) => (across(i) < across(best) ? i : best), ls[0]!);
+    if (pick !== w.core) setOnLayer(w, pick);
 }
 
 /** Whether a wall's first layer is its facade: brick or cladding first, a board last. */
@@ -2646,6 +2960,8 @@ interface PlanLine {
     band: number[];
     w?: Wall;
     reach?: number;
+    /** How far its wall's faces stand off the line at most, its linings' too, mm. */
+    across?: number;
 }
 
 /** A partition's end taken to the nearest line it runs into within reach, along its own line. */
@@ -2673,7 +2989,8 @@ function snapEnd(end: P2, other: P2, lines: readonly PlanLine[]): P2 {
 
 /**
  * The stretches of the edge `a`–`b`, 300 mm or longer, that no line of `lines` runs along: none
- * parallel to it within 400 mm across (a wall's line stands half its thickness off a room's edge).
+ * parallel to it as far across as the wall's faces and linings stand off its line (400 mm for a
+ * line that is no partition's) — a room's edge is a wall's face, not its line.
  */
 function uncovered(a: P2, b: P2, lines: readonly PlanLine[]): [P2, P2][] {
     const len = dist2(a, b);
@@ -2683,10 +3000,11 @@ function uncovered(a: P2, b: P2, lines: readonly PlanLine[]): [P2, P2][] {
     const covered = lines
         .filter((l) => {
             const ld = norm2(sub2(l.b, l.a));
+            const off = l.across !== undefined ? l.across + 50 : 400;
             return (
                 Math.abs(ld.x * d.y - ld.y * d.x) < 0.05 &&
-                Math.abs(dot2(sub2(l.a, a), n)) < 400 &&
-                Math.abs(dot2(sub2(l.b, a), n)) < 400
+                Math.abs(dot2(sub2(l.a, a), n)) < off &&
+                Math.abs(dot2(sub2(l.b, a), n)) < off
             );
         })
         .map((l) => {
@@ -2719,7 +3037,7 @@ function ontoWallLine(edge: [P2, P2], lines: readonly PlanLine[]): [P2, P2] {
         // The wall's own line and ends, not the reach a party wall's lines are given.
         const across = dot2(sub2(w.a, p), n);
         const faces = [w.offset, w.offset + w.sense * w.thickness].map((f) => f - w.lineY);
-        const half = Math.max(...faces.map(Math.abs));
+        const half = Math.max(l.across ?? 0, ...faces.map(Math.abs));
         if (Math.abs(across) > half + ON_LINE_MM) continue;
         const [e0, e1] = [dot2(sub2(w.a, p), d), dot2(sub2(w.b, p), d)];
         const len = dist2(p, q);

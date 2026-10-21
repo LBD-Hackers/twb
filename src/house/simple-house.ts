@@ -26,7 +26,10 @@
  *   studs, a masonry wall's inner leaf (whose cavity is widened to put the brick on the module:
  *   `moduleCavityMm`); every segment is a wall. The building's outline is traced around the outside of them (`surfacekit/model/plan-outline.ts`), so they
  *   may come in any order and direction. They stand from the lowest storey's floor to the roof,
- *   split into one face per storey.
+ *   split into one face per storey. A wall to the next dwelling (one of a pair drawn alone) says
+ *   `"partition": "party"`: a party wall, not a facade, standing on its own dwelling's leaf. A
+ *   wall dressed in a build-up type says so with `"buildUpType"` (`"exteriorWall:brick"`), and
+ *   each of its faces does (`FileSurface.buildUpType`).
  * - `wallHeightMm`: the eave height above that floor, where the roof leaves the walls. A wall no
  *   roof covers stops here.
  * - `openings`: each on the wall line nearest its `at`, centred there; `sillMm` above the floor
@@ -49,6 +52,7 @@
  */
 
 import type { Point3Mm, Vec2Mm } from '../surfacekit/core';
+import type { PartitionKind } from '../surfacekit/model';
 import {
     DEFAULT_WALL_HEIGHT_MM,
     OPENING_KINDS,
@@ -82,6 +86,10 @@ export interface SimpleFace {
     openingSwings?: ({ leaves: string } | null)[];
     kind?: 'roof';
     roofGroup?: string;
+    /** A wall's kind where it is not an exterior wall: `"party"` (`FileSurface.partition`). */
+    partition?: PartitionKind;
+    /** The build-up type its faces are dressed in (`FileSurface.buildUpType`). */
+    buildUpType?: string;
 }
 
 /**
@@ -121,6 +129,10 @@ interface WallLine {
     id: string;
     a: Vec2Mm;
     b: Vec2Mm;
+    /** `party` where the wall parts this dwelling from the next. */
+    partition: PartitionKind | null;
+    /** The build-up type its faces are dressed in, as the file says it — checked with the faces. */
+    buildUpType: string | null;
 }
 
 /** One segment of an `interiorWalls` run, and the storey the run starts on. */
@@ -248,6 +260,8 @@ export function expandSimpleHouse(json: Record<string, unknown>, errors: string[
                 const face: SimpleFace = {
                     id: `${line.id}${suffix}`,
                     points: dedupe(ring).map(toFile),
+                    ...(line.partition ? { partition: line.partition } : {}),
+                    ...(line.buildUpType ? { buildUpType: line.buildUpType } : {}),
                 };
                 if (face.points.length >= 3) wallFaces.push({ line, lo, hi, face });
             });
@@ -713,11 +727,30 @@ function readWalls(raw: unknown, errors: string[]): WallLine[] {
         let id = named ? (named.startsWith('wall') ? named : `wall-${named}`) : `wall-${i + 1}`;
         while (taken.has(id)) id = `${id}-${i + 1}`;
         taken.add(id);
+        // One dwelling of a pair: the wall to the next is a party wall, not a facade.
+        const rawPartition = isRecord(entry) ? entry['partition'] : undefined;
+        let partition: PartitionKind | null = null;
+        if (rawPartition === 'party') partition = 'party';
+        else if (rawPartition !== undefined)
+            errors.push(`${where}.partition must be "party" — an exterior wall is used.`);
+        // Read as the faces' own (`house-file.ts`), which checks it against the envelope.
+        const rawType = isRecord(entry) ? entry['buildUpType'] : undefined;
+        const buildUpType = typeof rawType === 'string' ? rawType : null;
+        if (rawType !== undefined && buildUpType === null)
+            errors.push(
+                `${where}.buildUpType must be a build-up type's id — its kind's own is used.`
+            );
         for (let k = 0; k + 1 < points.length; k++) {
             const a = points[k]!;
             const b = points[k + 1]!;
             if (Math.hypot(b.x - a.x, b.y - a.y) < ON_MM) continue;
-            lines.push({ id: points.length > 2 ? `${id}-${k + 1}` : id, a, b });
+            lines.push({
+                id: points.length > 2 ? `${id}-${k + 1}` : id,
+                a,
+                b,
+                partition,
+                buildUpType,
+            });
         }
     });
     return lines;
