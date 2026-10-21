@@ -309,7 +309,7 @@ export class SurfaceStore {
         id: SurfaceId,
         ringMm: readonly Point3Mm[],
         kind: OpeningKind,
-        door: Pick<SurfaceOpening, 'leaves'> = {}
+        door: Pick<SurfaceOpening, 'leaves' | 'typeId'> = {}
     ): EditResult {
         if (this.isLocked(id)) return rejected([LOCKED]);
         const surface = this.get(id);

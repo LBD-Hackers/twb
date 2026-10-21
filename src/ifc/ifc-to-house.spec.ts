@@ -120,6 +120,7 @@ describeDuplex('the Duplex (buildingSMART sample, Revit IFC2X3)', () => {
             heightMm: 2420,
             sillMm: 100,
             storey: 'Level 1',
+            typeId: 'window-2',
         });
         // Every one lands on its face, the partitions' too.
         const parsed = parseHouseFile(JSON.stringify(house));
@@ -137,6 +138,7 @@ describeDuplex('the Duplex (buildingSMART sample, Revit IFC2X3)', () => {
             sillMm: 100,
             storey: 'Level 2',
             glazing: { transoms: 2 },
+            typeId: expect.stringMatching(/^window-/),
         });
         // The wide window beside each column is kept apart, and said to be too close.
         expect(report.warnings.join('\n')).toMatch(/12 windows .* coupled into 4/);
@@ -176,7 +178,7 @@ describeDuplex('the Duplex (buildingSMART sample, Revit IFC2X3)', () => {
         // Where the furring lines it, the party wall is built of the furring instead of its own
         // finish on that side: 645 mm lined on one side, 740 mm on both.
         const lined = report.buildUpTypes.filter((t) => / \+ Basic Wall:Interior - Furring/.test(t.layerSet));
-        expect(lined.map((t) => thick(t.id)).sort()).toEqual([645, 645, 645, 740]);
+        expect(lined.map((t) => thick(t.id)).sort()).toEqual([645, 645, 740]);
         const runs = h['interiorWalls'] as { partition?: string; buildUpType?: string }[];
         expect(runs.filter((r) => r.partition === 'party').length).toBeGreaterThan(4);
         expect(runs.filter((r) => r.buildUpType === plumbing.id)).toHaveLength(2);
@@ -244,6 +246,23 @@ describeDuplex('the Duplex (buildingSMART sample, Revit IFC2X3)', () => {
         expect(net('A103 Kitchen')).toBeCloseTo(net('B103 Kitchen'), 1);
         expect(net('A204 Bathroom 2')).toBeCloseTo(net('B204 Bathroom 2'), 1);
         expect(net('A203 Bedroom 2')).toBeCloseTo(22.04, 1);
+    });
+
+    it('reads each window and door type once, and pins every window and door to its type', () => {
+        const types = h['fenestrationTypes'] as Json[];
+        // Revit writes some of the Duplex's types twice under one name: read once each.
+        expect(types.map((t) => t['name'])).toEqual([...new Set(types.map((t) => t['name']))]);
+        expect(types.every((t) => /^opening-type\/(window|door)-\d+$/.test(String(t['id'])))).toBe(true);
+        // The glazed door is said to be glazed.
+        expect(types.filter((t) => t['glazed'] === true)).toHaveLength(1);
+        const openings = h['openings'] as Json[];
+        expect(openings.every((o) => typeof o['typeId'] === 'string')).toBe(true);
+        expect(report.openingTypes.map((t) => t.id)).toEqual(types.map((t) => String(t['id']).slice(13)));
+        // They open in a TWB store, each opening with its type.
+        const loaded = loadHouse(house, { snapToModule: false });
+        expect(loaded.problems).toEqual([]);
+        const pinned = loaded.store.surfaces().flatMap((s) => s.openings).filter((o) => o.typeId);
+        expect(pinned.length).toBeGreaterThan(20);
     });
 
     it('says what it left out', () => {

@@ -42,6 +42,29 @@
  *   dividing two zones where there is no wall), so a file never carries an outline that could
  *   disagree with its own geometry.
  *
+ * **Types.** A type is a prototype: it holds what holds for every instance of it, set once and
+ * shared. Each kind of thing has a default type, which an instance pinned to no other is; an
+ * instance is pinned to a type by its id; what an instance states itself wins over its type's;
+ * and a type is written with only what differs from its kind's default. Two families:
+ *
+ * - **Build-up types** — walls, roofs, floors and slabs. A build-up (a TWB recipe) is the layers
+ *   a face is made of. Each kind of face has its default in `envelope` (`exteriorWall`,
+ *   `interiorWall`, `lightPartition`, `heavyPartition`, `partyWall`, `roof`, `floor`, `deck`, …);
+ *   one more of a kind is `"<kind>:<key>"`, with its `name` and its layers. A face is pinned with
+ *   `buildUpType`, on the face or on its `interiorWalls` run or `walls` entry, and a wall says
+ *   what kind it is with `partition` (above).
+ * - **Window and door types** — `fenestrationTypes` (`FileOpeningType`): the product an opening
+ *   is made as, its frame and sash, its panes, its U-value, its colours, its division, whether a
+ *   door is glazed. Each belongs to a slot (`OPENING_TYPE_SLOTS`: a kind of opening in one place)
+ *   whose default has the slot's id, `"window"`; one more of it is `"<slot>-<n>"`. An opening is
+ *   pinned with `typeId` in the simple shape's `openings`, and per face with `openingTypes` beside
+ *   its `openings`. A window's own `glazing` wins over its type's.
+ *
+ * A pin to a type the file does not have is reported and left out: the instance is its kind's
+ * default. In JSON-LD a build-up type is a `twb:Recipe`, a window or door type a
+ * `twb:OpeningType`, both `twb:Type`s; a face points at its recipe (`twb:hasRecipe`), an opening
+ * at its type (`twb:hasOpeningType`).
+ *
  * **What this parser reads, and what it passes on.** It reads the blueprint's geometry — the
  * surfaces and their openings, guides and lines, storeys, partitions, rooms and separations —
  * into `@surfacekit/model`'s types. Everything else a house file may say — build-ups (`envelope`),
@@ -165,6 +188,8 @@ export interface FileSurface {
     openingLintels?: (string | null)[];
     /** How each opening is divided — mullions, transoms, glazing bars — or null for one pane. */
     openingGlazing?: (FileGlazing | null)[];
+    /** The window or door type each opening is an instance of (`fenestrationTypes`), or null. */
+    openingTypes?: (string | null)[];
     /** Inner rings — loops drawn strictly inside the face, each three or more corners on its plane. */
     holes?: FilePoint[][];
     /** Pins what the face is. Omit to let the geometry decide (the normal case). */
@@ -273,6 +298,48 @@ export interface FileEnvelopeLayer {
     ties?: { perM2: number; diameter: number };
 }
 
+/**
+ * Where a window or door type belongs: one kind of opening in one place. Each slot has a default
+ * type, whose id is the slot's; more types of it are `<slot>-<n>`.
+ */
+export const OPENING_TYPE_SLOTS = [
+    { slot: 'window', kind: 'window', host: 'wall' },
+    { slot: 'roof-window', kind: 'window', host: 'roof' },
+    { slot: 'flat-roof-window', kind: 'window', host: 'roof' },
+    { slot: 'door', kind: 'door', host: 'wall' },
+    { slot: 'terrace-door', kind: 'door', host: 'wall' },
+    { slot: 'garage-door', kind: 'garage-door', host: 'wall' },
+] as const;
+export type OpeningTypeSlot = (typeof OPENING_TYPE_SLOTS)[number]['slot'];
+
+/**
+ * A window or door type: the prototype of the openings pinned to it (`openingTypes`, an opening's
+ * `typeId`), holding what holds for every one of them. Only what differs from its slot's default
+ * is written; what a tool reads off a product catalogue it names by id.
+ */
+export interface FileOpeningType {
+    /** The slot's id for its default type; `<slot>-<n>` for one more of the slot. */
+    id: string;
+    slot: OpeningTypeSlot;
+    label?: string;
+    /** The product it is made as, by the deriving tool's catalogue id. */
+    productId?: string;
+    /** How wide the frame shows, mm. */
+    frameFaceMm?: number;
+    /** How wide the sash shows, mm. */
+    sashFaceMm?: number;
+    /** Panes of glass. */
+    glazingLayers?: 2 | 3;
+    /** The whole unit's U, W/m²K. */
+    uWm2K?: number;
+    colourOutside?: string;
+    colourInside?: string;
+    /** How every opening of the type is divided, unless it is divided otherwise itself. */
+    glazing?: FileGlazing;
+    /** A door type with glass in it. */
+    glazed?: boolean;
+}
+
 /** A build-up (a TWB recipe): its layers inside → outside. */
 export interface FileAssembly {
     /** A build-up type's name, as its source had it: `"Interior - Plumbing (152mm Stud)"`. */
@@ -348,6 +415,8 @@ export interface HouseFile {
     sections?: FileBlock[];
     /** Build-ups that differ from the default recipe, by assembly (`wall`, `roof`, `floor`, …). */
     envelope?: Record<string, FileAssembly>;
+    /** The window and door types (`FileOpeningType`): only what differs from a slot's default. */
+    fenestrationTypes?: FileOpeningType[];
     edgeJoints?: FileEdgeJoint[];
     roofOverhang?: FileRoofOverhang;
     underFloorC?: number;
@@ -588,6 +657,7 @@ export function parseHouseFile(input: string | Record<string, unknown>): ParseRe
                 const details = arrayOf('openingDetails');
                 const lintels = arrayOf('openingLintels');
                 const glazings = arrayOf('openingGlazing');
+                const types = arrayOf('openingTypes');
                 openings.forEach((o, j) => {
                     const at = `${where}.openings[${j}]`;
                     const ring = readRing(o, at, errors);
@@ -632,6 +702,10 @@ export function parseHouseFile(input: string | Record<string, unknown>): ParseRe
                         errors
                     );
                     if (glazing) hole.glazing = glazing;
+                    const typeId = types[j];
+                    if (typeof typeId === 'string' && typeId) hole.typeId = typeId;
+                    else if (typeId !== undefined && typeId !== null)
+                        errors.push(`${where}.openingTypes[${j}] must be a type's id, or null.`);
                     // Which finishes and lintels exist is the deriving tool's catalogue: kept as given.
                     if (typeof details[j] === 'string') openingDetails.set(hole.id, details[j]);
                     if (typeof lintels[j] === 'string') openingLintels.set(hole.id, lintels[j]);
@@ -762,6 +836,19 @@ export function parseHouseFile(input: string | Record<string, unknown>): ParseRe
         }
     }
 
+    // The window and door types, and the openings pinned to them: a pin to a type the file does
+    // not have, and is no slot's default either, is no pin — the opening is its kind's default.
+    const openingTypeIds = readOpeningTypeIds(json['fenestrationTypes'], errors);
+    surfaces.forEach((s, i) =>
+        s.openings.forEach((h, j) => {
+            if (h.typeId && !openingTypeIds.has(h.typeId)) {
+                errors.push(
+                    `surfaces[${i}].openings[${j}] is pinned to "${h.typeId}", which is not in "fenestrationTypes" — its kind's default type is used.`
+                );
+                delete (h as { typeId?: string }).typeId;
+            }
+        })
+    );
     // A pin to a build-up the file does not have is no pin: the face is its kind's own.
     const envelope = isRecord(json['envelope']) ? json['envelope'] : {};
     surfaces.forEach((s, i) => {
@@ -855,6 +942,9 @@ export function toHouseFile(geometry: HouseGeometry, more: HouseFileMore = {}): 
                 fs.openingGlazing = s.openings.map((h) =>
                     isDividedGlazing(h.glazing) ? toFileGlazing(h.glazing!) : null
                 );
+            }
+            if (s.openings.some((h) => h.typeId)) {
+                fs.openingTypes = s.openings.map((h) => h.typeId ?? null);
             }
         }
         if (s.holes.length > 0) fs.holes = s.holes.map((ring) => ring.map(toFilePoint));
@@ -1231,4 +1321,39 @@ function readBuildUpTypePin(raw: unknown, where: string, errors: string[]): stri
         `${where} must be a build-up type's id, "<build-up>:<key>" — dressed in its kind's own.`
     );
     return null;
+}
+
+/**
+ * The ids an opening may be pinned to: each slot's default, and every type in
+ * `fenestrationTypes` that can be read (`<slot>` or `<slot>-<n>`, once). The types themselves are
+ * passed on as they came, with what cannot be read reported.
+ */
+function readOpeningTypeIds(raw: unknown, errors: string[]): Set<string> {
+    const slots = OPENING_TYPE_SLOTS.map((s) => s.slot as string);
+    const ids = new Set(slots);
+    if (raw === undefined) return ids;
+    if (!Array.isArray(raw)) {
+        errors.push('"fenestrationTypes" must be a list of window and door types.');
+        return ids;
+    }
+    const seen = new Set<string>();
+    raw.forEach((x, i) => {
+        const at = `fenestrationTypes[${i}]`;
+        if (!isRecord(x)) {
+            errors.push(`${at} must be an object.`);
+            return;
+        }
+        const { id, slot } = x;
+        if (typeof slot !== 'string' || !slots.includes(slot)) {
+            errors.push(`${at}.slot must be one of ${slots.join(', ')} — ignored.`);
+            return;
+        }
+        if (typeof id !== 'string' || !(id === slot || id.startsWith(`${slot}-`)) || seen.has(id)) {
+            errors.push(`${at}.id must be "${slot}" or "${slot}-<n>", once — ignored.`);
+            return;
+        }
+        seen.add(id);
+        ids.add(id);
+    });
+    return ids;
 }

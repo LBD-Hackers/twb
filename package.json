@@ -1,6 +1,6 @@
 {
     "name": "@lbd-hackers/twb",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "description": "TWB (thin-walled blueprints): the ontology, the house file and its JSON-LD context, IFC to TWB, the @surfacekit drawing engine, a validator with SHACL on Oxigraph and the <arch-paper-model> viewer",
     "keywords": [
         "twb",

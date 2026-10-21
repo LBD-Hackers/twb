@@ -63,6 +63,7 @@ twb:hasCovering
 
 twb:Recipe
     a owl:Class ;
+    rdfs:subClassOf twb:Type ;
     rdfs:label "Recipe"@en ;
     rdfs:comment """A type-level specification of the assembly that realises a surface: its layers in order from the inside
 side to the outside side, exactly one of which is the structural core, the boundary condition it is designed for,

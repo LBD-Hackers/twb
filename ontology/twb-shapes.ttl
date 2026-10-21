@@ -269,3 +269,11 @@ twbsh:UValueShape
         sh:prefixes <https://w3id.org/twb/shapes> ;
         sh:select """SELECT $this ?u ?max WHERE {
             $this twb:requiresMaxUValue ?max ; twb:hasRecipe ?r . ?r twb:uValue ?u . FILTER (?u > ?max) }""" ] .
+
+twbsh:OpeningTypeShape
+    a sh:NodeShape ;
+    sh:targetClass twb:OpeningType ;
+    sh:property [
+        sh:path twb:openingSlot ; sh:minCount 1 ; sh:maxCount 1 ;
+        sh:in ( "window" "roof-window" "flat-roof-window" "door" "terrace-door" "garage-door" ) ;
+        sh:message "An opening type belongs to exactly one slot: window, roof-window, flat-roof-window, door, terrace-door or garage-door." ] .

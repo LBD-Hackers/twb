@@ -210,6 +210,13 @@ A wall that is not the house's own partition or facade says what it is — `"par
 side (to the right looking along it towards +x, or +y) across its core to its back; a party wall
 of two leaves stands on one of them.
 
+**Types.** A type is a prototype: it holds what holds for every instance of it, set once and
+shared. A wall, a roof or a slab is an instance of a build-up — its layers, a `twb:Recipe`, in
+`envelope` — and a window or a door of a window or door type — its product, frame, panes, U-value,
+colours, a `twb:OpeningType`, in `fenestrationTypes`. Each kind has a default type; an instance is
+pinned to another by its id (`buildUpType`, an opening's `typeId`); what an instance states itself
+wins over its type's; and a type is written with only what differs from its kind's default.
+
 The format is described in full in [`src/house/house-file.ts`](src/house/house-file.ts) and
 [`src/house/simple-house.ts`](src/house/simple-house.ts), and as JSON-LD in
 [`src/house/house-jsonld.ts`](src/house/house-jsonld.ts). Example houses are in

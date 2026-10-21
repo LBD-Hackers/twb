@@ -367,7 +367,8 @@ export function placeInteriorOpenings(
                 { ...b, z: zHi },
                 { ...a, z: zHi },
             ],
-            o.kind
+            o.kind,
+            o.typeId ? { typeId: o.typeId } : {}
         );
         if (result.ok) placed++;
         else messages.push(`${where}: ${result.violations.map((v) => v.message).join(' ')}`);

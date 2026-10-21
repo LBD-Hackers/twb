@@ -42,7 +42,8 @@
  *   opening may carry its division as `glazing` — `{ "mullions": 1, "panes": [2, 3] }` — which
  *   the face's `openingGlazing` checks; left out, one pane. A door in an exterior wall may say
  *   how many leaves it has, `"leaves": "double"` or `"one-and-a-half"`, which the face's
- *   `openingSwings` checks; left out, one.
+ *   `openingSwings` checks; left out, one. Any opening may name the window or door type it is
+ *   an instance of, `"typeId": "window-2"` (`fenestrationTypes`); left out, its kind's default.
  * - `roof`: `{ type, pitchDeg, ridge?, highSide?, cover?, outline?, eaveMm? }` over the outline,
  *   or a list of them, each over its own `outline`, for a house whose parts have different roofs.
  *   By default the roof runs on over a shallow recess in one side (`cover`); the walls round the
@@ -84,6 +85,8 @@ export interface SimpleFace {
     openingGlazing?: (Record<string, unknown> | null)[];
     /** Per opening, a door's leaves as the file gave them (`{ leaves }`), or null for one leaf. */
     openingSwings?: ({ leaves: string } | null)[];
+    /** Per opening, the window or door type it is an instance of, or null for its kind's default. */
+    openingTypes?: (string | null)[];
     kind?: 'roof';
     roofGroup?: string;
     /** A wall's kind where it is not an exterior wall: `"party"` (`FileSurface.partition`). */
@@ -105,6 +108,8 @@ export interface InteriorOpening {
     bMm: Vec2Mm;
     sillMm: number;
     heightMm: number;
+    /** The window or door type it is an instance of; absent, its kind's default. */
+    typeId?: string;
 }
 
 /** What the simple shape expands to: the faces, and the openings waiting for their partitions. */
@@ -330,6 +335,7 @@ export function expandSimpleHouse(json: Record<string, unknown>, errors: string[
                 bMm: jamb(centre + o.widthMm / 2),
                 sillMm: o.sillMm,
                 heightMm: o.heightMm,
+                ...(o.typeId ? { typeId: o.typeId } : {}),
             });
             return;
         }
@@ -383,6 +389,14 @@ export function expandSimpleHouse(json: Record<string, unknown>, errors: string[
                 ...swings,
                 ...Array<null>(host.face.openings.length - 1 - swings.length).fill(null),
                 o.leaves === null ? null : { leaves: o.leaves },
+            ];
+        }
+        const types = host.face.openingTypes ?? [];
+        if (o.typeId !== null || types.length > 0) {
+            host.face.openingTypes = [
+                ...types,
+                ...Array<null>(host.face.openings.length - 1 - types.length).fill(null),
+                o.typeId,
             ];
         }
     });
@@ -840,6 +854,8 @@ interface OpeningInput {
     glazing: Record<string, unknown> | null;
     /** A door's leaves, unchecked — the face's `openingSwings` checks them — or null for one. */
     leaves: string | null;
+    /** The window or door type it is an instance of — the house file checks it — or null. */
+    typeId: string | null;
 }
 
 function readOpenings(raw: unknown, errors: string[]): OpeningInput[] {
@@ -892,6 +908,7 @@ function readOpenings(raw: unknown, errors: string[]): OpeningInput[] {
             detail: detail ?? null,
             glazing: isRecord(entry['glazing']) ? entry['glazing'] : null,
             leaves: typeof entry['leaves'] === 'string' ? entry['leaves'] : null,
+            typeId: typeof entry['typeId'] === 'string' && entry['typeId'] ? entry['typeId'] : null,
         });
     });
     return out;

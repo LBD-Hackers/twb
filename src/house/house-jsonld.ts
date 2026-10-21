@@ -131,6 +131,7 @@ export const TWB_HOUSE_CONTEXT = {
     Column: 'twb:Column',
     Beam: 'twb:Beam',
     Recipe: 'twb:Recipe',
+    OpeningType: 'twb:OpeningType',
     JointDetail: 'twb:JointDetail',
     JointTemplate: 'twb:JointTemplate',
     JointStandard: 'twb:JointStandard',
@@ -148,6 +149,18 @@ export const TWB_HOUSE_CONTEXT = {
     fixtures: { '@id': 'twb:hasBlueprintPart' },
     lines: { '@id': 'twb:hasBlueprintPart' },
     envelope: { '@id': 'twb:hasBlueprintPart', '@container': '@index', '@index': 'twb:archTerm' },
+    // The window and door types, and an opening's: by `opening-type/<id>`, as recipes by theirs.
+    fenestrationTypes: { '@id': 'twb:hasBlueprintPart' },
+    ofType: ref('twb:hasOpeningType'),
+    slot: 'twb:openingSlot',
+    uWm2K: 'twb:uValue',
+    glazed: 'twb:glazed',
+    productId: 'arch:productId',
+    frameFaceMm: 'arch:frameFaceMm',
+    sashFaceMm: 'arch:sashFaceMm',
+    glazingLayers: 'arch:glazingLayers',
+    colourOutside: 'arch:colourOutside',
+    colourInside: 'arch:colourInside',
     edgeJoints: { '@id': 'twb:hasBlueprintPart' },
     jointTemplates: { '@id': 'twb:hasJointTemplate' },
     jointStandards: { '@id': 'twb:hasJointStandard' },
@@ -347,6 +360,9 @@ const edgeKeyOf = (ref: unknown): unknown =>
 const recipeRef = (id: string): string => `recipe/${id}`;
 const recipeIdOf = (ref: unknown): unknown =>
     typeof ref === 'string' && ref.startsWith('recipe/') ? ref.slice(7) : ref;
+const openingTypeRef = (id: string): string => `opening-type/${id}`;
+const openingTypeIdOf = (ref: unknown): unknown =>
+    typeof ref === 'string' && ref.startsWith('opening-type/') ? ref.slice(13) : ref;
 
 /**
  * arch/1's per-layer cut: `"miter"`, `"overhang"`, a boundary index, a drawn line, or null for
@@ -437,6 +453,7 @@ export function toTwbHouse(file: HouseFile): Json {
                     ...(s.openingDetails?.[i] ? { detail: s.openingDetails[i] } : {}),
                     ...(s.openingLintels?.[i] ? { lintel: s.openingLintels[i] } : {}),
                     ...(s.openingGlazing?.[i] ? { glazing: s.openingGlazing[i] } : {}),
+                    ...(s.openingTypes?.[i] ? { ofType: openingTypeRef(s.openingTypes[i]!) } : {}),
                     ...(s.openingSwings?.[i] ?? {}),
                 }));
             }
@@ -479,6 +496,15 @@ export function toTwbHouse(file: HouseFile): Json {
         );
     }
     if (file.sections) out['sections'] = file.sections.map((x) => typed('Section', { ...x }));
+    if (file.fenestrationTypes) {
+        out['fenestrationTypes'] = file.fenestrationTypes.map(({ id, label, ...t }) =>
+            typed('OpeningType', {
+                id: openingTypeRef(id),
+                ...(label ? { name: label } : {}),
+                ...t,
+            })
+        );
+    }
     if (file.envelope) {
         out['envelope'] = Object.fromEntries(
             Object.entries(file.envelope).map(([id, a]) => [
@@ -598,6 +624,13 @@ export function fromTwbHouse(doc: Json): Json {
     }
     out['format'] = 'arch/1';
     if (Array.isArray(doc['storeys'])) out['storeys'] = doc['storeys'].map(untyped);
+    if (Array.isArray(doc['fenestrationTypes'])) {
+        out['fenestrationTypes'] = doc['fenestrationTypes'].map((t) => {
+            if (!isRecord(t)) return t;
+            const { type: _type, id, name, ...rest } = t;
+            return { id: openingTypeIdOf(id), ...(name !== undefined ? { label: name } : {}), ...rest };
+        });
+    }
     if (Array.isArray(doc['surfaces'])) {
         out['surfaces'] = doc['surfaces'].map((raw) => {
             if (!isRecord(raw)) return raw;
@@ -621,6 +654,8 @@ export function fromTwbHouse(doc: Json): Json {
                 if (lintels.some((l) => l !== null)) o['openingLintels'] = lintels;
                 const glazings = ops.map((h) => h['glazing'] ?? null);
                 if (glazings.some((g) => g !== null)) o['openingGlazing'] = glazings;
+                const types = ops.map((h) => (h['ofType'] ? openingTypeIdOf(h['ofType']) : null));
+                if (types.some((t) => t !== null)) o['openingTypes'] = types;
                 const swings = ops.map((h) => {
                     const sw = pick(h, ['hingeAtEnd', 'swingsBack', 'leaves']);
                     return Object.keys(sw).length > 0 ? sw : null;

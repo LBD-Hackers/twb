@@ -95,6 +95,13 @@ and corner the same way it does for a house read from drawings.
   `PartitioningType` (IFC4) or its style's `OperationType` (IFC2X3); a door's leaves from its
   `OperationType` (`DOUBLE_DOOR_*` is a double door). An opening nothing fills is written as a
   door if it reaches the floor, else a window, and reported.
+- **Window and door types**: each IFC type or style (`IfcWindowType`, `IfcDoorType`; IFC2X3's
+  `IfcWindowStyle`, `IfcDoorStyle`) is a type in `fenestrationTypes`, named as the IFC names it,
+  one per name and slot — Revit writes some types more than once — `window-2`, `door-2` and on (the
+  slot's own id is its default's). A door type is `glazed` where it or its doors are named so
+  (glass, glazed, glas; not fibreglass), and a type takes the U-value its property set gives
+  (`Pset_WindowCommon` / `Pset_DoorCommon` `ThermalTransmittance`). Every window and door the IFC
+  types is pinned to its type (`typeId`); the report lists them (`openingTypes`).
 - **Coupled windows**: windows on one wall and storey with less than 150 mm of wall between them
   (`COUPLE_GAP_MM`) leave no pier: they are one window, their frames joined. Two stacked
   over each other, as wide and in line, become one window with a transom between; two beside each
