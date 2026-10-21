@@ -24,6 +24,7 @@ import {
     sortStoreys,
     wallFootprintsInStorey,
     type InteriorWallOptions,
+    type PartitionKind,
     type Storey,
     type Surface,
     type SurfaceId,
@@ -158,6 +159,8 @@ export function buildInteriorWalls(
                 a: pointsUv[i]!,
                 b: pointsUv[i + 1]!,
                 loadBearing: wall.loadBearing,
+                partitionKind: wall.partitionKind,
+                buildUpType: wall.buildUpType,
             };
             built.push({
                 ...segment,
@@ -211,12 +214,16 @@ interface BuiltSegment {
     b: Vec2Mm;
     /** The run's, null for Auto. */
     loadBearing: boolean | null;
+    /** The run's, null for the house's own partition. */
+    partitionKind: PartitionKind | null;
+    /** The run's, null for its kind's own build-up. */
+    buildUpType: string | null;
     faceIds: SurfaceId[];
 }
 
 function addSegment(
     store: SurfaceStore,
-    { storey, a, b, loadBearing }: Omit<BuiltSegment, 'faceIds'>,
+    { storey, a, b, loadBearing, partitionKind, buildUpType }: Omit<BuiltSegment, 'faceIds'>,
     options: InteriorWallOptions,
     messages: string[],
     enforceModule: boolean
@@ -236,6 +243,8 @@ function addSegment(
         if (result.surface) {
             ids.push(result.surface.id);
             if (loadBearing !== null) store.setLoadBearing(result.surface.id, loadBearing);
+            if (partitionKind) store.setPartitionKind(result.surface.id, partitionKind);
+            if (buildUpType) store.setBuildUpType(result.surface.id, buildUpType);
         } else messages.push(...result.violations.map((v) => v.message));
     }
     return ids;

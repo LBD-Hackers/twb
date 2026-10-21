@@ -112,6 +112,15 @@ twb:pinnedKind
     twb:archTerm "Surface.kindOverride" ;
     rdfs:isDefinedBy <https://w3id.org/twb/housefile> .
 
+twb:pinnedPartitionKind
+    a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "pinned partition kind"@en ;
+    rdfs:comment "The kind of wall its author pinned, where it is not the house's own partition: \"light\" (studs), \"heavy\" (masonry) or \"party\" (a party wall between two dwellings). Its recipe is the house's for that kind; a face with a recipe of its own (twb:hasRecipe) takes that."@en ;
+    rdfs:domain twb:WallSurface ;
+    rdfs:range xsd:string ;
+    twb:archTerm "Surface.partitionKind" ;
+    rdfs:isDefinedBy <https://w3id.org/twb/housefile> .
+
 twb:roofGroupName
     a owl:DatatypeProperty, owl:FunctionalProperty ;
     rdfs:label "roof group name"@en ;

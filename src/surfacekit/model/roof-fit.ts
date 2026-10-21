@@ -34,7 +34,7 @@ import {
     type Point3Mm,
 } from '../core';
 import { classifyAll } from './classify';
-import type { Surface, SurfaceId, SurfaceKind } from './surface';
+import type { PartitionKind, Surface, SurfaceId, SurfaceKind } from './surface';
 import { samePoint } from './surface-ops';
 import { surfaceFrame } from './surface-frame';
 
@@ -43,6 +43,10 @@ export interface AddedFace {
     boundaryMm: readonly Point3Mm[];
     roofGroupId: string | null;
     kindOverride: SurfaceKind | null;
+    /** The kind of wall it is pinned to be — a stretch of a partition is its partition's. */
+    partitionKind?: PartitionKind | null;
+    /** The build-up type it is pinned to — a stretch of a wall is its wall's. */
+    buildUpType?: string | null;
 }
 
 /** A face a change keeps but alters: a new outline, a new roof group, or both. */

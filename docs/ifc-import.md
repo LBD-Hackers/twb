@@ -94,8 +94,14 @@ and corner the same way it does for a house read from drawings.
   storey's walls (1.8 m) over the top storey's floor: a canopy, a terrace or a lower wing's roof
   under the top storey is left out instead of taking the storeys over it out of the house. The overhang is how far
   the roof runs past the walls' lines.
-- **Build-ups** (`envelope`): the exterior wall's and the partitions' from the layer set most of
-  their length has; the roof's from the roof; the ground floor's from its slab with the finish
+- **Build-ups** (`envelope`): the exterior wall's from the layer set most of its length has.
+  The partitions' by kind: the house's own partition (`interiorWall`, the kind most of the
+  partitions' length is), the other kind's (`lightPartition` of studs or `heavyPartition` of
+  masonry) and the party walls' (`partyWall`, a wall named so or heavy with its leaves laid
+  mirror-wise), each from the layer set most of its walls' length has. A partition of another
+  kind than the house's own says so (`"partition": "party"`). Every other layer set of a kind is
+  a build-up type of it, named after the layer set (`interiorWall:interior-plumbing-152mm-stud`),
+  and its walls are dressed in it (`buildUpType`), so each keeps its own thickness. The roof's from the roof; the ground floor's from its slab with the finish
   that covers most of it on top. Inside → outside (the exterior wall by which side of the
   outline its first layer is on; a roof's covering outside; a floor's finish on top), the core
   marked, a layer of studs as timber members 45 mm c/c 600 (insulated between unless the
@@ -111,9 +117,13 @@ and corner the same way it does for a house read from drawings.
   share an edge no wall stands on, a `zoneSeparation` parts them. A footprint stops at the walls'
   faces, so an edge running on from a partition's end, in line with its face, is moved onto the
   partition's line. A room over a stair, which Revit draws as a section pushed across the stair,
-  has the footprint that section sweeps. Then every end of a partition or a separation left in
-  the middle of a room is taken to the line it stops short of, or that line run on to it, so the
-  rooms close from the lines alone. A room gets a lowered ceiling
+  has the footprint that section sweeps; a room written as a b-rep, its largest level face at its
+  floor (the Duplex's upper hallways, without the stair's opening). A stretch of a room's edge
+  that no wall and no other room stands on parts it too (the room beyond is one Revit has not
+  placed). Then every end of a partition or a separation left in the middle of a room is taken to
+  the line it stops short of, or that line run on to it, and two loose ends within 300 mm of each
+  other are joined (a separation drawn a little beside the wall it runs on from), so the rooms
+  close from the lines alone. A room gets a lowered ceiling
   only where its `IfcCovering` ceiling hangs more than 300 mm under the slab or roof over it; a
   ceiling fixed under the joists is arch's flat ceiling.
 - **Fittings** (`fixtures`) from the furniture and sanitary terminals by name: wc, basin, sink,
@@ -175,8 +185,9 @@ which also goes into the house file's `notes`.
 
 **Build-ups**
 
-- **One build-up per kind** (exterior wall, partition, roof, ground floor): the one most of the
-  length or area has. Other wall types are reported by name and built as that one.
+- **One build-up per kind** for the exterior wall, the roof and the ground floor: the one most of
+  the length or area has. Other exterior wall types are built as that one. Partitions keep theirs
+  (see Build-ups).
 - **Stud size and spacing** are not read: every layer of studs is 45 mm c/c 600.
 - **Steel studs and joists** are built as timber.
 - **Material properties** in the IFC (`Pset_MaterialThermal`, declared λ, densities) are not
