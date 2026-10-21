@@ -1,6 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parseHouseFile, type FileEnvelopeLayer, type ParseResult } from '../house/house-file';
+import { loadHouse } from '../house/load';
+import { polygonArea2 } from '../surfacekit/core/geom2';
+import { resolveZoneRooms } from '../surfacekit/model/zone-rooms';
 import { matchMaterial } from './ifc-materials';
 import { coupleWindows, ifcImportSummary, ifcToHouse, type CouplingWindow } from './ifc-to-house';
 
@@ -157,6 +160,28 @@ describeDuplex('the Duplex (buildingSMART sample, Revit IFC2X3)', () => {
         expect(kitchen['zoneKind']).toBe('kitchen');
         expect(kitchen['ceiling']).toBeUndefined();
         expect((h['zoneSeparations'] as Json[]).length).toBeGreaterThan(0);
+    });
+
+    it('closes every room: partitions on the party wall, separations on the walls they continue', () => {
+        const loaded = loadHouse(house, { snapToModule: false });
+        const zones = loaded.zones.zones();
+        const rooms = resolveZoneRooms(
+            loaded.store.surfaces(),
+            loaded.store.storeys(),
+            zones,
+            loaded.zones.separations()
+        );
+        const area = (name: string) => {
+            const outline = rooms.get(zones.find((z) => z.name === name)!.id)!.outlineMm!;
+            return Math.round(Math.abs(polygonArea2(outline)) / 1e4) / 100;
+        };
+        expect(zones.filter((z) => !rooms.get(z.id)?.outlineMm).map((z) => z.name)).toEqual([]);
+        expect(zones.filter((z) => rooms.get(z.id)?.problem).map((z) => z.name)).toEqual([]);
+        // The two dwellings mirror each other about the party wall's middle.
+        expect(area('A104 Bathroom 1')).toBeCloseTo(area('B104 Bathroom 1'), 1);
+        expect(area('A103 Kitchen')).toBeCloseTo(area('B103 Kitchen'), 1);
+        expect(area('B104 Bathroom 1')).toBeLessThan(6);
+        expect(area('B102 Living Room')).toBeLessThan(35);
     });
 
     it('says what it left out', () => {

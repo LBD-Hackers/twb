@@ -55,7 +55,8 @@ and corner the same way it does for a house read from drawings.
   that closes round the largest area, each meeting the next at a corner within its thickness +
   300 mm; the corners are where their lines cross. Upper storeys' walls on those lines are the
   same walls, higher up. Every other wall is a partition, written once per storey it stands on,
-  its ends taken to the line of the wall they meet (within 400 mm).
+  its ends taken to the line of the wall they meet (within 400 mm; within 400 mm plus its
+  thickness of a party wall, whose faces and linings stand off its middle).
 - **Curtain walls** are read from their panels and mullions (they have no body of their own): their
   line the long direction of their parts in plan, through the middle of their thickness. Those side
   by side on one line (Revit writes each panel of a glazed wall as one), within 300 mm of each
@@ -107,7 +108,12 @@ and corner the same way it does for a house read from drawings.
   roof covering and `roofLoad` from the roof's outermost (green, felt, zinc, tiles).
 - **Rooms** (`zones`) are the `IfcSpace`s on the storeys: number and name ("A102 Living Room"),
   a room kind from the name, and a point well inside the footprint. Where two rooms' footprints
-  share an edge no wall stands on, a `zoneSeparation` parts them. A room gets a lowered ceiling
+  share an edge no wall stands on, a `zoneSeparation` parts them. A footprint stops at the walls'
+  faces, so an edge running on from a partition's end, in line with its face, is moved onto the
+  partition's line. A room over a stair, which Revit draws as a section pushed across the stair,
+  has the footprint that section sweeps. Then every end of a partition or a separation left in
+  the middle of a room is taken to the line it stops short of, or that line run on to it, so the
+  rooms close from the lines alone. A room gets a lowered ceiling
   only where its `IfcCovering` ceiling hangs more than 300 mm under the slab or roof over it; a
   ceiling fixed under the joists is arch's flat ceiling.
 - **Fittings** (`fixtures`) from the furniture and sanitary terminals by name: wc, basin, sink,
