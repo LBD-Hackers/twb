@@ -61,6 +61,18 @@ describe('zoneVolume', () => {
         expect(v.ceiling).toBe('roof');
     });
 
+    it('takes off what a wall has on the room’s side, where the caller knows each side', () => {
+        // The partition (along +y) stands on one leaf: 20 on its back (west), 300 on its
+        // positive side (east, to its right looking along +y).
+        const side = (id: string, s: 1 | -1): number =>
+            id === 'partition' ? (s === 1 ? 300 : 20) : depth(id) / 2;
+        const west = zoneVolume(box(), GROUND, WEST_ROOM, depth, undefined, undefined, side);
+        expect(west.netAreaM2).toBeCloseTo(3.48 * 4.6, 6);
+        const eastRoom = WEST_ROOM.map((q) => ({ x: q.x + 3600, y: q.y }));
+        const east = zoneVolume(box(), GROUND, eastRoom, depth, undefined, undefined, side);
+        expect(east.netAreaM2).toBeCloseTo(3.2 * 4.6, 6);
+    });
+
     it('leaves an edge that runs along no wall where it was drawn', () => {
         const surfaces = box().filter((s) => s.id !== 'partition');
         const v = zoneVolume(surfaces, GROUND, WEST_ROOM, depth);

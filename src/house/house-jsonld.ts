@@ -485,7 +485,7 @@ export function toTwbHouse(file: HouseFile): Json {
                 id,
                 typed('Recipe', {
                     id: recipeRef(id),
-                    ...pick(a as unknown as Json, ['boundary', 'airGapLevel']),
+                    ...pick(a as unknown as Json, ['name', 'boundary', 'airGapLevel']),
                     layers: a!.layers.map((l, index) => ({ index, ...l })),
                 }),
             ])

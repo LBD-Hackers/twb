@@ -28,7 +28,10 @@ roof, ground floor and the floor between storeys.
 
 The house file it writes opens in any TWB tool. In [arch](https://twb.madsholten.dk), the
 reference tool, it is framed, dressed in its envelope, analysed and drawn like a house drawn there;
-the report's wording ("arch hangs each door by its own rule") is that tool's.
+the report's wording ("arch hangs each door by its own rule") is that tool's. What the import
+changed from what the model says is in the report's `changes`, each once by a stable id
+(`outline/storey`, `curtain-walls/joined`, `linings`, `opening/<step id>`, …) with a title and
+its detail, which is among the `warnings` too, for a tool to list for its user.
 
 ## How it reads a model
 
@@ -48,15 +51,25 @@ and corner the same way it does for a house read from drawings.
 - **The faces are laid on the core.** arch builds a wall on one line: through the middle of its
   studs, or of the inner leaf that carries the roof. The importer puts it through the middle of
   the core, from the wall's axis and its `IfcMaterialLayerSetUsage` (offset, direction, sense).
-  For the Duplex's brick-on-block wall that is 263.5 mm in from the brick face. A heavy wall of
-  two mirrored leaves (a party wall) is put on its middle.
+  For the Duplex's brick-on-block wall that is 263.5 mm in from the brick face. A wall of two
+  leaves that carry, laid mirror-wise (or named a party wall), is a party wall and stands on one
+  leaf, as the house file says: between two rooms the one with the other on its back, so a
+  partition's layers past its core lie on its back; on the outline its own dwelling's, whose
+  corners are found again from that line. Party walls are left out of what the facade is.
+- **Positions** are written to 0.1 mm, as the model has them; a TWB store rounds its faces to
+  whole millimetres.
 - **Exterior or partition is read off the geometry**, not `IsExternal` (the Duplex's party walls
   say they are external). The exterior walls are the chain of walls standing on the lowest floor
   that closes round the largest area, each meeting the next at a corner within its thickness +
   300 mm; the corners are where their lines cross. Upper storeys' walls on those lines are the
   same walls, higher up. Every other wall is a partition, written once per storey it stands on,
   its ends taken to the line of the wall they meet (within 400 mm; within 400 mm plus its
-  thickness of a party wall, whose faces and linings stand off its middle).
+  thickness of a party wall, whose other leaf and linings stand off its line).
+- **Linings** (a furring wall against a party wall) are built into the wall they line: where a
+  lining stands, that stretch of the wall is of the lining's layers on that side in place of
+  its own past the lining's inner face, a build-up type of its own, and the run is cut where the
+  lining starts and stops. On the Duplex the party wall is 550 mm, 645 mm lined on one side and
+  740 mm on both, and the bathrooms each side of it measure Revit's 3.160976 m² to their faces.
 - **Curtain walls** are read from their panels and mullions (they have no body of their own): their
   line the long direction of their parts in plan, through the middle of their thickness. Those side
   by side on one line (Revit writes each panel of a glazed wall as one), within 300 mm of each
@@ -94,14 +107,17 @@ and corner the same way it does for a house read from drawings.
   storey's walls (1.8 m) over the top storey's floor: a canopy, a terrace or a lower wing's roof
   under the top storey is left out instead of taking the storeys over it out of the house. The overhang is how far
   the roof runs past the walls' lines.
-- **Build-ups** (`envelope`): the exterior wall's from the layer set most of its length has.
-  The partitions' by kind: the house's own partition (`interiorWall`, the kind most of the
-  partitions' length is), the other kind's (`lightPartition` of studs or `heavyPartition` of
-  masonry) and the party walls' (`partyWall`, a wall named so or heavy with its leaves laid
-  mirror-wise), each from the layer set most of its walls' length has. A partition of another
-  kind than the house's own says so (`"partition": "party"`). Every other layer set of a kind is
-  a build-up type of it, named after the layer set (`interiorWall:interior-plumbing-152mm-stud`),
-  and its walls are dressed in it (`buildUpType`), so each keeps its own thickness. The roof's from the roof; the ground floor's from its slab with the finish
+- **Build-ups** (`envelope`): the exterior wall's from the layer set most of the facade's length
+  has (party walls left out). The partitions' by kind: the house's own partition (`interiorWall`,
+  of the house's kind — masonry in a masonry house, studs in a timber frame), the other kind's
+  (`lightPartition` of studs in a masonry house, `heavyPartition` of masonry in a timber frame)
+  and the party walls' (`partyWall`), each from the layer set most of its walls' length has. A
+  wall of another kind than the house's own says so (`"partition": "light"`, `"party"`, on an
+  exterior wall too). Every other layer set of a kind — heavy or light, as the IFC has it — is a
+  build-up type of it, named after the layer set (`lightPartition:interior-plumbing-152mm-stud`,
+  `exteriorWall:<key>`), and its walls are dressed in it (`buildUpType`), so each wall keeps its
+  own build-up. A partition's layers run from its positive side (to the right looking along it
+  towards +x, or +y) across its core to its back. The roof's from the roof; the ground floor's from its slab with the finish
   that covers most of it on top. Inside → outside (the exterior wall by which side of the
   outline its first layer is on; a roof's covering outside; a floor's finish on top), the core
   marked, a layer of studs as timber members 45 mm c/c 600 (insulated between unless the
@@ -185,9 +201,8 @@ which also goes into the house file's `notes`.
 
 **Build-ups**
 
-- **One build-up per kind** for the exterior wall, the roof and the ground floor: the one most of
-  the length or area has. Other exterior wall types are built as that one. Partitions keep theirs
-  (see Build-ups).
+- **One build-up** for the roof and the ground floor: the one most of the area has. Walls keep
+  theirs, exterior walls and partitions alike (see Build-ups).
 - **Stud size and spacing** are not read: every layer of studs is 45 mm c/c 600.
 - **Steel studs and joists** are built as timber.
 - **Material properties** in the IFC (`Pset_MaterialThermal`, declared λ, densities) are not

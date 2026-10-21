@@ -4,6 +4,7 @@ import { parseHouseFile, type FileEnvelopeLayer, type ParseResult } from '../hou
 import { loadHouse } from '../house/load';
 import { polygonArea2 } from '../surfacekit/core/geom2';
 import { resolveZoneRooms } from '../surfacekit/model/zone-rooms';
+import { zoneVolume } from '../surfacekit/model/zone-volume';
 import { matchMaterial } from './ifc-materials';
 import { coupleWindows, ifcImportSummary, ifcToHouse, type CouplingWindow } from './ifc-to-house';
 
@@ -165,14 +166,21 @@ describeDuplex('the Duplex (buildingSMART sample, Revit IFC2X3)', () => {
     it('keeps the party walls and the plumbing walls as their own build-ups', () => {
         const envelope = h['envelope'] as Record<string, { name?: string; layers: { thickness: number }[] }>;
         const thick = (id: string) => envelope[id]!.layers.reduce((s, l) => s + l.thickness, 0);
-        expect(thick('interiorWall')).toBe(124);
+        // A masonry house: its stud partitions are light ones, flagged, in their own build-up.
+        expect(envelope['interiorWall']).toBeUndefined();
+        expect(thick('lightPartition')).toBe(124);
         expect(thick('partyWall')).toBe(550);
-        const plumbing = report.buildUpTypes.find((t) => /Plumbing/.test(t.layerSet))!;
-        expect(plumbing.id).toMatch(/^interiorWall:/);
+        const plumbing = report.buildUpTypes.find((t) => /^Basic Wall:Interior - Plumbing/.test(t.layerSet))!;
+        expect(plumbing.id).toMatch(/^lightPartition:/);
         expect(thick(plumbing.id)).toBe(184);
+        // Where the furring lines it, the party wall is built of the furring instead of its own
+        // finish on that side: 645 mm lined on one side, 740 mm on both.
+        const lined = report.buildUpTypes.filter((t) => / \+ Basic Wall:Interior - Furring/.test(t.layerSet));
+        expect(lined.map((t) => thick(t.id)).sort()).toEqual([645, 645, 645, 740]);
         const runs = h['interiorWalls'] as { partition?: string; buildUpType?: string }[];
-        expect(runs.filter((r) => r.partition === 'party')).toHaveLength(4);
+        expect(runs.filter((r) => r.partition === 'party').length).toBeGreaterThan(4);
         expect(runs.filter((r) => r.buildUpType === plumbing.id)).toHaveLength(2);
+        expect(runs.filter((r) => !r.partition)).toEqual([]);
         expect(report.warnings.join(' ')).not.toMatch(/one partition build-up|written as partitions/);
         const loaded = loadHouse(house, { snapToModule: false });
         expect(loaded.store.surfaces().filter((s) => s.partitionKind === 'party').length).toBeGreaterThan(3);
@@ -193,14 +201,49 @@ describeDuplex('the Duplex (buildingSMART sample, Revit IFC2X3)', () => {
         };
         expect(zones.filter((z) => !rooms.get(z.id)?.outlineMm).map((z) => z.name)).toEqual([]);
         expect(zones.filter((z) => rooms.get(z.id)?.problem).map((z) => z.name)).toEqual([]);
-        // The two dwellings mirror each other about the party wall's middle.
-        expect(area('A104 Bathroom 1')).toBeCloseTo(area('B104 Bathroom 1'), 1);
-        expect(area('A103 Kitchen')).toBeCloseTo(area('B103 Kitchen'), 1);
+        // On its lines the party wall stands on a leaf, so the two dwellings' rooms differ; to
+        // the walls' faces they mirror each other, as Revit's rooms do (zone-volume, below).
         expect(area('B104 Bathroom 1')).toBeLessThan(6);
         expect(area('B102 Living Room')).toBeLessThan(35);
         // The hallways' b-reps leave the stair's opening out, as Revit's rooms do (6.89 m² net).
         expect(area('A201 Hallway')).toBeLessThan(8);
         expect(area('A201 Hallway')).toBeCloseTo(area('B201 Hallway'), 1);
+    });
+
+    it('measures the two dwellings’ rooms alike to their walls’ faces, as Revit does', () => {
+        const loaded = loadHouse(house, { snapToModule: false });
+        const envelope = h['envelope'] as Record<string, { layers: { thickness: number; core?: true }[] }>;
+        const surfaces = loaded.store.surfaces();
+        const zones = loaded.zones.zones();
+        const rooms = resolveZoneRooms(surfaces, loaded.store.storeys(), zones, loaded.zones.separations());
+        const KIND = { party: 'partyWall', light: 'lightPartition', heavy: 'heavyPartition' } as const;
+        // A partition's build-up runs from its positive side across its core to its back.
+        const side = (id: string, sign: 1 | -1): number => {
+            const s = surfaces.find((x) => x.id === id)!;
+            const key = s.buildUpType ?? (s.partitionKind ? KIND[s.partitionKind] : 'exteriorWall');
+            const layers = envelope[key]!.layers;
+            const core = layers.findIndex((l) => l.core);
+            const sum = (ls: typeof layers) => ls.reduce((t, l) => t + l.thickness, 0);
+            if (!s.partitionKind) return sum(layers.slice(0, core)) + layers[core]!.thickness / 2;
+            return sign === 1
+                ? sum(layers.slice(0, core)) + layers[core]!.thickness / 2
+                : layers[core]!.thickness / 2 + sum(layers.slice(core + 1));
+        };
+        const net = (name: string) => {
+            const z = zones.find((x) => x.name === name)!;
+            const storey = loaded.store.storeys().find((st) => st.id === z.storeyId)!;
+            return zoneVolume(surfaces, storey, rooms.get(z.id)!.outlineMm!, () => 0, undefined, undefined, side)
+                .netAreaM2;
+        };
+        // Revit's B104 and A104: 1456 × 2171 mm each. Faces are whole millimetres, the party
+        // wall's leaf half one off: within 0.001 m².
+        expect(net('A104 Bathroom 1')).toBeCloseTo(3.160976, 2);
+        expect(net('B104 Bathroom 1')).toBeCloseTo(3.160976, 2);
+        expect(Math.abs(net('A104 Bathroom 1') - 3.160976)).toBeLessThan(0.001);
+        expect(Math.abs(net('B104 Bathroom 1') - 3.160976)).toBeLessThan(0.001);
+        expect(net('A103 Kitchen')).toBeCloseTo(net('B103 Kitchen'), 1);
+        expect(net('A204 Bathroom 2')).toBeCloseTo(net('B204 Bathroom 2'), 1);
+        expect(net('A203 Bedroom 2')).toBeCloseTo(22.04, 1);
     });
 
     it('says what it left out', () => {
@@ -296,7 +339,8 @@ describe('a light house: timber frame, gable roof', () => {
         const openings = h['openings'] as Json[];
         expect(openings).toContainEqual({
             kind: 'window',
-            at: [1847, 0],
+            // Written to 0.1 mm: the window's middle is half a millimetre off the module.
+            at: [1846.5, 0],
             widthMm: 1200,
             heightMm: 1200,
             sillMm: 900,
@@ -305,8 +349,8 @@ describe('a light house: timber frame, gable roof', () => {
         expect(h['interiorWalls']).toEqual([
             {
                 points: [
-                    [3847, 0],
-                    [3847, 4693],
+                    [3846.5, 0],
+                    [3846.5, 4693],
                 ],
             },
         ]);

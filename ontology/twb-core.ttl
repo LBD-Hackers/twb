@@ -559,7 +559,9 @@ twb:isInside
     a owl:DatatypeProperty ;
     rdfs:label "is inside"@en ;
     rdfs:comment """True for the side the surface's recipe starts from — the warm side of an envelope surface. For an
-interior partition with a symmetric build-up the choice is conventional."""@en ;
+interior partition it is the positive side (to the right looking along the wall towards +X, or +Y for a wall along Y),
+so the layers past its core lie on its back; a party wall of two leaves stands on the leaf with the other on its
+back, or, on the outline, on its own dwelling's."""@en ;
     rdfs:domain twb:SurfaceSide ;
     rdfs:range xsd:boolean ;
     twb:ifcCounterpart "IfcMaterialLayerSetUsage.DirectionSense" ;

@@ -6,7 +6,9 @@
  * faces instead:
  *
  * - **In plan**, every edge of the outline that runs along a wall is pulled into the room by
- *   half that wall's depth, so the area is the floor between the studs' inner faces. An edge
+ *   half that wall's depth, so the area is the floor between the studs' inner faces — or, where
+ *   the caller knows how a wall's construction lies about its face (`SurfaceSideDepthMm`: a
+ *   masonry wall on one of its leaves, the rest on its back), by the depth on the room's side. An edge
  *   that runs along no wall — the open side between a kitchen and the living room it opens onto
  *   — stays where it was drawn, since there is nothing there to take off.
  * - **Vertically**, the room starts on top of its own floor's structure and stops at the
@@ -40,6 +42,13 @@ import { classifyAll } from './classify';
 import { floorFootprintsInStorey, wallFootprintsInStorey } from './plan-geometry';
 import type { Storey } from './storey';
 import type { Surface, SurfaceId } from './surface';
+
+/**
+ * How far a wall's construction stands off its face on one side, mm: `side` 1 for its positive
+ * side (the way its normal points, to the right looking along it towards +X, or +Y for a wall
+ * along Y — `surfaceFrame`), -1 for its negative side, its back.
+ */
+export type SurfaceSideDepthMm = (surfaceId: SurfaceId, side: 1 | -1) => number;
 
 /** Total construction depth of a surface, centred on its face, mm. */
 export type SurfaceDepthMm = (surfaceId: SurfaceId) => number;
@@ -89,6 +98,9 @@ const ON_WALL_TOLERANCE_MM = 5;
  * `minClearMm` is how far over the floor something must be to be what is overhead
  * (`MIN_CLEAR_HEIGHT_MM`). A space whose roof comes right down to its floor — an attic over a
  * ceiling, the roof meeting it at the eaves — takes 0, so it closes there instead of opening up.
+ *
+ * `sideDepthMm`, where given, is how far each wall stands off its face on the room's side; absent,
+ * half its `depthMm` on either side.
  */
 export function zoneVolume(
     surfaces: readonly Surface[],
@@ -96,7 +108,8 @@ export function zoneVolume(
     outlineMm: readonly Vec2Mm[],
     depthMm: SurfaceDepthMm,
     ceilingMm?: number,
-    minClearMm: number = MIN_CLEAR_HEIGHT_MM
+    minClearMm: number = MIN_CLEAR_HEIGHT_MM,
+    sideDepthMm?: SurfaceSideDepthMm
 ): ZoneVolume {
     const outline = counterClockwise(outlineMm);
     const grossAreaM2 = polygonArea2(outline) / 1e6;
@@ -109,7 +122,12 @@ export function zoneVolume(
         let half = 0;
         for (const w of walls) {
             if (!runsAlong(a, b, w.aMm, w.bMm)) continue;
-            half = Math.max(half, depthMm(w.surfaceId) / 2);
+            half = Math.max(
+                half,
+                sideDepthMm
+                    ? sideDepthMm(w.surfaceId, roomSide(a, b, w.aMm, w.bMm))
+                    : depthMm(w.surfaceId) / 2
+            );
         }
         return half;
     });
@@ -278,6 +296,19 @@ function lowestTopOf(wall: Surface): number {
  * the two overlapping by more than a tolerance (so a wall merely meeting the edge's end at a
  * corner does not count).
  */
+/**
+ * Which side of the wall `w1`–`w2` the room is on whose counter-clockwise outline has the edge
+ * `a`–`b`: the room lies to the edge's left, and the wall's positive side to its right looking
+ * along it towards +X, or +Y for a wall along Y (`surfaceFrame`).
+ */
+function roomSide(a: Vec2Mm, b: Vec2Mm, w1: Vec2Mm, w2: Vec2Mm): 1 | -1 {
+    let u = { x: w2.x - w1.x, y: w2.y - w1.y };
+    if (u.x < 0 || (u.x === 0 && u.y < 0)) u = { x: -u.x, y: -u.y };
+    const positive = { x: u.y, y: -u.x };
+    const inward = { x: -(b.y - a.y), y: b.x - a.x };
+    return inward.x * positive.x + inward.y * positive.y > 0 ? 1 : -1;
+}
+
 function runsAlong(a: Vec2Mm, b: Vec2Mm, w1: Vec2Mm, w2: Vec2Mm): boolean {
     const dx = w2.x - w1.x;
     const dy = w2.y - w1.y;
