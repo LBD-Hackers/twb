@@ -21,6 +21,17 @@ npx twb import-ifc model.ifc --detailed -o house.twb.jsonld   # saturated: every
 npx twb validate model.ifc     # read it, then check the house file it makes (needs oxigraph)
 ```
 
+The importer asks the file only what `IfcSource` (`ifc-source.ts`) lists: the entities of a type,
+an attribute by its index, the relations (parts, openings, fills, types), property sets, layers and
+materials, and where a product's placement, axis and body are in the world, in mm. `IfcModel`
+answers from the text; a reader of its own (a native one, for a file of hundreds of MB) can be
+handed in instead, holding each entity as a bare `{ id, type }`, and gives the same house file when
+it gives the same answers (the test `an IFC read by a reader of its own` checks one that does):
+
+```ts
+const { house, report } = ifcToHouse(myReader, { name: 'Duplex' }); // myReader: IfcSource
+```
+
 The test model is the buildingSMART **Duplex** (Revit 2011, IFC2X3; see
 [`fixtures/README.md`](../fixtures/README.md)). It reads in well under a second as a two-storey masonry house: four exterior
 walls on the middle of the concrete block, 28 windows and doors (the stair windows coupled), 26

@@ -23,6 +23,7 @@ import {
     type StepFile,
     type StepValue,
 } from './step';
+import type { IfcSource } from './ifc-source';
 
 export interface Vec3 {
     x: number;
@@ -67,7 +68,7 @@ export interface IfcLayerUsage {
     offset: number;
 }
 
-export class IfcModel {
+export class IfcModel implements IfcSource {
     readonly schema: string;
     /** mm per unit of length in the file. */
     readonly mmPerUnit: number;
@@ -128,6 +129,10 @@ export class IfcModel {
         if (typeof v === 'number') return v;
         if (isTyped(v) && typeof v.value === 'number') return v.value;
         return null;
+    }
+
+    ref(e: StepEntity | null, i: number): StepEntity | null {
+        return this.deref(e?.args[i]);
     }
 
     enumOf(e: StepEntity | null, i: number): string | null {

@@ -94,7 +94,8 @@ import {
     type PartitionKind,
     type PlanRegion,
 } from '../surfacekit/model';
-import { isEnum, type StepEntity } from './step';
+import { isEnum } from './step';
+import type { IfcEntity, IfcSource } from './ifc-source';
 import { MIN_HOLE_MM2, storeyPlate, type StoreyPlate } from './storey-plate';
 import { apply, applyDir, IfcModel, scale, type IfcLayer, type Vec3 } from './ifc-model';
 import { isTimber, matchMaterial, type LayerRole } from './ifc-materials';
@@ -275,9 +276,13 @@ export function isIfcFileName(name: string): boolean {
  * Reads an IFC file into a house file. Throws only on a file that is not IFC at all. With any
  * `repair` but `'none'`, the house is opened as a tool opens it and checked (`watertightReport`,
  * `IfcImportReport.watertight`); a roof that cannot be made over its outline is made flat.
+ *
+ * The file is its text, read with `IfcModel`, or a reader of it already open (`IfcSource`): one
+ * that answers the same questions gives the same house file.
  */
-export function ifcToHouse(text: string, options: IfcImportOptions = {}): IfcImport {
-    const result = new Importer(IfcModel.read(text), options).run();
+export function ifcToHouse(ifc: string | IfcSource, options: IfcImportOptions = {}): IfcImport {
+    const source = typeof ifc === 'string' ? IfcModel.read(ifc) : ifc;
+    const result = new Importer(source, options).run();
     if ((options.repair ?? 'watertight') === 'none') return result;
     // The IFC's positions are measured: its partitions stay where it has them.
     let loaded = loadHouse(result.house, { snapToModule: false });
@@ -349,7 +354,7 @@ export function ifcImportSummary(r: IfcImportReport): string[] {
 // ---- Walls -------------------------------------------------------------------------------------
 
 interface Wall {
-    e: StepEntity;
+    e: IfcEntity;
     name: string;
     /** The IFC axis, in plan. */
     axisA: P2;
@@ -440,7 +445,7 @@ class Importer {
     private readonly guessed = new Map<string, string>();
 
     constructor(
-        private readonly m: IfcModel,
+        private readonly m: IfcSource,
         private readonly options: IfcImportOptions
     ) {}
 
@@ -1049,7 +1054,7 @@ class Importer {
         };
         const fillers = m.all('IFCDOOR', 'IFCWINDOW');
         /** The windows in the roof, each with the points of the hole it fills. */
-        const roofHoles: { e: StepEntity; pts: Vec3[] }[] = [];
+        const roofHoles: { e: IfcEntity; pts: Vec3[] }[] = [];
         const filled = new Set<number>();
         /** The holes the doors and windows fill, each with the wall it is in (`CORNER_CUT_SKIPPED`). */
         const filledHoles: { host: number | null; box: Box3 }[] = [];
@@ -1814,7 +1819,7 @@ class Importer {
      * in plan, up the slope at the roof's pitch.
      */
     private roofOpenings(
-        holes: readonly { e: StepEntity; pts: Vec3[] }[],
+        holes: readonly { e: IfcEntity; pts: Vec3[] }[],
         shape: { type: string; pitchDeg: number; ridge?: string | null; highSide?: string | null },
         T: (p: P2) => [number, number]
     ): RoofOpening[] {
@@ -1860,7 +1865,7 @@ class Importer {
 
     // ---- Reading one wall -----------------------------------------------------------------------
 
-    private readWall(e: StepEntity): Wall | null {
+    private readWall(e: IfcEntity): Wall | null {
         const m = this.m;
         const pts = m.bodyPoints(e);
         if (pts.length === 0) {
@@ -1962,7 +1967,7 @@ class Importer {
      * along the way they run in plan, and its grid. It has no body of its own, only its parts,
      * and no layers: the build-ups are read from the walls that have them.
      */
-    private readCurtainWall(e: StepEntity): Wall | null {
+    private readCurtainWall(e: IfcEntity): Wall | null {
         const m = this.m;
         const parts = m.partsOf(e);
         const pts = [...m.bodyPoints(e), ...parts.flatMap((p) => m.bodyPoints(p))];
@@ -2047,14 +2052,14 @@ class Importer {
         return out;
     }
 
-    private storeyElevation(e: StepEntity): number {
+    private storeyElevation(e: IfcEntity): number {
         const z = this.m.placementOf(e).o.z;
         const attr = this.m.num(e, 9);
         if (Math.abs(z) < 1 && attr !== null && Math.abs(attr) > 0) return attr * this.m.mmPerUnit;
         return z;
     }
 
-    private nearestWall(f: StepEntity, walls: readonly Wall[]): StepEntity | null {
+    private nearestWall(f: IfcEntity, walls: readonly Wall[]): IfcEntity | null {
         const b = box3(this.m.bodyPoints(f));
         if (!b) return null;
         const c = { x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2 };
@@ -2076,7 +2081,7 @@ class Importer {
      * door's plan, at its height. A door's body takes in its leaf's swing, so its middle stands
      * off the glass by half of it, too far for `nearestWall`.
      */
-    private curtainCrossed(f: StepEntity, walls: readonly Wall[]): StepEntity | null {
+    private curtainCrossed(f: IfcEntity, walls: readonly Wall[]): IfcEntity | null {
         const b = box3(this.m.bodyPoints(f));
         if (!b) return null;
         const c = { x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2 };
@@ -2131,12 +2136,12 @@ class Importer {
         };
     }
 
-    private typeName(e: StepEntity): string {
+    private typeName(e: IfcEntity): string {
         const t = this.m.typeObject(e);
         return [this.m.name(e), this.m.str(e, 4) ?? '', t ? this.m.name(t) : ''].join(' ');
     }
 
-    private isGarageDoor(f: StepEntity): boolean {
+    private isGarageDoor(f: IfcEntity): boolean {
         const op = this.doorOperation(f) ?? '';
         return (
             /garage|\bport\b|overhead|sectional|roll(ing)?[- ]?up|ledhejse|vippeport|carport/i.test(
@@ -2154,7 +2159,7 @@ class Importer {
      * as the IFC type, a door's glazed where it or its type is named so, with the U-value its
      * property set gives. Undefined for one with no type: its slot's default.
      */
-    private openingType(f: StepEntity, slot: FileOpeningType['slot']): string | undefined {
+    private openingType(f: IfcEntity, slot: FileOpeningType['slot']): string | undefined {
         const t = this.m.typeObject(f);
         if (!t) return undefined;
         // Revit writes a type more than once under one name: one type each name and slot.
@@ -2178,14 +2183,14 @@ class Importer {
     }
 
     /** Whether a door is named glazed — "Glass", "Glazed", Danish "Glas" — or its type is. */
-    private isGlazedDoor(f: StepEntity): boolean {
+    private isGlazedDoor(f: IfcEntity): boolean {
         const names = [this.m.name(f), this.m.name(this.m.typeObject(f))];
         // A fibreglass door is a solid one.
         return names.some((n) => /glas|glaz/i.test(n) && !/fib(er|re) ?glass/i.test(n));
     }
 
     /** A door's `OperationType`: IFC4's on the door or its type, IFC2X3's on its style. */
-    private doorOperation(f: StepEntity): string | null {
+    private doorOperation(f: IfcEntity): string | null {
         const m = this.m;
         const own = m.enumOf(f, 11);
         if (own && own !== 'NOTDEFINED') return own;
@@ -2196,7 +2201,7 @@ class Importer {
     }
 
     /** A window's division from its `PartitioningType` (IFC4) or its style's `OperationType`. */
-    private windowGlazing(f: StepEntity): Record<string, number> | null {
+    private windowGlazing(f: IfcEntity): Record<string, number> | null {
         const m = this.m;
         const t = m.typeObject(f);
         const kind =
@@ -2227,9 +2232,9 @@ class Importer {
 
     // ---- The roof ----------------------------------------------------------------------------------
 
-    private roofSlabs(): StepEntity[] {
+    private roofSlabs(): IfcEntity[] {
         const m = this.m;
-        const out: StepEntity[] = [];
+        const out: IfcEntity[] = [];
         const seen = new Set<number>();
         for (const r of m.all('IFCROOF')) {
             const parts = m.partsOf(r);
@@ -2248,7 +2253,7 @@ class Importer {
     }
 
     /** The roof's type and pitch, read off the slope of its planes. */
-    private roofShape(roofs: readonly StepEntity[]): {
+    private roofShape(roofs: readonly IfcEntity[]): {
         type: 'flat' | 'shed' | 'gable' | 'hip';
         pitchDeg: number;
         ridge?: 'x' | 'y';
@@ -2361,7 +2366,7 @@ class Importer {
         return { eavesMm: round10(eaves / slope), vergeMm: round10(verge) };
     }
 
-    private roofLayers(roofs: readonly StepEntity[]): { name: string; layers: IfcLayer[] } | null {
+    private roofLayers(roofs: readonly IfcEntity[]): { name: string; layers: IfcLayer[] } | null {
         const m = this.m;
         const candidates = [...m.all('IFCROOF'), ...roofs];
         for (const r of candidates) {
@@ -2388,7 +2393,7 @@ class Importer {
     } {
         const m = this.m;
         const slabs = m.all('IFCSLAB').filter((s) => m.enumOf(s, 8) !== 'ROOF' && !m.wholeOf(s));
-        type Slab = { s: StepEntity; layers: IfcLayer[]; area: number; name: string };
+        type Slab = { s: IfcEntity; layers: IfcLayer[]; area: number; name: string };
         type Finish = { layers: IfcLayer[]; area: number; name: string };
         const structural: Slab[] = [];
         const finishes: Finish[] = [];
@@ -2547,7 +2552,7 @@ class Importer {
     // ---- Rooms --------------------------------------------------------------------------------------
 
     private zones(
-        spaces: readonly StepEntity[],
+        spaces: readonly IfcEntity[],
         storeys: readonly LivingStorey[],
         bandOf: (z: number) => number,
         T: (p: P2) => [number, number],
@@ -2632,7 +2637,7 @@ class Importer {
      * wall's line, where the house file has the wall.
      */
     private separations(
-        spaces: readonly StepEntity[],
+        spaces: readonly IfcEntity[],
         storeys: readonly LivingStorey[],
         bandOf: (z: number) => number,
         walls: readonly PlanLine[]
@@ -2717,11 +2722,11 @@ class Importer {
         standsOn: (st: { elev: number }) => Wall[],
         spanning: (k: number) => Wall[],
         ownLoops: readonly ({ walls: Wall[]; corners: Corner[] } | null)[],
-        spaces: readonly StepEntity[],
+        spaces: readonly IfcEntity[],
         base: number
     ): PlatedStorey[] | null {
         const m = this.m;
-        const read = (e: StepEntity) => ({ box: box3(m.bodyPoints(e)), ring: this.footprint(e) });
+        const read = (e: IfcEntity) => ({ box: box3(m.bodyPoints(e)), ring: this.footprint(e) });
         const usable = (x: ReturnType<typeof read>): x is { box: Box3; ring: P2[] } =>
             !!x.box && !!x.ring && x.ring.length >= 3;
         const slabs = m
@@ -2889,7 +2894,7 @@ class Importer {
             .all('IFCSLAB')
             .filter((e) => !['ROOF', 'LANDING', 'BASESLAB'].includes(m.enumOf(e, 8) ?? ''))
             .map((e) => ({ e, box: box3(m.bodyPoints(e)), ring: this.footprint(e) }))
-            .filter((x): x is { e: StepEntity; box: Box3; ring: P2[] } => !!x.box && !!x.ring);
+            .filter((x): x is { e: IfcEntity; box: Box3; ring: P2[] } => !!x.box && !!x.ring);
         const out: { k: number; ring: P2[] }[] = [];
         storeys.forEach((st, k) => {
             if (k === 0) return;
@@ -3018,7 +3023,7 @@ class Importer {
      * pushed sideways sweeps over (Revit draws a room over a stair as its section, pushed across
      * the stair); else, for a b-rep, its largest level face at its floor.
      */
-    private footprint(e: StepEntity): P2[] | null {
+    private footprint(e: IfcEntity): P2[] | null {
         const extrusions = this.m.extrusions(e);
         for (const x of extrusions) {
             const world = x.profile.map((p) => {
@@ -3238,7 +3243,7 @@ class Importer {
         }
     }
 
-    private skip(e: StepEntity, reason: string): void {
+    private skip(e: IfcEntity, reason: string): void {
         const key = `${e.type}|${reason}`;
         const g = this.skipped.get(key) ?? { reason, type: e.type, count: 0, names: [] };
         g.count++;
@@ -3266,7 +3271,7 @@ class Importer {
     private trueNorthDeg(): number | null {
         const m = this.m;
         for (const c of m.all('IFCGEOMETRICREPRESENTATIONCONTEXT')) {
-            const d = m.direction(m.deref(c.args[5]));
+            const d = m.direction(m.ref(c, 5));
             if (d) return (Math.atan2(d.x, d.y) * 180) / Math.PI;
         }
         return null;

@@ -6,6 +6,8 @@ import { polygonArea2 } from '../surfacekit/core/geom2';
 import { resolveZoneRooms } from '../surfacekit/model/zone-rooms';
 import { zoneVolume } from '../surfacekit/model/zone-volume';
 import { matchMaterial } from './ifc-materials';
+import { IfcModel } from './ifc-model';
+import type { IfcEntity, IfcSource } from './ifc-source';
 import { coupleWindows, ifcImportSummary, ifcToHouse, type CouplingWindow } from './ifc-to-house';
 
 type Json = Record<string, unknown>;
@@ -498,6 +500,55 @@ describe('coupling windows', () => {
     it('keeps them apart where a pier stands between them, or their panes would be unequal', () => {
         expect(coupleWindows([w(1000, 1000, 900, 1200), w(2200, 1000, 900, 1200)])).toHaveLength(2);
         expect(coupleWindows([w(1000, 1000, 900, 1200), w(2460, 1800, 900, 1200)])).toHaveLength(2);
+    });
+});
+
+/**
+ * An `IfcSource` of its own, as a native reader looks to the import: it hands out each entity as
+ * a bare `{ id, type }`, a new one every time, and answers from an `IfcModel` behind it.
+ */
+function handlesOnly(model: IfcModel): IfcSource {
+    const handle = (e: IfcEntity | null): IfcEntity | null => (e ? { id: e.id, type: e.type } : null);
+    const handles = (es: IfcEntity[]) => es.map((e) => handle(e)!);
+    const own = (e: IfcEntity | null) => model.get(e?.id);
+    const ownOf = (e: IfcEntity) => model.get(e.id)!;
+    return {
+        schema: model.schema,
+        mmPerUnit: model.mmPerUnit,
+        all: (...types) => handles(model.all(...types)),
+        str: (e, i) => model.str(own(e), i),
+        num: (e, i) => model.num(own(e), i),
+        enumOf: (e, i) => model.enumOf(own(e), i),
+        ref: (e, i) => handle(model.ref(own(e), i)),
+        name: (e) => model.name(own(e)),
+        wholeOf: (e) => handle(model.wholeOf(ownOf(e))),
+        partsOf: (e) => handles(model.partsOf(ownOf(e))),
+        openingsIn: (e) => handles(model.openingsIn(ownOf(e))),
+        hostOf: (e) => handle(model.hostOf(ownOf(e))),
+        openingFilledBy: (e) => handle(model.openingFilledBy(ownOf(e))),
+        typeObject: (e) => handle(model.typeObject(ownOf(e))),
+        properties: (e) => model.properties(ownOf(e)),
+        property: (e, name) => model.property(ownOf(e), name),
+        layerUsage: (e) => model.layerUsage(ownOf(e)),
+        materialNames: (e) => model.materialNames(ownOf(e)),
+        placementOf: (e) => model.placementOf(ownOf(e)),
+        direction: (d) => model.direction(own(d)),
+        axisOf: (e) => model.axisOf(ownOf(e)),
+        bodyPoints: (e) => model.bodyPoints(ownOf(e)),
+        bodyFaces: (e) => model.bodyFaces(ownOf(e)),
+        extrusions: (e) => model.extrusions(ownOf(e)),
+    };
+}
+
+describe('an IFC read by a reader of its own (IfcSource)', () => {
+    it('gives the house file and report the text gives', () => {
+        const text = timberHouseIfc({ cornerCut: true });
+        expect(ifcToHouse(handlesOnly(IfcModel.read(text)))).toEqual(ifcToHouse(text));
+    });
+
+    it.skipIf(!existsSync(DUPLEX))('gives the Duplex’s house file and report the text gives', () => {
+        const text = readFileSync(DUPLEX, 'utf8');
+        expect(ifcToHouse(handlesOnly(IfcModel.read(text)))).toEqual(ifcToHouse(text));
     });
 });
 
