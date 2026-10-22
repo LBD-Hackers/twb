@@ -14,3 +14,5 @@ export {
 export { matchMaterial, isTimber, isMetal, type LayerRole, type MaterialMatch } from './ifc-materials';
 export { readStep, type StepEntity, type StepFile, type StepValue } from './step';
 export { IfcModel } from './ifc-model';
+export type { IfcEntity, IfcSource } from './ifc-source';
+export type { Frame, IfcLayer, IfcLayerUsage, Vec3 } from './ifc-model';
