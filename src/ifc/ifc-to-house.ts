@@ -117,6 +117,14 @@ export interface IfcImportOptions {
      * (`IfcImportReport.watertight`). See `docs/ifc-import.md`.
      */
     repair?: 'none' | 'clean' | 'watertight';
+    /**
+     * Levels too close to stand in between (under `STOREY_WALL_MM` from one to the next: a
+     * plaza level 155 mm over its floor, a reference line, a mezzanine's datum) made one storey,
+     * the one of them with the most walls and rooms standing on it (`mergeShortLevels`,
+     * `storeys/merged`). What stood on the others falls to the storey it is in by height. Off by
+     * default: a storey of the IFC is kept as it is.
+     */
+    mergeShortStoreys?: boolean;
 }
 
 /** Elements of one kind left out for one reason. */
@@ -428,6 +436,31 @@ interface Corner {
     at: P2;
 }
 
+/**
+ * Levels too close to stand in between made one: the closest two under `STOREY_WALL_MM` apart
+ * first, the one with less standing on it (`weight`) going into the other, until every level
+ * has room over it. Each level that went, with the one it went into.
+ */
+export function mergeShortLevels<S extends { elev: number }>(
+    levels: readonly S[],
+    weight: (level: S) => number
+): { kept: S[]; merged: [gone: S, into: S][] } {
+    const gaps = levels.slice(1).map((st, i) => ({ i, gap: st.elev - levels[i]!.elev }));
+    const closest = gaps.reduce<(typeof gaps)[number] | undefined>(
+        (best, g) => (g.gap < STOREY_WALL_MM && (!best || g.gap < best.gap) ? g : best),
+        undefined
+    );
+    if (!closest) return { kept: [...levels], merged: [] };
+    const lower = levels[closest.i]!;
+    const upper = levels[closest.i + 1]!;
+    const [gone, into] = weight(upper) > weight(lower) ? [lower, upper] : [upper, lower];
+    const rest = mergeShortLevels(
+        levels.filter((st) => st !== gone),
+        weight
+    );
+    return { kept: rest.kept, merged: [[gone, into], ...rest.merged] };
+}
+
 class Importer {
     private readonly skipped = new Map<string, SkippedGroup>();
     private readonly warnings: string[] = [];
@@ -500,6 +533,21 @@ class Importer {
                             box.max.z - box.min.z >= STOREY_WALL_MM
                     ))
         );
+        if (this.options.mergeShortStoreys) {
+            const weight = (st: { elev: number }): number =>
+                tall.filter((w) => Math.abs(w.zLo - st.elev) <= 400).length +
+                spaceBoxes.filter(({ box }) => box && Math.abs(box.min.z - st.elev) <= 400).length;
+            const { kept, merged } = mergeShortLevels(living, weight);
+            living = kept;
+            if (merged.length > 0) {
+                this.change(
+                    'storeys/merged',
+                    `${merged.length} level${merged.length === 1 ? '' : 's'} merged into the storey next to ${merged.length === 1 ? 'it' : 'them'}`,
+                    `Levels under ${STOREY_WALL_MM} mm apart are one storey, the one with the most walls and rooms on it: ` +
+                        `${merged.map(([gone, into]) => `${gone.name} into ${into.name}`).join(', ')}.`
+                );
+            }
+        }
         if (living.length === 0) {
             const lowest = tall.length > 0 ? Math.min(...tall.map((w) => w.zLo)) : 0;
             living = [{ name: 'Ground floor', elev: lowest }];

@@ -49,6 +49,17 @@ its detail, which is among the `warnings` too, for a tool to list for its user. 
 import also mends what the model leaves open, so the house it writes is closed, and says what it
 mended and whether it closes (see [Repair](#repair-a-watertight-house)).
 
+## Levels too close to stand in between
+
+A storey is an `IfcBuildingStorey` with walls or rooms standing on it. Revit writes every level
+marked a building story, and a large model has levels no one stands on: a plaza 155 mm over its
+floor, a reference line, a mezzanine's datum. `ifcToHouse(text, { mergeShortStoreys: true })`
+makes those one storey (`mergeShortLevels`): the closest two levels under 1800 mm apart first, the
+one with fewer walls and rooms on it going into the other, until every storey has room over it.
+What stood on a level that went falls to the storey it is in by height. The report says which
+went where (`storeys/merged`). Off by default. BLOX (a Revit IFC of 15 such storeys, its 146 rooms
+on three of them) reads as 10.
+
 ## Repair: a watertight house
 
 (Every geometric rule here, and the simple shape's and the check's, is summed up with its constant
