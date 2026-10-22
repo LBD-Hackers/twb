@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { parseHouseFile } from '../house/house-file';
-import { ifcToHouse } from './ifc-to-house';
+import { loadHouse } from '../house/load';
+import { watertightReport } from '../house/watertight';
+import { classifyAll } from '../surfacekit/model';
+import { ifcToHouse, type IfcImportOptions } from './ifc-to-house';
 
 type Json = Record<string, unknown>;
 interface Opening {
@@ -26,7 +29,26 @@ const T = 200;
  * canopy over the entrance under the upper storey, or a basement smaller than the house.
  */
 function officeIfc(
-    opts: { setIn?: boolean; facade?: boolean; canopy?: boolean; basement?: boolean; glassPartition?: boolean } = {}
+    opts: {
+        setIn?: boolean;
+        facade?: boolean;
+        canopy?: boolean;
+        basement?: boolean;
+        glassPartition?: boolean;
+        /** Two rooms on each storey, a sliver between them where a partition would be. */
+        rooms?: boolean;
+        /** The east facade left out, as a converter may leave a curtain wall out. */
+        gap?: boolean;
+        /** A shed of its own east of the house on the ground floor, with a room in it. */
+        annex?: boolean;
+        /** The south wall in two in line, as two walls. */
+        split?: boolean;
+        /**
+         * The ground floor's west room rising through the upper storey: the upper storey's rooms
+         * round a 4 × 3 m hole over it, under a skylight of its own (`'roofed'`) or none.
+         */
+        hall?: 'roofed' | 'open';
+    } = {}
 ): string {
     const lines: string[] = [];
     let n = 0;
@@ -139,13 +161,45 @@ function officeIfc(
 
     const h = T / 2;
     const ring = (z0: number, height: number, north = true) => {
-        wall(`S${z0}`, [0, h], [W, h], z0, height);
-        wall(`E${z0}`, [W - h, 0], [W - h, D], z0, height);
+        if (opts.split) {
+            wall(`S${z0}a`, [0, h], [5000, h], z0, height);
+            wall(`S${z0}b`, [5000, h], [W, h], z0, height);
+        } else wall(`S${z0}`, [0, h], [W, h], z0, height);
+        if (!opts.gap) wall(`E${z0}`, [W - h, 0], [W - h, D], z0, height);
         if (north) wall(`N${z0}`, [W, D - h], [0, D - h], z0, height);
         wall(`W${z0}`, [h, D], [h, 0], z0, height);
     };
     ring(0, H, !opts.facade);
     ring(H, H);
+    if (opts.hall) {
+        const st = storeyAt(0);
+        st.contained.push(box('IFCSPACE', 'Hal', [T, 5950, T, D - T, 0, H - 300]));
+        st.contained.push(box('IFCSPACE', 'Kontor', [6050, W - T, T, D - T, 0, H - 300]));
+        // Round the hole from x 1000 to 5000 and y 2500 to 5500, on the upper storey.
+        const up = storeyAt(H);
+        for (const [i, b] of ([
+            [T, W - T, T, 2500],
+            [T, W - T, 5500, D - T],
+            [T, 1000, 2500, 5500],
+            [5000, W - T, 2500, 5500],
+        ] as const).entries())
+            up.contained.push(box('IFCSPACE', `Rum ${i}`, [b[0], b[1], b[2], b[3], H, 2 * H - 300]));
+    }
+    if (opts.rooms) {
+        for (const z of [0, H]) {
+            const st = storeyAt(z);
+            st.contained.push(box('IFCSPACE', `Rum ${z} vest`, [T, 5950, T, D - T, z, z + H - 300]));
+            st.contained.push(box('IFCSPACE', `Rum ${z} øst`, [6050, W - T, T, D - T, z, z + H - 300]));
+        }
+    }
+    if (opts.annex) {
+        const [x0, x1, y1] = [W + 5000, W + 9000, 4000];
+        wall('AS', [x0, h], [x1, h], 0, H);
+        wall('AE', [x1 - h, 0], [x1 - h, y1], 0, H);
+        wall('AN', [x1, y1 - h], [x0, y1 - h], 0, H);
+        wall('AW', [x0 + h, y1], [x0 + h, 0], 0, H);
+        storeyAt(0).contained.push(box('IFCSPACE', 'Skur', [x0 + T, x1 - T, T, y1 - T, 0, H - 300]));
+    }
     if (opts.basement) {
         // A plant room under the middle of the house: its own four walls, smaller than the house.
         wall('KS', [3000, 2000], [7000, 2000], -H, H);
@@ -173,6 +227,8 @@ function officeIfc(
     // The flat roof over the top storey, and the canopy over the entrance under it.
     const slabs = [box('IFCSLAB', 'Tag', [0, W, 0, D, 2 * H, 2 * H + 250], '.ROOF.')];
     if (opts.canopy) slabs.push(box('IFCSLAB', 'Baldakin', [3000, 6000, -2000, 0, 2600, 2800], '.ROOF.'));
+    if (opts.hall === 'roofed')
+        slabs.push(box('IFCSLAB', 'Ovenlys', [1000, 5000, 2500, 5500, 2 * H + 250, 2 * H + 400], '.ROOF.'));
     const roof = e(`IFCROOF('roof',$,'Tag',$,$,${local(site, place3([0, 0, 0]))},$,$,.FLAT_ROOF.)`);
     rels.push(e(`IFCRELAGGREGATES('ra',$,$,$,${roof},(${slabs.join(',')}))`));
     storeyAt(H).contained.push(roof);
@@ -196,8 +252,8 @@ function officeIfc(
     ].join('\n');
 }
 
-const read = (opts: Parameters<typeof officeIfc>[0]) => {
-    const { house, report } = ifcToHouse(officeIfc(opts));
+const read = (opts: Parameters<typeof officeIfc>[0], options: IfcImportOptions = {}) => {
+    const { house, report } = ifcToHouse(officeIfc(opts), options);
     const h = house as Json;
     return {
         h,
@@ -279,21 +335,42 @@ describe('a canopy under the top storey', () => {
 describe('a basement smaller than the house', () => {
     const { h, storeys, warned } = read({ basement: true });
 
-    it('takes the outline from the ground floor, the basement a storey under it', () => {
-        const walls = h['walls'] as { points: number[][] }[];
-        const xs = walls.flatMap((w) => w.points.map((p) => p[0]!));
-        const ys = walls.flatMap((w) => w.points.map((p) => p[1]!));
-        expect([Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)]).toEqual([
-            W - T,
-            D - T,
-        ]);
+    it('stands each storey on its own outline: the basement on its own walls, the house on the ground floor\'s', () => {
+        const walls = h['walls'] as { storey?: string; points: number[][] }[];
+        const extent = (storey: string) => {
+            const pts = walls.filter((w) => w.storey === storey).flatMap((w) => w.points);
+            const xs = pts.map((p) => p[0]!);
+            const ys = pts.map((p) => p[1]!);
+            return [Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)];
+        };
         expect(storeys.map((s) => s.name)).toEqual(['Kælder', 'Stueetage', '1. sal']);
-        expect(warned).toContain('The outline is read on Stueetage');
+        expect(walls.filter((w) => w.storey === 'Kælder')).toHaveLength(4);
+        expect(extent('Stueetage')).toEqual([W - T, D - T]);
+        expect(extent('1. sal')).toEqual([W - T, D - T]);
+        expect(extent('Kælder')[0]).toBeLessThan(W - T);
+        expect(warned).toContain('Each storey stands on its plate');
+        expect(warned).not.toContain('The outline is read on');
     });
 
-    it('builds the basement’s own walls as partitions under it', () => {
-        const runs = h['interiorWalls'] as { storey?: string }[];
-        expect(runs.filter((r) => r.storey === 'Kælder')).toHaveLength(4);
+    it('stands each storey on the outline its own walls close round, with no repair', () => {
+        const { warned: plain } = read({ basement: true }, { repair: 'none' });
+        expect(plain).toContain("The storeys' facades close round outlines of their own");
+        expect(plain).not.toContain('Each storey stands on its plate');
+    });
+
+    it('builds the basement\'s walls as its facade, not as partitions under the house', () => {
+        const runs = (h['interiorWalls'] as { storey?: string }[] | undefined) ?? [];
+        expect(runs.filter((r) => r.storey === 'Kælder')).toHaveLength(0);
+    });
+
+    it('opens with a floor on each storey and the roof over the top one', () => {
+        const house = loadHouse(h, { snapToModule: false });
+        expect(house.problems).toEqual([]);
+        const kinds = classifyAll(house.store.surfaces());
+        const of = (kind: string) => house.store.surfaces().filter((s) => kinds.get(s.id) === kind);
+        expect(of('floor')).toHaveLength(3);
+        expect(of('roof')).toHaveLength(1);
+        expect(of('wall')).toHaveLength(12);
     });
 });
 
@@ -323,5 +400,80 @@ describe('a glazed partition of one curtain wall per panel', () => {
             [2.45, 1],
             [2.45, 1],
         ]);
+    });
+});
+
+describe('the repair an import makes', () => {
+    const loadOf = (h: Json) => loadHouse(h, { snapToModule: false });
+
+    it('leaves a house whose facade closes round its rooms as it is, and says it is watertight', () => {
+        const none = read({ rooms: true }, { repair: 'none' });
+        const watertight = read({ rooms: true });
+        expect(watertight.h).toEqual(none.h);
+        expect(none.report.watertight).toBeUndefined();
+        expect(watertight.report.watertight).toMatchObject({ watertight: true, leaks: [], openRooms: [] });
+        expect(watertightReport(loadOf(watertight.h)).leaks).toEqual([]);
+    });
+
+    it('fills a facade the model leaves out with a wall on the line its rooms say', () => {
+        const none = read({ rooms: true, gap: true }, { repair: 'none' });
+        // With no repair, the three walls close round nothing: no floor, no roof.
+        expect(watertightReport(loadOf(none.h)).watertight).toBe(false);
+        const { h, report, warned } = read({ rooms: true, gap: true });
+        expect(report.changes.map((c) => c.id)).toContain('facade/filled');
+        // One on each storey.
+        expect(warned).toContain('2 stretches of the storeys');
+        // Half the house's own wall out from the rooms' edge: where the wall's line would be.
+        const walls = h['walls'] as { storey?: string; points: number[][]; buildUpType?: string }[];
+        const east = walls.filter((w) => w.points.every((p) => p[0] === W - T));
+        expect(east.map((w) => w.storey)).toEqual(['Stueetage', '1. sal']);
+        expect(report.watertight).toMatchObject({ leaks: [] });
+    });
+
+    it('gives a shed apart from the house a block of its own, closed', () => {
+        const { h, report } = read({ rooms: true, annex: true });
+        expect(report.changes.map((c) => c.id)).toEqual(expect.arrayContaining(['outline/plates', 'outline/blocks']));
+        const loaded = loadOf(h);
+        const kinds = classifyAll(loaded.store.surfaces());
+        const floors = loaded.store.surfaces().filter((s) => kinds.get(s.id) === 'floor');
+        // The ground floor's two blocks, and the upper storey's.
+        expect(floors.map((f) => f.id).sort()).toEqual(['floor', 'floor-1-sal', 'floor-2']);
+        expect(report.watertight).toMatchObject({ leaks: [] });
+    });
+
+    it('reads a hole over a room under a roof of its own as that room rising through the storey', () => {
+        const { h, report } = read({ hall: 'roofed' });
+        expect(report.changes.map((c) => c.id)).toContain('outline/voids');
+        expect(report.changes.map((c) => c.id)).not.toContain('outline/courtyards');
+        // The main roof over the top storey, and the hall's at the top of the storey it rises to.
+        const roofs = h['roof'] as { storey?: string; outline?: number[][] }[];
+        expect(roofs.map((r) => [r.storey, !!r.outline])).toEqual([
+            ['1. sal', false],
+            ['1. sal', true],
+        ]);
+        const loaded = loadOf(h);
+        const byId = new Map(loaded.store.surfaces().map((s) => [s.id, s]));
+        expect(byId.get('floor-1-sal')!.holes).toHaveLength(1);
+        // Nothing roofs the ground floor under it: the hall goes on up.
+        expect([...byId.keys()].filter((id) => id.startsWith('roof-stueetage'))).toEqual([]);
+        expect(report.watertight).toMatchObject({ leaks: [] });
+    });
+
+    it('leaves a hole over a room with no roof of its own a courtyard, the room roofed under it', () => {
+        const { h, report } = read({ hall: 'open' });
+        expect(report.changes.map((c) => c.id)).toContain('outline/courtyards');
+        expect(Array.isArray(h['roof'])).toBe(false);
+        const loaded = loadOf(h);
+        expect(loaded.store.surfaces().some((s) => s.id.startsWith('roof-stueetage'))).toBe(true);
+        expect(report.watertight).toMatchObject({ leaks: [] });
+    });
+
+    it('runs a wall the model has in two on as one, from clean up', () => {
+        const none = read({ split: true }, { repair: 'none' });
+        const clean = read({ split: true }, { repair: 'clean' });
+        expect((none.h['walls'] as unknown[]).length).toBe(5);
+        expect((clean.h['walls'] as unknown[]).length).toBe(4);
+        expect(clean.report.changes.map((c) => c.id)).toContain('clean/lines');
+        expect(clean.report.watertight).toMatchObject({ leaks: [] });
     });
 });

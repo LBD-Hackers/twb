@@ -7,7 +7,8 @@
  * <arch-paper-model src="house.json" color-by-kind></arch-paper-model>
  * ```
  *
- * - `readonly`: the left button orbits and nothing can be picked or changed.
+ * - `readonly`: the left button orbits and nothing can be picked or changed. The faces of a
+ *   colour are drawn as one mesh, so a big house orbits as smoothly as a small one.
  * - Editable (the default): a small toolbar with **Select**, **Push/Pull** and **Orbit**, and
  *   **Undo**, **Redo** and **Delete** — a modeller's own verbs on `@surfacekit/model`'s store
  *   (`SurfaceStore.extrude`, `removeFace`), so a face pulled here is validated against the
@@ -93,6 +94,8 @@ export class ArchPaperModel extends HouseViewElement {
     /** Bumped when the tool's own state changes, so the overlay redraws. */
     private readonly draftVersion = signal(0);
     private readonly kindColours: Signal<boolean> = signal(false);
+    /** Whether the faces are drawn merged: nothing is picked in a read-only view. */
+    private readonly mergedFaces: Signal<boolean> = signal(false);
 
     constructor() {
         super();
@@ -137,8 +140,10 @@ export class ArchPaperModel extends HouseViewElement {
     }
 
     override willUpdate(changed: PropertyValues): void {
-        super.willUpdate(changed);
+        // Before the house is drawn, so it is drawn once, the way they ask.
         if (changed.has('colorByKind')) this.kindColours.set(this.colorByKind);
+        if (changed.has('readonly')) this.mergedFaces.set(this.readonly);
+        super.willUpdate(changed);
         if (changed.has('readonly') && this.readonly) {
             this.loaded?.store.select(null);
             this.setTool('select');
@@ -173,6 +178,7 @@ export class ArchPaperModel extends HouseViewElement {
                     selectedId: store.selectedId(),
                     kinds: kinds(),
                     colorByKind: this.kindColours(),
+                    merged: this.mergedFaces(),
                 });
                 viewport.renderOnce();
             }),

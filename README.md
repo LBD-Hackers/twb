@@ -24,7 +24,7 @@ This repository holds the open part of TWB, published on npm as
 | | What | Licence |
 | --- | --- | --- |
 | [`ontology/`](ontology/) | The TWB ontology (OWL, SEAS-style modules on top of [BOT](https://w3id.org/bot)), the SHACL shapes, the SPARQL rules and competency questions, the alignments, the catalogue and the paper's case house | CC BY 4.0 |
-| [`src/house/`](src/house/) | The house file, `twb/1`: its JSON-LD context, its types, the parser and writer of its geometry, the simple shape (walls as plan lines, a roof by type and pitch), and Open — a file into a model store | Apache-2.0 |
+| [`src/house/`](src/house/) | The house file, `twb/1`, in its two shapes — simple (walls as plan lines and heights, a roof by height, pitch and type), for reading drawings, and detailed (every face as its corners), for modelling software — and the saturation of the one into the other: its JSON-LD context, its types, the parser and writer of its geometry, and Open — a file into a model store | Apache-2.0 |
 | [`src/ifc/`](src/ifc/) | **IFC to TWB**: an IFC2X3 or IFC4 model read into a house file, with a report of what was read, guessed and left out ([docs/ifc-import.md](docs/ifc-import.md)) | Apache-2.0 |
 | [`src/surfacekit/`](src/surfacekit/) | The drawing engine: thin planar surfaces, storeys and zones with a validated store, the module grid, push/pull and the other tools, the three.js viewport | Apache-2.0 |
 | [`src/elements/`](src/elements/) | `<arch-paper-model>`, the viewer of a house file as a web component, read-only or editable | Apache-2.0 |
@@ -57,8 +57,9 @@ install it yourself if you validate.
 
 ```bash
 npx @lbd-hackers/twb import-ifc model.ifc -o house.twb.jsonld   # IFC to TWB; the report goes to stderr
-npx @lbd-hackers/twb check house.twb.jsonld                     # open it; list what it has wrong
+npx @lbd-hackers/twb check house.twb.jsonld                     # open it; list what it has wrong, and whether it is watertight
 npx @lbd-hackers/twb convert old-house.json -o house.twb.jsonld # arch/1 to twb/1
+npx @lbd-hackers/twb saturate drawn.json -o house.twb.jsonld    # the simple shape into the detailed one (--clean: heal split faces)
 npx @lbd-hackers/twb context                                    # the JSON-LD context
 ```
 
@@ -105,9 +106,26 @@ writeFileSync('duplex.twb.jsonld', JSON.stringify(house, null, 2));
 console.log(ifcImportSummary(report).join('\n'));
 // Read from IFC (IFC2X3): heavy (masonry) construction, 2 storeys, 4 exterior walls,
 // 26 partition runs, 28 windows and doors, 20 rooms, 21 fittings. …
+// Watertight: 10 faces of shell, every edge closed, every room closed.
 ```
 
-**Open a house file** — parse it, expand the simple shape, build the partitions and cut their
+By default the import mends what the model leaves open so the house it writes is closed
+(`repair: 'watertight'`): each storey stands on its plate — where its rooms are, closed over its
+walls — in blocks and round courtyards as the plate is, the facade fitted onto it and its gaps
+filled with walls, and the house is opened and checked (`report.watertight`: its leaks, its rooms
+that do not close, its openings in no face). `repair: 'clean'` only runs on facade lines split
+for nothing and drops repeated partitions; `repair: 'none'` reads the facade as its walls close
+round and nothing more. Every repair is in the report's `changes` by a stable id. See
+[docs/ifc-import.md](docs/ifc-import.md#repair-a-watertight-house). Every kind of geometry the
+package handles — the simple shape term by term, Open, the watertight check, the IFC import —
+with its rule, its constant and what is not supported, is in
+[docs/geometry.md](docs/geometry.md).
+
+**Is it closed?** `watertightReport(house)` (`@lbd-hackers/twb/house`) checks any opened house,
+either shape: the shell's edges nothing closes, the rooms that do not close, the openings in no
+face.
+
+**Open a house file** — parse it, saturate the simple shape, build the partitions and cut their
 doors, and get a store of surfaces, storeys and zones:
 
 ```ts
@@ -120,8 +138,19 @@ for (const [id, kind] of classifyAll(house.store.surfaces())) console.log(id, ki
 const saved = serializeLoadedHouse(house); // twb/1 again, every block the file had kept
 ```
 
+**Saturate a simple house** into the detailed shape a modeller works on — every face as its
+corners, the partitions built and the doors cut into them:
+
+```ts
+import { houseShapeOf, saturateHouse } from '@lbd-hackers/twb';
+
+houseShapeOf(drawn); // 'simple': walls as lines, the roof by type
+const { house, problems } = saturateHouse(drawn, { snapToModule: false }); // keep the drawing's numbers
+houseShapeOf(house); // 'detailed'
+```
+
 **As RDF.** A `twb/1` house file is JSON-LD. Its context is published at
-`https://w3id.org/twb/context/2.jsonld`, and ships with the package as
+`https://w3id.org/twb/context/3.jsonld`, and ships with the package as
 `@lbd-hackers/twb/context.jsonld` (and as `TWB_HOUSE_CONTEXT`), so any JSON-LD processor turns
 the file into triples in the TWB ontology without a network:
 
@@ -172,20 +201,38 @@ the case house and on broken variants of it (`tools/shacl_expected.py`).
 Editable by default: **Select**, **Push/Pull** and **Orbit**, with undo, redo and delete; every
 pull is validated against the module grid. Events: `house-load` (`{ problems }`), `face-select`
 (`{ surfaceId, kind }`) and `house-change` (`{ json }`, the edited house file); `toHouseJson()`
-returns the same on demand. Its design tokens (`--accent`, `--bg`, `--border`, …) can be set from
+returns the same on demand. A page that has opened the house itself (`loadHouse`) sets the
+`loadedHouse` property instead of `src`, so a big house is not built twice. Read-only, the faces
+of a colour are drawn as one mesh. Its design tokens (`--accent`, `--bg`, `--border`, …) can be set from
 the page.
 
 ## The house file
 
 One concept: a face is a list of `[x, y, z]` corners in millimetres, Z up, on the reference plane
 of the structure. Walls, floors and roofs are not separate types; they are read off the geometry.
-A house can also be written in a **simple shape** — the numbers a plan and a section print — and
-every corner that has to be worked out (a gable's apex, the valley of an L) is worked out on
-opening:
+
+A house file is written in one of **two shapes**, both `twb/1` and both in the TWB ontology:
+
+| | Simple | Detailed |
+| --- | --- | --- |
+| For | Whoever reads a drawing: a **language model** interpreting plans, sections and elevations, a script, a person typing | **Modelling software**: what a modeller opens, edits and saves, and what every derivation (framing, envelope, quantities) reads |
+| Walls | Plan lines (`walls`) and a height: `wallHeightMm`, or each storey's own | Faces (`surfaces`), each its corners |
+| Roof | Its height (`eaveMm`), slope (`pitchDeg`) and type (`gable`, `hip`, `shed`, `flat`) | Its planes, as faces |
+| Openings | By centre and size (`openings`: `at`, `widthMm`, `heightMm`, `sillMm`) | Four corners on the face they are in |
+| Partitions | Plan lines (`interiorWalls`) | Faces |
+| Rooms | A point inside each (`zones`), in both | |
+
+The simple shape is input only: it holds the numbers a drawing prints and nothing that has to be
+worked out. Opening it **saturates** it into the detailed shape (`saturateHouse`, `twb saturate`):
+the gable's apex, the valley of an L, the top of a wall under a slope, each storey's floor, the
+part of a storey's roof that the storey above leaves open, a courtyard cut out of the floors and
+roofs, the partitions as faces and the doors in them. Save writes the detailed shape. A file may
+carry both: its faces are kept and the simple shape's added to them. `houseShapeOf` says which a
+file is in.
 
 ```json
 {
-    "@context": "https://w3id.org/twb/context/2.jsonld",
+    "@context": "https://w3id.org/twb/context/3.jsonld",
     "format": "twb/1",
     "type": "Blueprint",
     "name": "Gable house",
@@ -204,6 +251,30 @@ opening:
 }
 ```
 
+**Storey by storey.** A house whose storeys stand on outlines of their own — a lower wing, a
+setback, a basement under part of it — names each wall's storey. Each storey stands on the
+outline its own walls trace, from its floor to its top (the next storey's floor, or its own
+`heightMm`); a roof covers the storey it names (the top one where it names none); a storey no
+roof covers is roofed flat at its top, over what of it the storey above leaves open; and a ring of
+walls standing inside a storey's outline is a courtyard:
+
+```json
+{
+    "storeys": [
+        { "name": "Ground", "elevationMm": 0, "heightMm": 3000 },
+        { "name": "Upper", "elevationMm": 3000, "heightMm": 2800 }
+    ],
+    "walls": [
+        { "storey": "Ground", "points": [[0, 0], [18000, 0], [18000, 9600], [0, 9600], [0, 0]] },
+        { "storey": "Upper", "points": [[0, 0], [9600, 0], [9600, 9600], [0, 9600], [0, 0]] }
+    ],
+    "roof": { "type": "gable", "pitchDeg": 30, "storey": "Upper" }
+}
+```
+
+The ground floor's east half is roofed flat at 3000; the upper storey stands on its west half
+under a gable.
+
 A wall that is not the house's own partition or facade says what it is — `"partition": "light"`,
 `"heavy"` or `"party"` — and a wall of another build-up than its kind's names it, `"buildUpType":
 "interiorWall:plumbing"`, a build-up in `envelope`. A partition's build-up runs from its positive
@@ -217,8 +288,10 @@ colours, a `twb:OpeningType`, in `fenestrationTypes`. Each kind has a default ty
 pinned to another by its id (`buildUpType`, an opening's `typeId`); what an instance states itself
 wins over its type's; and a type is written with only what differs from its kind's default.
 
-The format is described in full in [`src/house/house-file.ts`](src/house/house-file.ts) and
-[`src/house/simple-house.ts`](src/house/simple-house.ts), and as JSON-LD in
+The format is described in full in [`src/house/house-file.ts`](src/house/house-file.ts) (the
+detailed shape) and [`src/house/simple-house.ts`](src/house/simple-house.ts) (the simple shape), in
+the ontology's house file module ([`ontology/twb-housefile.ttl`](ontology/twb-housefile.ttl)), and
+as JSON-LD in
 [`src/house/house-jsonld.ts`](src/house/house-jsonld.ts). Example houses are in
 [`fixtures/houses/`](fixtures/houses/) and [`ontology/examples/`](ontology/examples/).
 

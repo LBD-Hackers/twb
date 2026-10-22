@@ -31,7 +31,8 @@ function published(): { path: string; source: string; type: string }[] {
               : 'text/plain; charset=utf-8';
     return [
         ...files(ONTOLOGY).map((f) => ({ path: `ontology/${f}`, source: join(ONTOLOGY, f), type: type(f) })),
-        { path: 'context/2.jsonld', source: join(ONTOLOGY, 'twb-house.context.jsonld'), type: 'application/ld+json' },
+        { path: 'context/3.jsonld', source: join(ONTOLOGY, 'twb-house.context.jsonld'), type: 'application/ld+json' },
+        { path: 'context/2.jsonld', source: join(ONTOLOGY, 'twb-house.context.2.jsonld'), type: 'application/ld+json' },
         { path: 'context/1.jsonld', source: join(ONTOLOGY, 'twb-house.context.1.jsonld'), type: 'application/ld+json' },
     ];
 }

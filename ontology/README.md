@@ -44,16 +44,17 @@ The split is checked to be lossless: the modules together hold exactly the tripl
 | `twb-*.ttl` (the modules) | As above: SKOS vocabularies for edge types, joint standard options, opening details, capabilities, resolutions, ceiling kinds, board seams, decision tiers live in the module of the classes they type |
 | `twb-shapes.ttl` | SHACL (13 node shapes): what a well-formed blueprint is (structure, passages, node rules, attics), and whether its construction meets the requirements its zones put on it |
 | `twb-align.ttl` | Alignments with BPO, DiCon Materials, SML (EN 17632-1), BEO, ifcOWL (IFC4) and OPM, kept apart so that TWB never forces those imports |
-| `twb-house.context.jsonld` | The JSON-LD context of arch's house file (`twb/1`), context 2, the same as `TWB_HOUSE_CONTEXT` in [`src/house/house-jsonld.ts`](../src/house/house-jsonld.ts) (a test holds them equal); published at `https://w3id.org/twb/context/2.jsonld` |
-| `twb-house.context.1.jsonld` | Context 1, as published before 0.3.0 and never changed: the same but for the sections' terms, which it puts under `twbd:` |
+| `twb-house.context.jsonld` | The JSON-LD context of the house file (`twb/1`, either shape), context 3, the same as `TWB_HOUSE_CONTEXT` in [`src/house/house-jsonld.ts`](../src/house/house-jsonld.ts) (a test holds them equal); published at `https://w3id.org/twb/context/3.jsonld` |
+| `twb-house.context.2.jsonld` | Context 2, as published from 0.3.0 to 0.4.0 and never changed: the same but for the simple shape's terms, which it puts under `arch:` as JSON |
+| `twb-house.context.1.jsonld` | Context 1, as published before 0.3.0 and never changed: the same as context 2 but for the sections' terms, which it puts under `twbd:` |
 | `twb-catalogue.ttl` | Generated: arch's registries as SKOS — zone kinds, member roles, BTLx processings, framing rule topics and options, materials, building uses |
 | `imports/bot.ttl` | BOT 0.3.2, as published at <https://w3id.org/bot> |
 | `queries/rules/*.rq` | Rules as SPARQL CONSTRUCT, applied in file order, each materialising into a graph of inferred triples |
 | `queries/cq/*.rq` | The 15 competency questions |
 | `queries/restrict-bedroom-door.ru` | An access restriction on the case house: bedroom 1's door opened from the living room only |
 | `queries/repair-wet-room-coverings.ru` | The repair step of the demonstration (SPARQL Update) |
-| `examples/case-house.input.json` | The case house in arch's simple shape: wall lines, openings by centre (doors between rooms too), roof by type and pitch |
-| `examples/case-house.json` | The case house detailed, as a twb/1 house file: JSON-LD in these terms (open it in arch) |
+| `examples/case-house.input.json` | The case house in the simple shape: wall lines, openings by centre (doors between rooms too), roof by type and pitch |
+| `examples/case-house.json` | The case house in the detailed shape, as a twb/1 house file: JSON-LD in these terms (open it in arch) |
 | `examples/case-house.ttl` | Generated: the case house as a TWB blueprint, with its ceiling, attic, passages and 298 derived members |
 | `examples/case-house-rules.ttl` | Adjacency rules (illustrative capability rules) |
 | `examples/case-house-use-rules.ttl` | Generated: the U-value rules of the building use, from arch's national profile (BR18) |
@@ -72,6 +73,34 @@ python tools/twb_house_check.py    # default: ontology/examples/case-house.json
 On arch `18a78d5` the rules reproduce arch's resolution for all 40 edges and all 5 exterior openings of the case house; the shapes find the five zone boundaries towards the bathroom that lack a wet-room lining, and conform once the repair has added the covering. The paper's numbers (30 edges, 280 members) are those of `4dce823`, before rooms had ceilings and partitions doors.
 
 The generated files (`case-house.ttl`, `case-house-use-rules.ttl`, `case-house.expected.json`, `twb-catalogue.ttl`) are exported by arch, which opens, frames and dresses the house with its own chain; they are kept here so the rules, shapes and questions can be run without it.
+
+## What changed in 0.5.0
+
+- **The two shapes of a house file.** A house file is written in the **detailed** shape — every
+  surface as its corners, what a modelling tool opens, edits and saves — or the **simple** shape:
+  walls as plan lines and heights, the roof by its height, pitch and type, openings by centre and
+  size, partitions as plan lines, for whoever reads a drawing, a language model first of all. The
+  simple shape is input only and is saturated into the detailed one on opening. Its terms are TWB's
+  own now, in the house file module (`twb-housefile.ttl`, 0.5.0): `twb:planWalls`,
+  `twb:wallHeightMm`, `twb:planRoof`, `twb:planOpenings`, `twb:planPartitions`. Context 2 put them
+  under `arch:` as JSON.
+- **Storey by storey.** A wall in the simple shape may name its storey: each storey then stands on
+  the blocks its own walls trace — each group of walls that meet is a block, with its own floor —
+  its roof flat at its top over what of each block the storey above leaves open (the floors of
+  that storey's courtyards among it), and a ring of walls inside a block is a courtyard — or a
+  void, where a roof of the storey covers it or the storey above closes or carries it on: a room
+  of the storey below rising through it to the roof, with no roof under it. A roof
+  names the storey it covers and its height (`eaveMm`); with an `outline`, it covers the block
+  that outline lies in, else every block of the storey. No term was added for blocks: they are
+  read off the walls.
+- **Floor openings.** `twb:planFloorOpenings` (`floorOpenings`, new in context 3): a storey's
+  floor opened where a stair rises into it, with no walls round the opening — the room under it
+  double height over the opening only.
+- **Watertight IFC import.** The IFC import writes a closed house by default (`repair:
+  'watertight'`) and checks it: the house file it writes is ordinary simple shape, its stairs'
+  openings as `floorOpenings` (see `docs/ifc-import.md`).
+- **Context 3.** Save writes `"@context": "https://w3id.org/twb/context/3.jsonld"`; the JSON is
+  unchanged and the format is still `twb/1`. A file naming context 2 or 1 opens the same.
 
 ## What changed in 0.3.0
 

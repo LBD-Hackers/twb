@@ -36,6 +36,32 @@ describeDuplex('the Duplex (buildingSMART sample, Revit IFC2X3)', () => {
         ]);
     });
 
+    it('is watertight as its facade closes: the repair only opens its floor over the stairs', () => {
+        expect(report.watertight).toMatchObject({ watertight: true, leaks: [], openRooms: [], openingsInNoFace: [] });
+        const plain = ifcToHouse(readFileSync(DUPLEX, 'utf8'), { repair: 'none' });
+        // Besides the openings and the notes that list them, only the separations along their
+        // edges go: the floor's edge parts the hallway from the stair's void now.
+        const { floorOpenings, notes: _notes, zoneSeparations, ...rest } = house as Json;
+        const { notes: _plainNotes, zoneSeparations: plainParts, ...plainRest } = plain.house;
+        expect(rest).toEqual(plainRest);
+        const parts = zoneSeparations as unknown[];
+        expect(parts.length).toBeLessThan((plainParts as unknown[]).length);
+        for (const sep of parts) expect(plainParts).toContainEqual(sep);
+        expect(plain.report.watertight).toBeUndefined();
+        // Each dwelling's stair rises into Level 2 through a notch in its floor against the
+        // exterior wall: the joists' slab is cut round it, over the stair.
+        const openings = floorOpenings as { storey: string; outline: [number, number][] }[];
+        expect(openings.map((o) => o.storey)).toEqual(['Level 2', 'Level 2']);
+        const m2 = (r: [number, number][]) =>
+            Math.abs(r.reduce((s, [x, y], i) => s + x * r[(i + 1) % r.length]![1] - r[(i + 1) % r.length]![0] * y, 0)) / 2e6;
+        for (const o of openings) expect(m2(o.outline)).toBeGreaterThan(3.9);
+        expect(openings.map((o) => o.outline.some(([x]) => x === 0 || x === 8273))).toEqual([true, true]);
+        const loaded = loadHouse(house);
+        const upper = loaded.store.surfaces().find((s) => s.id === 'floor-level-2')!;
+        expect(upper.boundaryMm.length).toBeGreaterThan(4);
+        expect(report.changes.map((c) => c.id)).toContain('floor/openings');
+    });
+
     it('reports where its origin is in the IFC, for what a tool reads of the IFC itself', () => {
         // The south-west corner of the walls' lines, on the middle of the block; Level 1's floor.
         expect(report.originMm).toEqual({ x: 263.5, y: -17536.5, z: 0 });
@@ -419,6 +445,30 @@ describe('a light house: timber frame, gable roof', () => {
     });
 });
 
+describe('a window by a corner, its hole carried on into the wall it meets', () => {
+    const { house, report } = ifcToHouse(timberHouseIfc({ cornerCut: true }));
+    const openings = (house as Json)['openings'] as Json[];
+
+    it('writes the window once, and no window where its hole runs through the other wall', () => {
+        const windows = openings.filter((o) => o['kind'] === 'window');
+        // The house's own, the one by the corner, and the west wall's own empty opening.
+        expect(windows).toHaveLength(3);
+        // On the west wall, only its own.
+        expect(windows.filter((o) => (o['at'] as number[])[0]! < 50)).toHaveLength(1);
+        expect(report.changes.map((c) => c.id).filter((id) => id.startsWith('opening/'))).toHaveLength(1);
+    });
+
+    it('says the cut was left out, and why', () => {
+        expect(report.skipped).toContainEqual(
+            expect.objectContaining({
+                type: 'IFCOPENINGELEMENT',
+                count: 1,
+                reason: expect.stringContaining('carries on into this one'),
+            })
+        );
+    });
+});
+
 describe('coupling windows', () => {
     const line = { a: { x: 0, y: 0 }, b: { x: 10000, y: 0 } };
     const w = (alongMm: number, widthMm: number, sillMm: number, heightMm: number) =>
@@ -480,8 +530,12 @@ describe('IFC material names', () => {
  * A small timber house as an IFC4 file, written here so the test says what it holds: walls of
  * 8000 × 5000 over the cladding, 2600 high, its layers outside first; a window, a front door, a
  * partition with a door, and a gable roof of 30° as two sloping slabs.
+ *
+ * `cornerCut` adds a window in the south wall by the south-west corner, its hole carried on into
+ * the end of the west wall as an opening of its own with nothing in it, as Revit writes it; and
+ * an empty opening of the west wall's own, half way along it.
  */
-function timberHouseIfc(): string {
+function timberHouseIfc(options: { cornerCut?: boolean } = {}): string {
     const lines: string[] = [];
     let n = 0;
     const e = (text: string): string => {
@@ -567,7 +621,7 @@ function timberHouseIfc(): string {
     const southWall = wall('S', [0, h], [W, h], extSet, t, -h);
     wall('E', [W - h, 0], [W - h, D], extSet, t, -h);
     wall('N', [W, D - h], [0, D - h], extSet, t, -h);
-    wall('W', [h, D], [h, 0], extSet, t, -h);
+    const westWall = wall('W', [h, D], [h, 0], extSet, t, -h);
     const partition = wall('P', [4000, t], [4000, D - t], partSet, 121, -60.5);
 
     const hole = (
@@ -578,7 +632,7 @@ function timberHouseIfc(): string {
         sill: number,
         height: number,
         depth: number,
-        kind: 'IFCWINDOW' | 'IFCDOOR'
+        kind: 'IFCWINDOW' | 'IFCDOOR' | null
     ) => {
         const placement = local(host.placement, place3([along, 0, sill]));
         const profile = e(
@@ -594,6 +648,7 @@ function timberHouseIfc(): string {
             `IFCOPENINGELEMENT('o${name}',$,'${name}',$,$,${placement},${shape},$,$)`
         );
         rels.push(e(`IFCRELVOIDSELEMENT('v${name}',$,$,$,${host.w},${opening})`));
+        if (!kind) return;
         const filler = e(
             `${kind}('f${name}',$,'${name}',$,$,${placement},$,$,${height},${width},$,$,$)`
         );
@@ -604,6 +659,13 @@ function timberHouseIfc(): string {
     hole(southWall, 'Vindue', 2000 - 600, 1200, 900, 1200, t, 'IFCWINDOW');
     hole(southWall, 'Hoveddør', 6000, 1000, 0, 2100, t, 'IFCDOOR');
     hole(partition, 'Indvendig dør', 1500, 900, 0, 2100, 121, 'IFCDOOR');
+    if (options.cornerCut) {
+        // 100 from the corner over the cladding: its hole runs on through the west wall's end,
+        // which stands over the south wall's from y 0 to t.
+        hole(southWall, 'Hjørnevindue', 100, 600, 900, 1200, t, 'IFCWINDOW');
+        hole(westWall, 'Hjørneudsparing', D - t, t, 900, 1200, t, null);
+        hole(westWall, 'Udsparing', D / 2 - 300, 600, 900, 1200, t, null);
+    }
 
     // Two slopes of 30°, falling south and north from a ridge along x.
     const pitch = (30 * Math.PI) / 180;

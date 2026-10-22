@@ -19,7 +19,9 @@
 #  each module an ontology of its own that imports only the modules it builds on, and every term
 #  stating the module that defines it (rdfs:isDefinedBy). https://w3id.org/twb imports them all.
 #
-#  Working draft, version 0.3.0 (2026-10-13).
+#  Working draft, version 0.5.0 (2026-10-21). 0.5.0 adds the simple shape's terms (planWalls,
+#  wallHeightMm, planRoof, planOpenings, planFloorOpenings, planPartitions), which context 2 put
+#  under arch: (planFloorOpenings is new).
 # =================================================================================================
 
 <https://w3id.org/twb/housefile>
@@ -34,9 +36,10 @@ groups, pinned kinds, layer terminations left to the standard)."""@en ;
     vann:preferredNamespacePrefix "twb" ;
     vann:preferredNamespaceUri "https://w3id.org/twb#" ;
     owl:imports <https://w3id.org/twb/detailing> ;
-    owl:versionInfo "0.3.0" ;
-    owl:versionIRI <https://w3id.org/twb/housefile/0.3.0> ;
-    dcterms:modified "2026-10-13"^^xsd:date .
+    owl:versionInfo "0.5.0" ;
+    owl:versionIRI <https://w3id.org/twb/housefile/0.5.0> ;
+    owl:priorVersion <https://w3id.org/twb/housefile/0.3.0> ;
+    dcterms:modified "2026-10-21"^^xsd:date .
 
 # =================================================================================================
 #  The house file: authored geometry and references (0.2.0)
@@ -149,4 +152,91 @@ twb:standardCut
     rdfs:comment """A layer termination that states no cut of its own: the layer ends as the edge's template or the
 project's standard says. A joint lists one for every layer it leaves alone, so that it keeps the number of layers
 its recipe had when it was detailed."""@en ;
+    rdfs:isDefinedBy <https://w3id.org/twb/housefile> .
+
+# =================================================================================================
+#  The two shapes of a house file (0.5.0)
+# =================================================================================================
+#
+#  A house file is written in one of two shapes, both in these terms.
+#
+#  The DETAILED shape is the blueprint itself: every surface as its corners (twb:pointsMm), the
+#  partitions and the roof among them, every opening on the surface it is in. It is what a
+#  modelling tool opens, edits and saves, and all that the other modules describe.
+#
+#  The SIMPLE shape says the same house in the numbers a plan and a section print: the exterior
+#  walls as plan lines, each standing on a storey up to its top (twb:planWalls, twb:wallHeightMm),
+#  the roof by its height, pitch and type (twb:planRoof), the windows and doors by their centre and
+#  size (twb:planOpenings), the openings in its floors (twb:planFloorOpenings), the partitions as
+#  plan lines (twb:planPartitions). It is written for
+#  whoever reads a drawing — a multimodal language model first of all — and is input only: a tool
+#  saturates it into the detailed shape on opening (`saturateHouse` in the TWB package), working
+#  out every corner the drawing does not print (a gable's apex, a valley, a wall's top under a
+#  slope, the part of a storey's roof the storey above leaves open, a courtyard), and saves that.
+#  A file may carry both: its surfaces are kept and the simple shape's added to them.
+
+twb:planWalls
+    a owl:DatatypeProperty ;
+    rdfs:label "wall lines"@en ;
+    rdfs:comment """The simple shape's exterior walls, as authored: a JSON array of { points, storey?, partition?,
+buildUpType? }, each a plan polyline [[x, y], …] in millimetres along the structure's reference plane. Without
+storeys named, every wall stands from the lowest storey's floor to the roof over it, and the building's outline is
+traced round the outside of them. A wall naming its storey stands on that storey's floor up to its top; each storey's
+walls trace an outline of their own, and a ring of them inside it is a courtyard."""@en ;
+    rdfs:domain twb:Blueprint ;
+    rdfs:range rdf:JSON ;
+    twb:unit unit:MilliM ;
+    rdfs:isDefinedBy <https://w3id.org/twb/housefile> .
+
+twb:wallHeightMm
+    a owl:DatatypeProperty ;
+    rdfs:label "wall height"@en ;
+    rdfs:comment "The simple shape's eave height: where the roof leaves the walls, above the lowest storey's floor, in millimetres. Storey by storey, a storey's top is the next storey's floor, or its own height."@en ;
+    rdfs:domain twb:Blueprint ;
+    rdfs:range xsd:decimal ;
+    twb:unit unit:MilliM ;
+    rdfs:isDefinedBy <https://w3id.org/twb/housefile> .
+
+twb:planRoof
+    a owl:DatatypeProperty ;
+    rdfs:label "roof by type"@en ;
+    rdfs:comment """The simple shape's roof, as authored: a JSON object { type, pitchDeg, eaveMm?, storey?, outline?,
+ridge?, highSide?, cover? }, or an array of them, each over its own outline. type is gable, hip, shed or flat; pitchDeg
+its slope in degrees; eaveMm its height, in millimetres; storey the storey it covers, the top one where it names none.
+A storey no roof covers is roofed flat at its top over what of it the storey above leaves open."""@en ;
+    rdfs:domain twb:Blueprint ;
+    rdfs:range rdf:JSON ;
+    rdfs:isDefinedBy <https://w3id.org/twb/housefile> .
+
+twb:planOpenings
+    a owl:DatatypeProperty ;
+    rdfs:label "openings by centre"@en ;
+    rdfs:comment """The simple shape's windows and doors, as authored: a JSON array of { kind, at, widthMm, heightMm,
+sillMm?, storey?, typeId?, glazing?, leaves?, detail? }, each centred on the wall line nearest its plan point at
+[x, y], in millimetres, its sill above its storey's floor. Nearest a partition's line, it is cut into the partition."""@en ;
+    rdfs:domain twb:Blueprint ;
+    rdfs:range rdf:JSON ;
+    twb:unit unit:MilliM ;
+    rdfs:isDefinedBy <https://w3id.org/twb/housefile> .
+
+twb:planFloorOpenings
+    a owl:DatatypeProperty ;
+    rdfs:label "floor openings"@en ;
+    rdfs:comment """The simple shape's openings in a storey's floor, as authored: a JSON array of { storey, outline },
+each a plan ring [[x, y], …] in millimetres cut out of that storey's floor with no walls round it — a stair's
+opening, a gallery's edge. The room under it rises into the storey there: double height over the opening only."""@en ;
+    rdfs:domain twb:Blueprint ;
+    rdfs:range rdf:JSON ;
+    twb:unit unit:MilliM ;
+    rdfs:isDefinedBy <https://w3id.org/twb/housefile> .
+
+twb:planPartitions
+    a owl:DatatypeProperty ;
+    rdfs:label "partition lines"@en ;
+    rdfs:comment """The simple shape's partitions, as authored: a JSON array of { points, storey?, loadBearing?,
+partition?, buildUpType? }, each a plan polyline [[x, y], …] in millimetres on the storey it starts on, built up to the
+floor above or the roof."""@en ;
+    rdfs:domain twb:Blueprint ;
+    rdfs:range rdf:JSON ;
+    twb:unit unit:MilliM ;
     rdfs:isDefinedBy <https://w3id.org/twb/housefile> .

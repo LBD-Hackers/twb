@@ -46,12 +46,31 @@ import type { HouseFile } from './house-file';
 export const TWB_HOUSE_FORMAT = 'twb/1';
 
 /**
- * Where the context is published: w3id redirects it to twb.madsholten.dk/context/2.jsonld. Readers
- * here use `TWB_HOUSE_CONTEXT` and never fetch it. Context 2 (TWB 0.3.0) differs from context 1
- * only in the documentation's terms, `twbd:` then and `twb:` now, so a file is read the same
- * whichever it names; context 1 stays published as it was (`twb-house.context.1.jsonld`).
+ * Where the context is published: w3id redirects it to twb.madsholten.dk/context/3.jsonld. Readers
+ * here use `TWB_HOUSE_CONTEXT` and never fetch it. Context 3 (TWB 0.5.0) differs from context 2
+ * only in the simple shape's terms (`SIMPLE_SHAPE_TERMS`), TWB's own now (`twb:planWalls`, …) and
+ * `arch:` JSON before; context 2 (TWB 0.3.0) differs from context 1 only in the documentation's,
+ * `twbd:` then. A file is read the same whichever it names, and the older contexts stay published
+ * as they were (`twb-house.context.2.jsonld`, `twb-house.context.1.jsonld`).
  */
-export const TWB_HOUSE_CONTEXT_URL = 'https://w3id.org/twb/context/2.jsonld';
+export const TWB_HOUSE_CONTEXT_URL = 'https://w3id.org/twb/context/3.jsonld';
+
+/** The contexts published before this one, which a file may still name. */
+export const TWB_HOUSE_CONTEXT_2_URL = 'https://w3id.org/twb/context/2.jsonld';
+export const TWB_HOUSE_CONTEXT_1_URL = 'https://w3id.org/twb/context/1.jsonld';
+
+/**
+ * The simple shape's terms (`simple-house.ts`), which context 3 moved from `arch:` JSON into TWB's
+ * house file module (`ontology/twb-housefile.ttl`): on a blueprint, and `interiorWalls` anywhere.
+ */
+export const SIMPLE_SHAPE_TERMS = [
+    'walls',
+    'wallHeightMm',
+    'roof',
+    'openings',
+    'floorOpenings',
+    'interiorWalls',
+] as const;
 
 /** The base a house file's own ids resolve against, unless a reader gives its own. */
 export const TWB_HOUSE_BASE = 'https://example.org/twb/house/';
@@ -106,12 +125,13 @@ export const TWB_HOUSE_CONTEXT = {
     // Classes
     Blueprint: {
         '@id': 'twb:Blueprint',
-        // The simple shape's plan-level input: expanded into surfaces on load, kept as written.
+        // The simple shape: saturated into surfaces on load, kept as written (`twb-housefile.ttl`).
         '@context': {
-            walls: json('arch:walls'),
-            wallHeightMm: 'arch:wallHeightMm',
-            roof: json('arch:roof'),
-            openings: json('arch:planOpenings'),
+            walls: json('twb:planWalls'),
+            wallHeightMm: 'twb:wallHeightMm',
+            roof: json('twb:planRoof'),
+            openings: json('twb:planOpenings'),
+            floorOpenings: json('twb:planFloorOpenings'),
         },
     },
     Surface: 'twb:Surface',
@@ -184,9 +204,11 @@ export const TWB_HOUSE_CONTEXT = {
     vergeMm: { '@id': 'twb:defaultVergeOverhang', '@nest': 'roofOverhang' },
     edges: { ...json('arch:overhangEdges'), '@nest': 'roofOverhang' },
 
+    // The simple shape's partitions, as plan lines (`twb-housefile.ttl`).
+    interiorWalls: json('twb:planPartitions'),
+
     // arch's own blocks, kept as JSON
     guides: json('arch:guides'),
-    interiorWalls: json('arch:interiorWalls'),
     cabinet: json('arch:cabinet'),
     heating: json('arch:heating'),
     water: json('arch:water'),
@@ -423,7 +445,7 @@ export function toTwbHouse(file: HouseFile): Json {
     if (file.name) out['name'] = file.name;
     if (file.notes) out['notes'] = file.notes;
     // The simple shape's input, as written (`simple-house.ts`).
-    Object.assign(out, pick(f, ['wallHeightMm', 'walls', 'roof']));
+    Object.assign(out, pick(f, ['wallHeightMm', 'walls', 'roof', 'floorOpenings']));
     if (Array.isArray(f['openings'])) out['openings'] = f['openings'];
     // Storeys by id: a reference is an IRI, and a name — "Ground floor" — is not one. A storey the
     // file left without an id gets the one `parseHouseFile` would mint, and a reference by name

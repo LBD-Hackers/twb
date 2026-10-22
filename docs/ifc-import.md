@@ -12,10 +12,12 @@ import { ifcToHouse, ifcImportSummary } from '@lbd-hackers/twb/ifc';
 const { house, report } = ifcToHouse(ifcText, { name: 'Duplex' });
 // house: the twb/1 document (JSON-LD); report: what was read, guessed and left out
 console.log(ifcImportSummary(report).join('\n'));
+// report.watertight: whether the house closes — see "Repair" below
 ```
 
 ```bash
 npx twb import-ifc model.ifc -o house.twb.jsonld
+npx twb import-ifc model.ifc --detailed -o house.twb.jsonld   # saturated: every face as its corners
 npx twb validate model.ifc     # read it, then check the house file it makes (needs oxigraph)
 ```
 
@@ -32,14 +34,126 @@ reference tool, it is framed, dressed in its envelope, analysed and drawn like a
 the report's wording ("arch hangs each door by its own rule") is that tool's. What the import
 changed from what the model says is in the report's `changes`, each once by a stable id
 (`outline/storey`, `curtain-walls/joined`, `linings`, `opening/<step id>`, …) with a title and
-its detail, which is among the `warnings` too, for a tool to list for its user.
+its detail, which is among the `warnings` too, for a tool to list for its user. By default the
+import also mends what the model leaves open, so the house it writes is closed, and says what it
+mended and whether it closes (see [Repair](#repair-a-watertight-house)).
+
+## Repair: a watertight house
+
+(Every geometric rule here, and the simple shape's and the check's, is summed up with its constant
+in [`geometry.md`](geometry.md).)
+
+`ifcToHouse(text, { repair })` takes one of three levels; the default is `'watertight'`.
+
+| `repair` | What the import does |
+| --- | --- |
+| `'none'` | The facade as its walls' lines close round, storey by storey where the storeys differ (below). Nothing more: what it wrote before there were levels, to the byte. |
+| `'clean'` | That, and two clean-ups in the house file's own terms. Lines of the facade in line with the next and alike in all but their extent (build-up, party or not, storey) are run on into one (`clean/lines`), the plan-level counterpart of `faceMerges`; partition runs and separations the model has twice, either way round (a separation on a partition's line among them), are written once (`clean/repeats`). |
+| `'watertight'` | `'clean'`, with each storey on its **plate** and its facade fitted onto it, the gaps in it filled, and the house checked. |
+
+With `'clean'` or `'watertight'` the house is opened as a tool opens it, its partitions where the
+IFC has them, and checked (`watertightReport`, below); the result is the report's `watertight`,
+and its first line ends the summary. On a large model that is one more open of the house (B101, a
+124 MB IFC of 5,249 walls and 888 rooms: about 6 s in Node). A roof that cannot be made over its
+outline is made flat at the eaves (`roof/capped`), so the house is closed at its top.
+
+**The plate.** A storey's plate is what of it is building, block by block, with its courtyards
+([`src/ifc/storey-plate.ts`](../src/ifc/storey-plate.ts)): where its rooms (`IfcSpace`) are,
+closed over the walls standing on it and over what parts the rooms by less than a metre (a thick
+wall, a sliver Revit left), worked out on a grid of 100 mm cells. A wall standing out of it (a
+garden wall, a retaining wall on its own) is narrower than 800 mm and goes. Where the storey's own
+facade closes round its rooms with no more than 15 % more in it — the stairs and halls no room
+was placed in — the plate runs out to the facade too. A storey with no rooms stands on its own
+facade, or else on its floor slabs (not a roof's, a stair's landing or the foundation; their tops
+at its level, the lowest storey's under its finish); one with none of these stands on the plate of
+the nearest storey that has (`outline/storeys/borrowed`). The slabs are a poorer guide than the
+rooms: an upper storey's has its stairs' voids cut out of its edge, and a converter that could
+not read a slab writes its box (rvt-rs writes B101's ground and first floors as one rectangle of
+211 × 103 m round the site, over its courtyards and the open ground between its blocks).
+
+The traced outline is straightened: a jog of less than 300 mm between two runs in line goes, a
+slanting edge loses the steps the grid gave it, and a corner stepped by less than 600 mm both
+ways is squared off. A hole in a plate that holds no room, 10 m² or more and more than 2 m wide
+somewhere, is a **courtyard**: open to the sky, its walls exterior walls (`outline/courtyards`).
+Any other hole — a shaft, a stair's void, a corridor no room was placed in — is filled, the floor
+running on over it (`floor/filled`). A courtyard is a **void** instead where the rooms of the
+storey under it stand under half of it or more, and a roof of the IFC lies over it — over the
+storey, half of that roof or more over the hole, not a converter's box round a whole block: a hall
+of the storey below rising through it (`outline/voids`). So is a hole over a void of the storey
+below: the hall rises on, storey by storey, to the roof. A void is open in the floor, nothing roofs
+the storey under it, and it is roofed flat at the top of the last storey it rises through — a roof
+part naming that storey, the void as its `outline` (B101's sports hall, rising from the ground
+floor through the first, under the roof its special roof stands on; its courtyards, over the
+basement, stay courtyards). Each piece of a plate that holds a room is a **block** of
+its storey, with its own floor and roof (`outline/blocks`). Where every storey's plate is the one
+outline the facade already closes round, the house is written as `'clean'` writes it (the Duplex);
+otherwise storey by storey on the plates (`outline/plates`, with each storey's area, its blocks
+and where its plate came from).
+
+**Stair openings.** A stair's opening has no walls round it, so it is no hole in a plate. On each
+storey over the lowest, inside the plan of each stair (`IfcStair`, or a flight of its own) that
+climbs to its floor, what the storey's floor slabs (their tops at its level) leave uncovered, and
+what is cut out of them (their openings), is an opening in that floor (`floor/openings`). A sliver
+under 600 mm across — the gap between a slab's edge and a wall's line — goes; an edge within
+600 mm of the storey's edge is taken out to it, so the opening is a notch in the floor rather than
+a sliver of floor along the wall; and an edge within 100 mm of a partition's, a separation's or the
+facade's line is put on it. The file gets it as `floorOpenings` (`twb:planFloorOpenings`): the
+room under it rises into the storey there, double height over the opening only. A separation
+the import set out along the opening's edge goes, the floor's edge parting the rooms instead. The
+Duplex's two stairs rise into Level 2 through notches of 1.17 × 3.54 m against the exterior walls;
+B101's stairs come out of rvt-rs with no body, so it has none.
+
+**The facade fitted onto the plate.** Each edge of a plate takes the wall that runs along most of
+it — parallel within 5°, out from the plate by up to its thickness + 300 mm (a plate stops at a
+room's edge) or into it by up to its thickness (a plate reaches a wall's outer face), along half
+the edge or 1.5 m of it — and is moved onto that wall's line, so the wall keeps its build-up, its
+openings and its type. A wall whose middle stands off the ring (a partition in line with a step
+of the facade, running on into the house) is never an edge's wall. Each corner is where the lines
+of its two edges cross. Two lines in line within 50 mm are one line; a side shorter than 200 mm
+(a corner the grid chamfered) is taken out, its neighbours run on to where they meet. Each
+storey's lines that stand within 300 mm of a line of the storey under it, along half the shorter
+of the two, are moved onto that line, so the walls stand one over the other. Every corner is
+written to the millimetre, shared by the two lines through it.
+
+Walls along an edge, beside its line — the other leaf of the facade, a lining, a curtain wall
+along several lines, a ribbon of glass over a parapet the model leaves out — are part of that
+exterior wall: their windows, doors and glazed bays go on it, each on the line of its storey
+nearest it. A wall that stands off every storey's plate it stands on (a retaining wall round the
+site) is left out; a partition off the plate on one of its storeys is built only on the others,
+and an opening in it there is left out with it. An edge no wall of the IFC runs along — a facade or
+a curtain wall the converter left out — is a **filler wall** of the house's own exterior build-up,
+on the plate's edge set out by half the facade's thickness (`facade/filled`, by count and length).
+
+**The check.** `watertightReport(house)` ([`src/house/watertight.ts`](../src/house/watertight.ts),
+`@lbd-hackers/twb/house`) takes an opened house and returns plain data:
+
+- **leaks**: the stretches of the shell's edges nothing closes, each by its face, its ends and its
+  length. The shell is every roof, every floor over the ground or the weather (not one between
+  storeys, nor one round a hall rising through it), and every wall with the house on one side and
+  the weather on the other (a step out of each face just over its foot lands over a floor on one
+  side, over a roof or nothing on the other), read off the faces alone so it holds for either
+  shape. An edge — of a face's outline or of a ring cut out of it, not of an opening — is closed
+  where the edges of the shell's other faces or of any floor or roof run along it, in line to the
+  millimetre and overlapping however each is split (a T counts), or where it lies in one of those
+  faces (a wall's top under a floor that runs on past it);
+- **openRooms**: the rooms no outline closes round (`resolveZoneRooms`);
+- **openingsInNoFace**: the windows and doors the file places in no face, from Open's problems.
+
+`twb check` prints it after the problems. Opening a file, `loadHouse(json, { repair: 'clean' })`
+heals the faces split for nothing (`faceMerges`, each through `SurfaceStore.mergeFaces`, a merge
+the store refuses left as it was; `merged` counts them); the default `'none'` mends nothing, as a
+modeller opening its own drawing wants. `saturateHouse` takes the same option, and `twb saturate
+--clean` sets it.
 
 ## How it reads a model
 
 The house file it writes is the **simple shape** ([`src/house/simple-house.ts`](../src/house/simple-house.ts)) — the exterior walls
-as plan lines, a wall height, the storeys, the openings by centre and size, the roof by type and
-pitch, the partitions as plan lines, the rooms by a point — so arch works out every face, gable
-and corner the same way it does for a house read from drawings.
+as plan lines, a wall height, the storeys, the openings by centre and size, the roof by its height,
+pitch and type, the partitions as plan lines, the rooms by a point — so every face, gable and
+corner is worked out the same way it is for a house read from drawings, and a tool can still
+adjust it in those terms (arch settles its windows on the walls' lines). Opening it saturates it
+into the **detailed shape** modelling software works on, every face as its corners
+(`saturateHouse`); `twb import-ifc --detailed` writes that instead.
 
 - **Storeys** are the IFC storeys that walls of a room's height (≥ 1.8 m) or rooms stand on,
   below the eaves. A foundation level and a roof level are not storeys. Elevations are kept as
@@ -59,9 +173,21 @@ and corner the same way it does for a house read from drawings.
   corners are found again from that line. Party walls are left out of what the facade is.
 - **Positions** are written to 0.1 mm, as the model has them; a TWB store rounds its faces to
   whole millimetres.
+- **Storey by storey, where the storeys differ.** Each storey's outline is read on its own: the
+  outside of the lines of every wall standing on it, each run on past its ends by its thickness +
+  300 mm so that walls meeting at a corner or a T close, whatever the IFC says is external. Where
+  two storeys' outlines differ by more than 2 % of the larger's area — a lower wing, a setback, a
+  basement under part of the house — the walls are written storey by storey (each wall's
+  `storey`): each storey stands on its own outline, a storey's roof is flat at its top over what
+  the storey above leaves open, and the roof read from the IFC covers the top storey. A storey
+  whose facade does not close stands on the outline of the nearest one that does (reported). A
+  ring of facade inside a storey's outline — walls the IFC says are external, or walls of glass —
+  that closes round no room and 10 m² or more is a courtyard: its walls are exterior walls and the
+  floors and roofs are open over it. A wall of the facade on one storey that stands inside another
+  storey's outline (a block's facade among the wings at its foot) is a partition there.
 - **Exterior or partition is read off the geometry**, not `IsExternal` (the Duplex's party walls
-  say they are external). The exterior walls are the chain of walls standing on the lowest floor
-  that closes round the largest area, each meeting the next at a corner within its thickness +
+  say they are external). Where every storey stands on one outline, the exterior walls are the
+  chain of walls standing on the lowest floor that closes round the largest area, each meeting the next at a corner within its thickness +
   300 mm; the corners are where their lines cross. Upper storeys' walls on those lines are the
   same walls, higher up. Every other wall is a partition, written once per storey it stands on,
   its ends taken to the line of the wall they meet (within 400 mm; within 400 mm plus its
@@ -94,7 +220,10 @@ and corner the same way it does for a house read from drawings.
   door, or a garage door by its name or `ROLLINGUP`. A window's division comes from its
   `PartitioningType` (IFC4) or its style's `OperationType` (IFC2X3); a door's leaves from its
   `OperationType` (`DOUBLE_DOOR_*` is a double door). An opening nothing fills is written as a
-  door if it reaches the floor, else a window, and reported.
+  door if it reaches the floor, else a window, and reported — unless it meets the hole a door or
+  window fills in another wall: that hole carried on through the end of the wall it meets at a
+  corner, or through a wall over the one it is in, which Revit writes as an opening of its own.
+  It is left out, and said to be.
 - **Window and door types**: each IFC type or style (`IfcWindowType`, `IfcDoorType`; IFC2X3's
   `IfcWindowStyle`, `IfcDoorStyle`) is a type in `fenestrationTypes`, named as the IFC names it,
   one per name and slot — Revit writes some types more than once — `window-2`, `door-2` and on (the
@@ -174,15 +303,19 @@ which also goes into the house file's `notes`.
 
 **Geometry and storeys**
 
-- **Upper storeys with another outline** (setbacks, overhangs, a narrower top floor): the simple
-  shape runs every exterior wall from the lowest floor to the eaves. Such walls are reported and
-  written as partitions.
-- **Basements and split levels**: a storey below ground is read as any other storey; half
-  storeys are not recognised. A basement with other walls than the house over it: the outline is
-  the facade of the storey that holds the most of the building's rooms (with no rooms in the IFC,
-  the one that closes round the most, if at least a quarter more than the lowest floor's), and the
-  walls under it are partitions.
-- **Several buildings** in one IFC: only the largest closed outline becomes the exterior walls.
+- **Storeys on outlines of their own** are written storey by storey (above), each on its plate
+  or its own outline. Its roof is flat at the storey's top: a pitched roof is read for the top
+  storey only, and a lower wing's or a terrace's roof at another height than the storey's top is
+  put at that top. The shape of a roof the converter lost (rvt-rs writes some as boxes) is not
+  read from the IFC's geometry: such a roof is flat at its storey's top.
+- **Split levels**: half storeys are not recognised; a storey below ground is read as any other.
+- **Several buildings, or blocks apart.** With `repair: 'none'` or `'clean'`, a storey whose
+  facade falls apart into blocks with no wall between them (an IFC whose facade has gaps wider
+  than a wall's thickness + 300 mm) becomes only the block the walk round the outside reaches
+  first. With `'watertight'` each block of each storey's plate is a block of its own, and the
+  gaps are filled with walls — but a storey's plate comes from its rooms, so a part of a building
+  with no rooms in it is left out, and a room no `IfcSpace` was placed for, larger than 10 m² and
+  wider than 2 m, inside a block, is read as a courtyard.
 - **Curved walls**: read as the straight line between their ends.
 - **Walls with no layer set** (IFC4 `IfcMaterialConstituentSet`, profile sets, a plain material)
   are one layer of the body's thickness; elemented walls (`IfcWallElementedCase` with studs as

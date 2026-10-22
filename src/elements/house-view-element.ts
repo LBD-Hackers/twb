@@ -2,7 +2,9 @@
  * What every embeddable element shares: a house file in, a 3D view of it out.
  *
  * The house comes from the `src` attribute (a URL to a house file) or the `house` property (the
- * file's text, or its parsed JSON); either is opened with `loadHouse` (`house/load.ts`). The view
+ * file's text, or its parsed JSON); either is opened with `loadHouse` (`house/load.ts`). A page
+ * that has opened the house itself sets `loadedHouse` instead, and it is shown as it is: a big
+ * house is not parsed and built a second time for its view. The view
  * is `@surfacekit/render`'s `Viewport`, mounted in the element's shadow root, so the camera,
  * picking and render-on-change behave exactly as they do in a modeller built on it.
  *
@@ -38,6 +40,7 @@ export abstract class HouseViewElement extends LitElement {
     static override properties: PropertyDeclarations = {
         src: { type: String },
         house: { attribute: false },
+        loadedHouse: { attribute: false },
         noGrid: { type: Boolean, attribute: 'no-grid' },
         keepCamera: { type: Boolean, attribute: 'keep-camera' },
         error: { state: true },
@@ -47,6 +50,11 @@ export abstract class HouseViewElement extends LitElement {
     declare src: string | null;
     /** The house file's text, or its parsed JSON — set instead of `src`. */
     declare house: string | object | null;
+    /**
+     * A house the page opened itself (`loadHouse`), set instead of `src` or `house`. It is drawn
+     * from its own store, so an editable element edits that very house.
+     */
+    declare loadedHouse: LoadedHouse | null;
     /** Leaves out the module grid on the ground. */
     declare noGrid: boolean;
     /**
@@ -67,6 +75,7 @@ export abstract class HouseViewElement extends LitElement {
         super();
         this.src = null;
         this.house = null;
+        this.loadedHouse = null;
         this.noGrid = false;
         this.keepCamera = false;
         this.error = null;
@@ -93,7 +102,7 @@ export abstract class HouseViewElement extends LitElement {
             ${
                 this.error
                     ? html`<div class="message is-error">${this.error}</div>`
-                    : !this.loaded && (this.src || this.house)
+                    : !this.loaded && (this.src || this.house || this.loadedHouse)
                       ? html`<div class="message">Loading…</div>`
                       : nothing
             }
@@ -102,7 +111,10 @@ export abstract class HouseViewElement extends LitElement {
     }
 
     override willUpdate(changed: PropertyValues): void {
-        if (changed.has('house') && this.house !== null) {
+        if (changed.has('loadedHouse') && this.loadedHouse !== null) {
+            this.loadToken++;
+            this.show(this.loadedHouse);
+        } else if (changed.has('house') && this.house !== null) {
             this.open(typeof this.house === 'string' ? this.house : JSON.stringify(this.house));
         } else if (changed.has('src') && this.src && this.house === null) {
             void this.fetchHouse(this.src);
@@ -142,8 +154,9 @@ export abstract class HouseViewElement extends LitElement {
             viewport.frameOn({ x: 0, y: 0, z: 0 }, 8000);
             return;
         }
-        const min = (k: 'x' | 'y' | 'z') => Math.min(...points.map((p) => p[k]));
-        const max = (k: 'x' | 'y' | 'z') => Math.max(...points.map((p) => p[k]));
+        // Folded, not spread: a big house has more corners than a call takes arguments.
+        const min = (k: 'x' | 'y' | 'z') => points.reduce((m, p) => Math.min(m, p[k]), Infinity);
+        const max = (k: 'x' | 'y' | 'z') => points.reduce((m, p) => Math.max(m, p[k]), -Infinity);
         const center = {
             x: (min('x') + max('x')) / 2,
             y: (min('y') + max('y')) / 2,
@@ -185,6 +198,11 @@ export abstract class HouseViewElement extends LitElement {
             this.error = `Not a house file: ${e instanceof Error ? e.message : String(e)}`;
             return;
         }
+        this.show(house, reframe);
+    }
+
+    /** Shows an opened house; `reframe` as for `open`. */
+    private show(house: LoadedHouse, reframe = false): void {
         this.error = null;
         const fit = reframe || !this.keepCamera || !this.loaded;
         this.loaded = house;

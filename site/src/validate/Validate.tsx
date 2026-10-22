@@ -18,7 +18,7 @@ import './validate.css';
 /** A house file with something wrong at every level the validator reads. */
 const BROKEN_HOUSE = JSON.stringify(
     {
-        '@context': 'https://w3id.org/twb/context/2.jsonld',
+        '@context': 'https://w3id.org/twb/context/3.jsonld',
         format: 'twb/1',
         type: 'Blueprint',
         name: 'A house with mistakes',
@@ -355,7 +355,7 @@ export function Validate() {
                         <textarea
                             value={paste}
                             onChange={(e) => setPaste(e.target.value)}
-                            placeholder='{ "@context": "https://w3id.org/twb/context/2.jsonld", "format": "twb/1", … } — or Turtle'
+                            placeholder='{ "@context": "https://w3id.org/twb/context/3.jsonld", "format": "twb/1", … } — or Turtle'
                             spellCheck={false}
                         />
                         <button

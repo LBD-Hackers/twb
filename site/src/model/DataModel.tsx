@@ -137,8 +137,8 @@ export function DataModelPage({ lang }: { lang: Lang }) {
                         <a href={`${BASE}ontology/twb-shapes.ttl`} download className="link-arrow">
                             {h.shapes[lang]} <code>twb-shapes.ttl</code>
                         </a>
-                        <a href={`${BASE}context/2.jsonld`} className="link-arrow is-go">
-                            {h.context[lang]} <code>2.jsonld</code>
+                        <a href={`${BASE}context/3.jsonld`} className="link-arrow is-go">
+                            {h.context[lang]} <code>3.jsonld</code>
                         </a>
                         <a href={`${BASE}reference/`} className="link-arrow is-go">
                             Every class and property
