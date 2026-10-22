@@ -92,6 +92,26 @@ describe('outlineUnion', () => {
         expect(corners(regions[0]!.ring)).toEqual(new Set(['0,0', '12000,0', '12000,6000', '0,6000']));
     });
 
+    it('joins a floor of many slabs, some across several cells, round the void they leave', () => {
+        // 12 × 12 slabs of 3 m sharing their edges, a long slab over the middle of each row
+        // clear of the void, and the middle four left out: one plate of 36 m with a 6 m void.
+        const slabs: Vec2Mm[][] = [];
+        for (let i = 0; i < 12; i++) {
+            for (let j = 0; j < 12; j++) {
+                if (i >= 5 && i <= 6 && j >= 5 && j <= 6) continue;
+                slabs.push(box(i * 3000, j * 3000, (i + 1) * 3000, (j + 1) * 3000));
+            }
+            if (i !== 5 && i !== 6) slabs.push(box(0, i * 3000 + 1000, 36000, i * 3000 + 2000));
+        }
+        const regions = outlineUnion(slabs);
+        expect(regions).toHaveLength(1);
+        expect(corners(regions[0]!.ring)).toEqual(new Set(['0,0', '36000,0', '36000,36000', '0,36000']));
+        expect(regions[0]!.holes).toHaveLength(1);
+        expect(corners(regions[0]!.holes[0]!)).toEqual(
+            new Set(['15000,15000', '21000,15000', '21000,21000', '15000,21000'])
+        );
+    });
+
     it('keeps outlines that only touch at a corner apart', () => {
         const regions = outlineUnion([box(0, 0, 5000, 5000), box(5000, 5000, 9000, 9000)]);
         expect(regions.map((r) => area(r.ring))).toEqual([25, 16]);

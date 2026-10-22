@@ -20,17 +20,51 @@ import type { PlanSegment } from './room-find';
 /** Two ends this close are one corner, mm. */
 const JOIN_MM = 1;
 
+/** The cells cuts are looked up in, mm: about a room's width, so a wall's box spans few. */
+const CUT_CELL_MM = 2000;
+
 interface Graph {
     points: Vec2Mm[];
     /** Neighbour indices per point. */
     next: Set<number>[];
 }
 
-/** One corner per cluster of ends within `JOIN_MM`, and the index each end maps to. */
-function pool(points: Vec2Mm[], p: Vec2Mm): number {
-    const found = points.findIndex((q) => Math.hypot(q.x - p.x, q.y - p.y) <= JOIN_MM);
-    if (found >= 0) return found;
+/**
+ * Indices of points by the square cell of side `size` mm each falls in, so a search near a point
+ * looks only in the cells round it. Each cell keeps its indices in the order they were added.
+ */
+class PointGrid {
+    private readonly cells = new Map<string, number[]>();
+    constructor(private readonly size: number) {}
+    add(p: Vec2Mm, index: number): void {
+        const k = `${Math.floor(p.x / this.size)},${Math.floor(p.y / this.size)}`;
+        const cell = this.cells.get(k);
+        if (cell) cell.push(index);
+        else this.cells.set(k, [index]);
+    }
+    /** The indices in the cells the box overlaps, ascending. */
+    within(minX: number, minY: number, maxX: number, maxY: number): number[] {
+        const out: number[] = [];
+        for (let cx = Math.floor(minX / this.size); cx <= Math.floor(maxX / this.size); cx++) {
+            for (let cy = Math.floor(minY / this.size); cy <= Math.floor(maxY / this.size); cy++) {
+                const cell = this.cells.get(`${cx},${cy}`);
+                if (cell) out.push(...cell);
+            }
+        }
+        return out.sort((i, j) => i - j);
+    }
+}
+
+/**
+ * One corner per cluster of ends within `JOIN_MM`, and the index each end maps to: the first
+ * corner within `JOIN_MM` of it, or a new one.
+ */
+function pool(points: Vec2Mm[], grid: PointGrid, p: Vec2Mm): number {
+    const near = grid.within(p.x - JOIN_MM, p.y - JOIN_MM, p.x + JOIN_MM, p.y + JOIN_MM);
+    const found = near.find((i) => Math.hypot(points[i]!.x - p.x, points[i]!.y - p.y) <= JOIN_MM);
+    if (found !== undefined) return found;
     points.push({ x: p.x, y: p.y });
+    grid.add(p, points.length - 1);
     return points.length - 1;
 }
 
@@ -65,12 +99,34 @@ function along(p: Vec2Mm, a: Vec2Mm, b: Vec2Mm): { off: number; t: number } {
 function planGraph(segments: readonly PlanSegment[]): Graph {
     const cuts: Vec2Mm[] = [];
     for (const [a, b] of segments) cuts.push(a, b);
-    for (let i = 0; i < segments.length; i++) {
-        for (let j = i + 1; j < segments.length; j++) {
+    // Two segments cross only where their boxes overlap: sweep them from the left, and keep the
+    // crossings in the order of the pairs (i, j), as testing every pair would find them.
+    const box = segments.map(([a, b]) => ({
+        minX: Math.min(a.x, b.x),
+        maxX: Math.max(a.x, b.x),
+        minY: Math.min(a.y, b.y),
+        maxY: Math.max(a.y, b.y),
+    }));
+    const byLeft = segments.map((_, i) => i).sort((i, j) => box[i]!.minX - box[j]!.minX);
+    const crossings: { i: number; j: number; x: Vec2Mm }[] = [];
+    for (let s = 0; s < byLeft.length; s++) {
+        const bs = box[byLeft[s]!]!;
+        for (let r = s + 1; r < byLeft.length; r++) {
+            const br = box[byLeft[r]!]!;
+            if (br.minX > bs.maxX) break;
+            if (br.minY > bs.maxY || br.maxY < bs.minY) continue;
+            const i = Math.min(byLeft[s]!, byLeft[r]!);
+            const j = Math.max(byLeft[s]!, byLeft[r]!);
             const x = crossing(segments[i]![0], segments[i]![1], segments[j]![0], segments[j]![1]);
-            if (x) cuts.push(x);
+            if (x) crossings.push({ i, j, x });
         }
     }
+    crossings.sort((m, n) => m.i - n.i || m.j - n.j);
+    for (const { x } of crossings) cuts.push(x);
+    // A cut stops a segment only within `JOIN_MM` of it: look only in the cells round its box.
+    const cutGrid = new PointGrid(CUT_CELL_MM);
+    cuts.forEach((p, i) => cutGrid.add(p, i));
+    const pointGrid = new PointGrid(JOIN_MM);
     const points: Vec2Mm[] = [];
     const next: Set<number>[] = [];
     const link = (i: number, j: number) => {
@@ -82,13 +138,21 @@ function planGraph(segments: readonly PlanSegment[]): Graph {
     for (const [a, b] of segments) {
         const len = Math.hypot(b.x - a.x, b.y - a.y);
         if (len <= JOIN_MM) continue;
-        const stops = cuts
+        const reach = 2 * JOIN_MM;
+        const stops = cutGrid
+            .within(
+                Math.min(a.x, b.x) - reach,
+                Math.min(a.y, b.y) - reach,
+                Math.max(a.x, b.x) + reach,
+                Math.max(a.y, b.y) + reach
+            )
+            .map((i) => cuts[i]!)
             .map((p) => ({ p, ...along(p, a, b) }))
             .filter(
                 ({ off, t }) => off <= JOIN_MM && t * len >= -JOIN_MM && t * len <= len + JOIN_MM
             )
             .sort((m, n) => m.t - n.t)
-            .map(({ p }) => pool(points, p));
+            .map(({ p }) => pool(points, pointGrid, p));
         for (let k = 0; k + 1 < stops.length; k++) link(stops[k]!, stops[k + 1]!);
     }
     while (next.length < points.length) next.push(new Set());
