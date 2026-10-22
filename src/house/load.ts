@@ -7,6 +7,7 @@
  *    built up to the floor above, the roof, or the ceiling of the rooms either side
  *    (`buildInteriorWalls`), and the doors standing in them cut in (`placeInteriorOpenings`).
  * 3. The rooms into a `ZoneStore`.
+ * 4. With `repair: 'clean'` only, the faces split for nothing healed into one (`faceMerges`).
  *
  * `serializeLoadedHouse` writes it back: the store's geometry, and every setting the file came
  * with as it came.
@@ -33,7 +34,7 @@ import {
 } from '../surfacekit/model';
 import { nearestModularCoordinateMm } from '../surfacekit/grid';
 import { saturateInteriorWallPoint } from '../surfacekit/interaction';
-import { cleanDrawing } from './drawing-cleanup';
+import { cleanDrawing, faceMerges } from './drawing-cleanup';
 import {
     parseHouseFile,
     serializeHouseFile,
@@ -53,6 +54,8 @@ export interface LoadedHouse {
     interiorFaces: number;
     /** How many of the file's doors and windows in partitions were cut into them. */
     interiorOpenings: number;
+    /** How many faces split for nothing were healed into a neighbour (`repair: 'clean'`). */
+    merged: number;
 }
 
 export interface LoadHouseOptions {
@@ -62,6 +65,13 @@ export interface LoadHouseOptions {
      * file put it: a house read off a drawing that was not drawn to the module.
      */
     snapToModule?: boolean;
+    /**
+     * What Open mends. `'none'` (the default): nothing past the repeats `cleanDrawing` drops, as a
+     * modeller opening its own drawing wants. `'clean'`: also the faces split for nothing, each
+     * healed into its neighbour (`faceMerges`, `SurfaceStore.mergeFaces`); a merge the store
+     * refuses leaves the two faces as they were — what an imported house wants.
+     */
+    repair?: 'none' | 'clean';
 }
 
 /** The house file `input` (text or parsed JSON) opened into a store of its own. */
@@ -81,6 +91,7 @@ export function loadHouse(
         options
     );
     const doors = placeInteriorOpenings(store, parsed.interiorOpenings, interior.faceIds);
+    const merged = options.repair === 'clean' ? healSplitFaces(store) : 0;
     const zones = new ZoneStore();
     zones.load(parsed.zones, parsed.zoneSeparations);
     return {
@@ -95,7 +106,14 @@ export function loadHouse(
         ],
         interiorFaces: interior.created,
         interiorOpenings: doors.placed,
+        merged,
     };
+}
+
+/** The faces split for nothing healed into one, as many as the store takes; how many it took. */
+function healSplitFaces(store: SurfaceStore): number {
+    const merges = faceMerges(store.surfaces(), store.guides(), store.storeys());
+    return merges.filter((m) => store.mergeFaces(m.keep, m.drop).ok).length;
 }
 
 /**
@@ -477,4 +495,23 @@ export function serializeLoadedHouse(house: LoadedHouse): string {
         },
         { name: house.parsed.name, notes: house.parsed.notes, settings: house.parsed.settings }
     );
+}
+
+/**
+ * A house file in the detailed shape: every face as its corners, partitions and roofs among
+ * them, the openings cut into the faces they are in — what a modeller opens, edits and saves.
+ * A file in the simple shape (`simple-house.ts`: walls as plan lines and heights, the roof by
+ * its height, pitch and type, openings by their centre, partitions as plan lines) is saturated
+ * into it: opened as `loadHouse` opens it and written as Save writes it. A file already detailed
+ * comes back as it is, its ids and numbers as the store has them. `problems` are the opening's.
+ */
+export function saturateHouse(
+    input: string | Record<string, unknown>,
+    options: LoadHouseOptions = {}
+): { house: Record<string, unknown>; problems: string[] } {
+    const loaded = loadHouse(input, options);
+    return {
+        house: JSON.parse(serializeLoadedHouse(loaded)) as Record<string, unknown>,
+        problems: loaded.problems,
+    };
 }

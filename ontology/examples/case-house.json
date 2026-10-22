@@ -1,5 +1,5 @@
 {
-  "@context": "https://w3id.org/twb/context/2.jsonld",
+  "@context": "https://w3id.org/twb/context/3.jsonld",
   "format": "twb/1",
   "type": "Blueprint",
   "notes": "TWB case house: 7.2 x 9.6 m single-storey timber-frame house, 2400 mm walls, a 30-degree gable roof with its ridge along y, three partitions with a door each and four rooms, all ceiled flat under a cold attic.",

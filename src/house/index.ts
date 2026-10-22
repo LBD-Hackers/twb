@@ -8,3 +8,4 @@ export * from './house-jsonld';
 export * from './simple-house';
 export * from './drawing-cleanup';
 export * from './load';
+export * from './watertight';

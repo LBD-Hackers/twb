@@ -33,6 +33,7 @@ export const GRAPH_BASE = 'https://example.org/twb/graph/';
 
 /** The contexts a TWB JSON-LD document may name, read from the copy every reader has. */
 const TWB_CONTEXTS = new Set([
+    'https://w3id.org/twb/context/3.jsonld',
     'https://w3id.org/twb/context/2.jsonld',
     'https://w3id.org/twb/context/1.jsonld',
 ]);

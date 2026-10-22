@@ -175,6 +175,16 @@ export function partitionCeilingFits(
     const rooms = resolveZoneRooms(surfaces, storeys, zones, separations);
     const partitions = partitionsOf(surfaces, storeys, zones, rooms);
     const ceilings = zoneCeilingsMm(surfaces, storeys, zones, rooms);
+    // Each storey's rooms with their extent in plan, in the zones' order: a probe tests the
+    // polygon only of a room whose box it is in.
+    const roomsOn = new Map<string, { zone: Zone; outline: readonly Vec2Mm[]; box: Box2 }[]>();
+    for (const z of zones) {
+        const outline = rooms.get(z.id)?.outlineMm;
+        if (!outline) continue;
+        const list = roomsOn.get(z.storeyId) ?? [];
+        list.push({ zone: z, outline, box: boxOf(outline) });
+        roomsOn.set(z.storeyId, list);
+    }
     /** The ceiling the partition stops under at a point along it: both sides', or none. */
     const ceilingAt = (p: Partition, at: Vec2Mm): number | undefined => {
         const len = distance2(p.aMm, p.bMm);
@@ -183,11 +193,10 @@ export function partitionCeilingFits(
             y: ((p.bMm.x - p.aMm.x) / len) * ROOM_PROBE_MM,
         };
         const side = (q: Vec2Mm): number | undefined => {
-            const zone = zones.find((z) => {
-                const outline = z.storeyId === p.storey.id ? rooms.get(z.id)?.outlineMm : null;
-                return outline ? pointInPolygon2(q, outline) : false;
-            });
-            return zone ? ceilings.get(zone.id) : undefined;
+            const room = roomsOn
+                .get(p.storey.id)
+                ?.find((r) => inBox(q, r.box) && pointInPolygon2(q, r.outline));
+            return room ? ceilings.get(room.zone.id) : undefined;
         };
         const left = side({ x: at.x + n.x, y: at.y + n.y });
         const right = side({ x: at.x - n.x, y: at.y - n.y });
@@ -234,6 +243,28 @@ export function partitionCeilingFits(
     }
     return { removeIds: [], reshape, add };
 }
+
+interface Box2 {
+    minX: number;
+    minY: number;
+    maxX: number;
+    maxY: number;
+}
+
+function boxOf(ring: readonly Vec2Mm[]): Box2 {
+    return ring.reduce(
+        (b, p) => ({
+            minX: Math.min(b.minX, p.x),
+            minY: Math.min(b.minY, p.y),
+            maxX: Math.max(b.maxX, p.x),
+            maxY: Math.max(b.maxY, p.y),
+        }),
+        { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
+    );
+}
+
+const inBox = (p: Vec2Mm, b: Box2): boolean =>
+    p.x >= b.minX && p.x <= b.maxX && p.y >= b.minY && p.y <= b.maxY;
 
 /** Finer than this a partition's run between two ceilings is not found, mm. */
 const RUN_STEP_MM = 100;

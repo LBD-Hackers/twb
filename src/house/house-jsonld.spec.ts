@@ -9,6 +9,7 @@ import {
     type ParseResult,
 } from './house-file';
 import {
+    SIMPLE_SHAPE_TERMS,
     TWB_HOUSE_CONTEXT,
     TWB_HOUSE_CONTEXT_URL,
     TWB_HOUSE_FORMAT,
@@ -290,18 +291,40 @@ describe('twb/1, the house file as JSON-LD', () => {
         expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual(context);
     });
 
-    // Context 1 is published and never changes; a file naming it must read as one naming context 2:
-    // every term it has means the same in context 2, which only gains terms.
-    it('keeps context 1’s terms in its own but for the documentation’s twbd: terms', () => {
-        const path = join(ROOT, 'ontology/twb-house.context.1.jsonld');
-        const text = readFileSync(path, 'utf8')
-            .replace(/\s*"twbd": "https:\/\/w3id\.org\/twb\/doc#",/, '')
-            .replaceAll('"twbd:', '"twb:');
-        const one = (JSON.parse(text) as { '@context': Record<string, unknown> })['@context'];
-        for (const [term, meaning] of Object.entries(one)) {
+    // Contexts 1 and 2 are published and never change; a file naming either must read as one naming
+    // context 3: every term they have means the same in context 3, but for the documentation's
+    // twbd: terms (context 1) and the simple shape's, arch: JSON until context 3.
+    const olderTermsHold = (file: string, rename: (text: string) => string) => {
+        const text = rename(readFileSync(join(ROOT, file), 'utf8'));
+        const older = (JSON.parse(text) as { '@context': Record<string, unknown> })['@context'];
+        const moved = new Set<string>([...SIMPLE_SHAPE_TERMS, 'Blueprint']);
+        for (const [term, meaning] of Object.entries(older)) {
+            if (moved.has(term)) continue;
             expect(TWB_HOUSE_CONTEXT[term as keyof typeof TWB_HOUSE_CONTEXT], term).toEqual(
                 meaning
             );
         }
+        // The blueprint means the same; only the simple shape's terms on it moved into twb:.
+        const blueprint = older['Blueprint'] as { '@id': string };
+        expect((TWB_HOUSE_CONTEXT['Blueprint'] as { '@id': string })['@id']).toBe(blueprint['@id']);
+    };
+
+    it('keeps context 1’s terms in its own but for the documentation’s twbd: terms', () => {
+        olderTermsHold('ontology/twb-house.context.1.jsonld', (text) =>
+            text
+                .replace(/\s*"twbd": "https:\/\/w3id\.org\/twb\/doc#",/, '')
+                .replaceAll('"twbd:', '"twb:')
+        );
+    });
+
+    it('keeps context 2’s terms in its own but for the simple shape’s', () => {
+        olderTermsHold('ontology/twb-house.context.2.jsonld', (text) => text);
+    });
+
+    it('maps the simple shape’s terms to TWB’s own', () => {
+        const blueprint = (TWB_HOUSE_CONTEXT['Blueprint'] as { '@context': Record<string, unknown> })['@context'];
+        expect(blueprint['walls']).toEqual({ '@id': 'twb:planWalls', '@type': '@json' });
+        expect(blueprint['roof']).toEqual({ '@id': 'twb:planRoof', '@type': '@json' });
+        expect(TWB_HOUSE_CONTEXT['interiorWalls']).toEqual({ '@id': 'twb:planPartitions', '@type': '@json' });
     });
 });

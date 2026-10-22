@@ -1,9 +1,18 @@
 /**
  * The house file: what a TWB tool saves and opens. It is written `twb/1` — JSON-LD in the TWB
  * ontology (`house-jsonld.ts`) — and read as the plain JSON shape below, `arch/1`, which is what
- * `fromTwbHouse` turns a `twb/1` document into. **Deliberately the simplest thing that round-trips
- * a `Surface`**, because the file is meant to be written by hand, by a script, or by a multimodal
- * language model reading a plan and a section off a drawing:
+ * `fromTwbHouse` turns a `twb/1` document into.
+ *
+ * **Two shapes.** A house file is written in one of two shapes. The **detailed** shape, described
+ * here, is every face as its corners — what a modelling tool opens, edits and saves, and what
+ * every derivation reads. The **simple** shape (`simple-house.ts`) says the same house in the
+ * numbers a plan and a section print — walls as plan lines and heights, the roof by its height,
+ * pitch and type, openings by their centre, partitions as plan lines — for whoever reads a
+ * drawing, a multimodal language model first of all. It is input only: the parser saturates it
+ * into the detailed shape before anything else reads the file (`saturateHouse` writes the
+ * result), and Save writes the detailed shape. `houseShapeOf` says which a file is in.
+ *
+ * The detailed shape is **deliberately the simplest thing that round-trips a `Surface`**:
  *
  * - One concept: a face is a list of `[x, y, z]` corners in millimetres, Z up. That is all a
  *   house is. Walls, floors and roofs are not separate types; they are read off the geometry
@@ -18,9 +27,10 @@
  *   to its back, so the layers past the core lie on its back. An exterior wall's runs from the
  *   room's side out.
  * - Openings are the same concept again: four corners lying on the face.
- * - A house can also be written in a simpler shape still (`simple-house.ts`): `walls` as plan
- *   lines, a `wallHeightMm`, `openings` by their centre and size, and a `roof` by its type and
- *   pitch. It is expanded into faces before anything else here reads the file.
+ * - A house can also be written in the simple shape (`simple-house.ts`): `walls` as plan lines,
+ *   on a storey each or all from the lowest, a `wallHeightMm`, `openings` by their centre and
+ *   size, and a `roof` by its height, pitch and type. It is saturated into faces before anything
+ *   else here reads the file.
  * - Nothing is required except the corners. `id` is minted if missing, and the tuning fields
  *   (`kind`, `loadBearing`, ...) are written only when they differ from the default.
  * - `guides` are loose two-point lines; `lines` are the same shape with a `role` — `column` or
@@ -503,6 +513,7 @@ const GEOMETRY_KEYS = new Set([
     'wallHeightMm',
     'roof',
     'openings',
+    'floorOpenings',
 ]);
 
 const toFilePoint = (p: Point3Mm): FilePoint => [p.x, p.y, p.z];

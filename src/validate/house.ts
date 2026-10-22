@@ -22,6 +22,8 @@ import { HOUSE_FILE_FORMAT, parseHouseFile, type HouseFile } from '../house/hous
 import {
     TWB_HOUSE_BASE,
     TWB_HOUSE_CONTEXT,
+    TWB_HOUSE_CONTEXT_1_URL,
+    TWB_HOUSE_CONTEXT_2_URL,
     TWB_HOUSE_CONTEXT_URL,
     TWB_HOUSE_FORMAT,
     toTwbHouse,
@@ -34,7 +36,7 @@ import { LevelBuilder, makeReport, now, type Report, type ReportLevel } from './
 import { checkVocabulary } from './vocabulary';
 
 /** Context 1, which a file may still name: read as context 2 (`withTwbContext`). */
-const TWB_HOUSE_CONTEXT_1_URL = 'https://w3id.org/twb/context/1.jsonld';
+
 
 const SHAPES_NOT_RUN =
     'The SHACL shapes are not run on a house file. They check a blueprint graph with its derived ' +
@@ -164,7 +166,12 @@ function houseReport(
     const context = doc['@context'];
     if (context === TWB_HOUSE_CONTEXT_1_URL) {
         vocabulary.info(
-            'Names context 1; read with context 2, the same terms but for the documentation’s.',
+            'Names context 1; read with context 3, the same terms but for the documentation’s and the simple shape’s.',
+            '@context'
+        );
+    } else if (context === TWB_HOUSE_CONTEXT_2_URL) {
+        vocabulary.info(
+            'Names context 2; read with context 3, the same terms but for the simple shape’s, TWB’s own in context 3.',
             '@context'
         );
     } else if (context === undefined) {

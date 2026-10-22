@@ -2,16 +2,21 @@
 /**
  * `twb`: house files and IFC from the command line.
  *
- *     twb import-ifc model.ifc [-o house.twb.jsonld] [--name "Villa Nord"]
+ *     twb import-ifc model.ifc [-o house.twb.jsonld] [--name "Villa Nord"] [--detailed]
  *     twb check house.twb.jsonld
  *     twb convert house.json [-o house.twb.jsonld]
+ *     twb saturate house.json [-o house.twb.jsonld] [--no-snap] [--clean]
  *     twb validate <file> [--rules] [--with <data.ttl>]… [--json]
  *     twb context
  *
  * `import-ifc` writes the house file to `-o` (or standard output) and the report to standard
- * error. `check` opens a house file as a tool would and lists what it had wrong; it exits 1 if
- * anything. `convert` writes an `arch/1` (or `twb/1`) file as `twb/1`. `context` prints the
- * house file's JSON-LD context.
+ * error, in the simple shape, or with `--detailed` saturated into the detailed one. `check` opens a
+ * house file as a tool would, lists what it had wrong (it exits 1 if anything) and says whether
+ * it is watertight (`watertightReport`). `convert` writes an `arch/1` (or `twb/1`) file as
+ * `twb/1`. `saturate` writes a house file in the simple shape in
+ * the detailed one, every face as its corners (`saturateHouse`); `--no-snap` keeps the partitions
+ * where the file puts them rather than on the module grid, and `--clean` heals the faces split for
+ * nothing into one (`repair: 'clean'`). `context` prints the house file's JSON-LD context.
  *
  * `validate` checks a house file, an IFC file or a TWB graph against the ontology, its catalogue
  * and its shapes (`src/validate`), with the ontology this package ships (`ontology/`). A graph's
@@ -29,15 +34,19 @@ import {
     TWB_HOUSE_CONTEXT,
     fromTwbHouse,
     loadHouse,
+    saturateHouse,
     toTwbHouse,
+    watertightReport,
+    watertightSummary,
     type HouseFile,
 } from './house';
 import type { Oxigraph } from './validate/oxigraph';
 
 const USAGE = `Usage:
-  twb import-ifc <model.ifc> [-o <house.twb.jsonld>] [--name <project name>]
+  twb import-ifc <model.ifc> [-o <house.twb.jsonld>] [--name <project name>] [--detailed]
   twb check <house.twb.jsonld>
   twb convert <house.json> [-o <house.twb.jsonld>]
+  twb saturate <house.json> [-o <house.twb.jsonld>] [--no-snap] [--clean]
   twb validate <file> [--rules] [--with <data.ttl>]... [--json]
   twb context`;
 
@@ -60,13 +69,16 @@ async function main(argv: string[]): Promise<number> {
         case 'import-ifc': {
             const out = option(args, '-o');
             const name = option(args, '--name');
+            const detailed = flag(args, '--detailed');
             const input = args[0];
             if (!input) break;
             const { house, report } = ifcToHouse(
                 readFileSync(input, 'utf8'),
                 name ? { name } : {}
             );
-            write(JSON.stringify(house, null, 2) + '\n', out);
+            // The IFC's positions are measured: its partitions stay where it has them.
+            const written = detailed ? saturateHouse(house, { snapToModule: false }).house : house;
+            write(JSON.stringify(written, null, 2) + '\n', out);
             process.stderr.write(ifcImportSummary(report).join('\n') + '\n');
             return 0;
         }
@@ -81,6 +93,7 @@ async function main(argv: string[]): Promise<number> {
                     `${house.interiorFaces} partition faces, ${house.interiorOpenings} doors in partitions.\n`
             );
             for (const p of house.problems) process.stdout.write(`- ${p}\n`);
+            process.stdout.write(watertightSummary(watertightReport(house)).join('\n') + '\n');
             return house.problems.length > 0 ? 1 : 0;
         }
         case 'convert': {
@@ -90,6 +103,20 @@ async function main(argv: string[]): Promise<number> {
             const json = JSON.parse(readFileSync(input, 'utf8')) as Record<string, unknown>;
             const arch1 = json['format'] === 'twb/1' ? fromTwbHouse(json) : json;
             write(JSON.stringify(toTwbHouse(arch1 as unknown as HouseFile), null, 2) + '\n', out);
+            return 0;
+        }
+        case 'saturate': {
+            const out = option(args, '-o');
+            const snap = !flag(args, '--no-snap');
+            const clean = flag(args, '--clean');
+            const input = args[0];
+            if (!input) break;
+            const { house, problems } = saturateHouse(readFileSync(input, 'utf8'), {
+                snapToModule: snap,
+                ...(clean ? { repair: 'clean' as const } : {}),
+            });
+            write(JSON.stringify(house, null, 2) + '\n', out);
+            for (const p of problems) process.stderr.write(`- ${p}\n`);
             return 0;
         }
         case 'context':

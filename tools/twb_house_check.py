@@ -5,7 +5,8 @@
 For each file it reports the triples the file makes, every twb: or twbd: term it uses that the
 ontology (twb.ttl and its modules) does not define, and every JSON key the context does not map (which a
 JSON-LD processor drops). The context the file names is read from the copy published at its URL
-(ontology/twb-house.context.jsonld for context 2, twb-house.context.1.jsonld for context 1), so the
+(ontology/twb-house.context.jsonld for context 3, twb-house.context.2.jsonld and .1.jsonld for
+contexts 2 and 1), so the
 check runs offline. Exits non-zero when a twb: or twbd: term is undefined.
 """
 
@@ -20,9 +21,11 @@ from twb_modules import module_files
 
 PAPER = pathlib.Path(__file__).resolve().parents[1]
 ONTO = PAPER / "ontology"
-# Context 2 (TWB 0.3.0) and context 1 before it, which put the sections' terms under twbd:.
+# Context 3 (TWB 0.5.0), context 2 (0.3.0), which put the simple shape's terms under arch:, and
+# context 1 before it, which put the sections' terms under twbd: too.
 CONTEXTS = {
-    "https://w3id.org/twb/context/2.jsonld": ONTO / "twb-house.context.jsonld",
+    "https://w3id.org/twb/context/3.jsonld": ONTO / "twb-house.context.jsonld",
+    "https://w3id.org/twb/context/2.jsonld": ONTO / "twb-house.context.2.jsonld",
     "https://w3id.org/twb/context/1.jsonld": ONTO / "twb-house.context.1.jsonld",
 }
 BASE = "https://example.org/twb/house/"

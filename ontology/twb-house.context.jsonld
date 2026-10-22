@@ -14,16 +14,20 @@
             "@id": "twb:Blueprint",
             "@context": {
                 "walls": {
-                    "@id": "arch:walls",
+                    "@id": "twb:planWalls",
                     "@type": "@json"
                 },
-                "wallHeightMm": "arch:wallHeightMm",
+                "wallHeightMm": "twb:wallHeightMm",
                 "roof": {
-                    "@id": "arch:roof",
+                    "@id": "twb:planRoof",
                     "@type": "@json"
                 },
                 "openings": {
-                    "@id": "arch:planOpenings",
+                    "@id": "twb:planOpenings",
+                    "@type": "@json"
+                },
+                "floorOpenings": {
+                    "@id": "twb:planFloorOpenings",
                     "@type": "@json"
                 }
             }
@@ -173,12 +177,12 @@
             "@type": "@json",
             "@nest": "roofOverhang"
         },
-        "guides": {
-            "@id": "arch:guides",
+        "interiorWalls": {
+            "@id": "twb:planPartitions",
             "@type": "@json"
         },
-        "interiorWalls": {
-            "@id": "arch:interiorWalls",
+        "guides": {
+            "@id": "arch:guides",
             "@type": "@json"
         },
         "cabinet": {

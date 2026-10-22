@@ -14,7 +14,7 @@
  * Pure: plan points in, a ring out.
  */
 
-import { signedArea2, type Vec2Mm } from '../core';
+import { pointInPolygon2, signedArea2, triangulatePolygon2, type Vec2Mm } from '../core';
 import type { PlanSegment } from './room-find';
 
 /** Two ends this close are one corner, mm. */
@@ -184,3 +184,262 @@ export function outerOutline(
     if (out.length < 3 || signedArea2(out) <= 0) return null;
     return out;
 }
+
+/** A region of the plan: its outline counter-clockwise, and any rings cut out of it. */
+export interface PlanRegion {
+    ring: Vec2Mm[];
+    holes: Vec2Mm[][];
+}
+
+/**
+ * What of `outer` lies outside `cut`, both outlines in plan: the part of a storey's roof that
+ * the storey over it does not stand on. Each region is counter-clockwise, its corners where the
+ * two outlines' lines meet. A `cut` strictly inside `outer` comes back as a hole in it; an
+ * `outer` inside `cut`, as nothing.
+ */
+export function outlineDifference(outer: readonly Vec2Mm[], cut: readonly Vec2Mm[]): PlanRegion[] {
+    const a = signedArea2(outer) < 0 ? [...outer].reverse() : [...outer];
+    const b = signedArea2(cut) < 0 ? [...cut].reverse() : [...cut];
+    const edgesOf = (ring: readonly Vec2Mm[]): PlanSegment[] =>
+        ring.map((p, i) => [p, ring[(i + 1) % ring.length]!] as const);
+    const touches =
+        a.some((p) => nearRing(p, b)) ||
+        b.some((p) => nearRing(p, a)) ||
+        edgesOf(a).some(([p, q]) => edgesOf(b).some(([r, s]) => crossing(p, q, r, s) !== null));
+    if (!touches) {
+        if (b.every((p) => pointInPolygon2(p, a))) return [{ ring: a, holes: [b] }];
+        if (a.every((p) => pointInPolygon2(p, b))) return [];
+        return [{ ring: a, holes: [] }];
+    }
+    return planFaces([...edgesOf(a), ...edgesOf(b)])
+        .filter((face) => {
+            const p = innerPoint(face);
+            return pointInPolygon2(p, a) && !pointInPolygon2(p, b);
+        })
+        .map((ring) => ({ ring: tidy(ring, false), holes: [] }))
+        .filter((r) => r.ring.length >= 3);
+}
+
+/**
+ * What the outlines cover together, in plan: the plate a storey's floor slabs make, however they
+ * overlap or touch. Each region is counter-clockwise, and a ring the outlines close round without
+ * covering (a courtyard, a stair's void between two slabs) is a hole in it, counter-clockwise
+ * too. Outlines that touch only at a corner are regions of their own.
+ */
+export function outlineUnion(rings: readonly (readonly Vec2Mm[])[]): PlanRegion[] {
+    const ccw = rings
+        .filter((r) => r.length >= 3 && Math.abs(signedArea2(r)) > 0)
+        .map((r) => (signedArea2(r) < 0 ? [...r].reverse() : [...r]));
+    if (ccw.length === 0) return [];
+    const edgesOf = (ring: readonly Vec2Mm[]): PlanSegment[] =>
+        ring.map((p, i) => [p, ring[(i + 1) % ring.length]!] as const);
+    const inAny = (p: Vec2Mm) => ccw.some((r) => pointInPolygon2(p, r));
+    // A face is covered where a point just inside its longest edge is: a point in the middle of
+    // it could land on an outline standing apart inside it, which the face does not reach.
+    const covered = planFaces(ccw.flatMap(edgesOf)).filter((face) => inAny(besideRing(face, 1)));
+    // The edges of covered faces with no covered face on their other side: the regions' edges,
+    // each with its region on its left.
+    const key = (p: Vec2Mm, q: Vec2Mm) => `${p.x},${p.y}>${q.x},${q.y}`;
+    const inner = new Set(covered.flatMap((f) => edgesOf(f).map(([p, q]) => key(p, q))));
+    const bounding = covered.flatMap(edgesOf).filter(([p, q]) => !inner.has(key(q, p)));
+    const from = new Map<string, PlanSegment[]>();
+    for (const e of bounding) {
+        const k = `${e[0].x},${e[0].y}`;
+        from.set(k, [...(from.get(k) ?? []), e]);
+    }
+    const used = new Set<PlanSegment>();
+    const loops: Vec2Mm[][] = [];
+    for (const start of bounding) {
+        if (used.has(start)) continue;
+        const loop: Vec2Mm[] = [];
+        let e: PlanSegment | undefined = start;
+        for (let steps = 0; e && !used.has(e) && steps <= bounding.length; steps++) {
+            used.add(e);
+            loop.push(e[0]);
+            const p: Vec2Mm = e[0];
+            const q: Vec2Mm = e[1];
+            const d: Vec2Mm = { x: q.x - p.x, y: q.y - p.y };
+            // Where two regions touch at a corner, each keeps its own: turn as far left as it goes.
+            const next: PlanSegment[] = (from.get(`${q.x},${q.y}`) ?? []).filter((n) => !used.has(n));
+            e = next
+                .map((n) => ({ n, t: turn(d, { x: n[1].x - n[0].x, y: n[1].y - n[0].y }) }))
+                .sort((x, y) => y.t - x.t)[0]?.n;
+        }
+        const ring = tidy(loop, false);
+        // An outline inside another that its faces never reached: covered beyond its edge too.
+        if (ring.length >= 3 && !inAny(besideRing(ring, -1))) loops.push(ring);
+    }
+    const outers = loops.filter((r) => signedArea2(r) > 0);
+    const holes = loops.filter((r) => signedArea2(r) < 0).map((r) => [...r].reverse());
+    // Each hole in the smallest region round it, larger than it (a region standing in a hole
+    // is not round it).
+    const round = (ring: readonly Vec2Mm[], h: readonly Vec2Mm[]) =>
+        signedArea2(ring) > signedArea2(h) && pointInPolygon2(innerPoint(h), ring);
+    const bySize = outers.sort((a, b) => signedArea2(a) - signedArea2(b));
+    return bySize
+        .map((ring, i) => ({
+            ring,
+            holes: holes.filter(
+                (h) => round(ring, h) && !bySize.slice(0, i).some((smaller) => round(smaller, h))
+            ),
+        }))
+        .sort((a, b) => signedArea2(b.ring) - signedArea2(a.ring));
+}
+
+/** A point just to the left (`side` 1) or right (-1) of the middle of a ring's longest edge. */
+function besideRing(ring: readonly Vec2Mm[], side: 1 | -1): Vec2Mm {
+    let [p, q] = [ring[0]!, ring[1 % ring.length]!];
+    ring.forEach((a, i) => {
+        const b = ring[(i + 1) % ring.length]!;
+        if (Math.hypot(b.x - a.x, b.y - a.y) > Math.hypot(q.x - p.x, q.y - p.y)) [p, q] = [a, b];
+    });
+    const len = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+    const off = (2 * JOIN_MM * side) / len;
+    return { x: (p.x + q.x) / 2 - (q.y - p.y) * off, y: (p.y + q.y) / 2 + (q.x - p.x) * off };
+}
+
+/** Whether `p` is on one of the ring's edges, within `JOIN_MM`. */
+function nearRing(p: Vec2Mm, ring: readonly Vec2Mm[]): boolean {
+    return ring.some((q, i) => {
+        const { off, t } = along(p, q, ring[(i + 1) % ring.length]!);
+        return off <= JOIN_MM && t >= 0 && t <= 1;
+    });
+}
+
+/**
+ * The bounded faces of the plan graph the segments make, each counter-clockwise: walked with
+ * the face on the left, turning as far left as the lines allow at every corner.
+ */
+function planFaces(segments: readonly PlanSegment[]): Vec2Mm[][] {
+    const { points, next } = planGraph(segments);
+    const used = new Set<string>();
+    const faces: Vec2Mm[][] = [];
+    const heading = (i: number, j: number): Vec2Mm => {
+        const p = points[i]!;
+        const q = points[j]!;
+        const len = Math.hypot(q.x - p.x, q.y - p.y);
+        return { x: (q.x - p.x) / len, y: (q.y - p.y) / len };
+    };
+    points.forEach((_, start) => {
+        for (const first of next[start]!) {
+            if (used.has(`${start}>${first}`)) continue;
+            const ring: number[] = [];
+            let [from, to] = [start, first];
+            for (let steps = 0; steps < points.length * 4 + 8; steps++) {
+                used.add(`${from}>${to}`);
+                ring.push(from);
+                const d = heading(from, to);
+                let best = -1;
+                let bestTurn = -Infinity;
+                for (const j of next[to]!) {
+                    const t = j === from ? -Math.PI : turn(d, heading(to, j));
+                    if (t > bestTurn) {
+                        bestTurn = t;
+                        best = j;
+                    }
+                }
+                [from, to] = [to, best];
+                if (from === start && to === first) break;
+            }
+            const face = ring.map((i) => points[i]!);
+            if (face.length >= 3 && signedArea2(face) > 0) faces.push(face);
+        }
+    });
+    return faces;
+}
+
+/** A point well inside a ring, concave or not: the middle of its largest triangle. */
+function innerPoint(ring: readonly Vec2Mm[]): Vec2Mm {
+    const triangles = triangulatePolygon2(ring);
+    const area = ([p, q, r]: [Vec2Mm, Vec2Mm, Vec2Mm]) =>
+        Math.abs((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x));
+    const largest = triangles.reduce<[Vec2Mm, Vec2Mm, Vec2Mm] | null>(
+        (m, t) => (!m || area(t) > area(m) ? t : m),
+        null
+    );
+    if (!largest) return ring[0]!;
+    return {
+        x: (largest[0].x + largest[1].x + largest[2].x) / 3,
+        y: (largest[0].y + largest[1].y + largest[2].y) / 3,
+    };
+}
+
+/**
+ * The outlines of the segments that stand apart from those `outline` is traced along, inside it:
+ * each a ring of walls standing on its own in the house — a courtyard. Counter-clockwise.
+ */
+export function innerOutlines(
+    segments: readonly PlanSegment[],
+    outline: readonly Vec2Mm[]
+): Vec2Mm[][] {
+    const onOutline = (s: PlanSegment) => s.every((p) => nearRing(p, outline));
+    return segmentGroups(segments)
+        .filter((group) => !group.some(onOutline))
+        .map((segs) => outerOutline(segs, true))
+        .filter(
+            (ring): ring is Vec2Mm[] =>
+                !!ring &&
+                ring.every((p) => pointInPolygon2(p, outline) && !nearRing(p, outline))
+        );
+}
+
+/** The segments in groups that meet — an end on another, or crossing — in the order given. */
+export function segmentGroups(segments: readonly PlanSegment[]): PlanSegment[][] {
+    const group = segments.map((_, i) => i);
+    const find = (i: number): number => (group[i] === i ? i : (group[i] = find(group[i]!)));
+    const meets = ([a, b]: PlanSegment, [c, d]: PlanSegment) =>
+        crossing(a, b, c, d) !== null ||
+        [a, b].some((p) => along(p, c, d).off <= JOIN_MM && between(p, c, d)) ||
+        [c, d].some((p) => along(p, a, b).off <= JOIN_MM && between(p, a, b));
+    for (let i = 0; i < segments.length; i++) {
+        for (let j = i + 1; j < segments.length; j++) {
+            if (meets(segments[i]!, segments[j]!)) group[find(i)] = find(j);
+        }
+    }
+    const groups = new Map<number, PlanSegment[]>();
+    segments.forEach((s, i) => groups.set(find(i), [...(groups.get(find(i)) ?? []), s]));
+    return [...groups.values()];
+}
+
+/**
+ * One block of a storey's plan: the outline a group of its walls traces on its own, the ring a
+ * floor on it takes (every corner the walk passed through, as `outerOutline`'s `keepStraight`),
+ * and its courtyards — the outlines of the groups standing inside it.
+ */
+export interface PlanBlock {
+    outline: Vec2Mm[];
+    floorRing: Vec2Mm[];
+    courts: Vec2Mm[][];
+}
+
+/**
+ * The blocks a storey's wall lines make: each group of lines that meet (`segmentGroups`), traced
+ * round its outside, is a block unless it stands inside another block's outline, where it is a
+ * courtyard of that block. Largest first; groups that close round nothing are left out.
+ */
+export function planBlocks(segments: readonly PlanSegment[]): PlanBlock[] {
+    const traced = segmentGroups(segments)
+        .map((segs) => ({ segs, outline: outerOutline(segs) }))
+        .filter((g): g is { segs: PlanSegment[]; outline: Vec2Mm[] } => g.outline !== null)
+        .sort((a, b) => signedArea2(b.outline) - signedArea2(a.outline));
+    const inside = (ring: readonly Vec2Mm[], of: readonly Vec2Mm[]) =>
+        ring.every((p) => pointInPolygon2(p, of) && !nearRing(p, of));
+    const blocks = traced.filter(
+        (g) => !traced.some((h) => h !== g && inside(g.outline, h.outline))
+    );
+    return blocks.map((b) => ({
+        outline: b.outline,
+        floorRing: outerOutline(b.segs, true) ?? b.outline,
+        courts: traced
+            .filter((g) => !blocks.includes(g) && inside(g.outline, b.outline))
+            .map((g) => outerOutline(g.segs, true) ?? g.outline),
+    }));
+}
+
+/** Whether `p` projects onto segment a→b, within `JOIN_MM` of its ends. */
+function between(p: Vec2Mm, a: Vec2Mm, b: Vec2Mm): boolean {
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    const t = along(p, a, b).t * len;
+    return t >= -JOIN_MM && t <= len + JOIN_MM;
+}
+

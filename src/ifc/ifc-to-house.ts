@@ -3,8 +3,24 @@
  * the exterior walls as plan lines, the storeys, the wall height, the windows and doors by their
  * centre and size, the roof by its type and pitch, the partitions, the rooms and the fittings —
  * with the build-ups read off the IFC's material layers. The faces and gables are worked out from
- * that by `expandSimpleHouse` as for a house read from drawings, and a tool that derives a building
- * (arch: the frame, the envelope, the analyses) derives it as it would from any house file.
+ * that by `expandSimpleHouse` as for a house read from drawings — it is saturated into the
+ * detailed shape on opening (`saturateHouse`) — and a tool that derives a building (arch: the
+ * frame, the envelope, the analyses) derives it as it would from any house file.
+ *
+ * **Storey by storey.** Each storey's outline is the outside of its walls' lines (`outerLoop`).
+ * Where the storeys' outlines differ (`outlinesDiffer`: a lower wing, a setback, a basement under
+ * part of the house), the walls are written on their storeys, and the rings of facade inside an
+ * outline round no room are courtyards (`courtyardsIn`); where they do not, every exterior wall
+ * runs from the lowest floor to the eaves on one outline, as it always has.
+ *
+ * **Watertight** (`repair: 'watertight'`, the default). Each storey stands on its plate
+ * (`storey-plate.ts`): where its rooms are, closed over its walls, in blocks and round
+ * courtyards as the plate is (`platedStoreys`). Each edge of a plate takes the wall that runs
+ * along it and moves onto its line (`fitRing`), the storeys stack (`stackOn`), and an edge no
+ * wall runs along is a wall of the house's own build-up. Where every storey's plate is the one
+ * outline the facade closes round, the house is as above. Then the house is opened and checked
+ * (`watertightReport`). `'clean'` only runs on lines split for nothing (`runOnLines`) and writes
+ * repeated runs once; `'none'` does none of this.
  *
  * **Heavy or light, from the layers.** A wall's core is the layer that carries: a leaf of
  * masonry or concrete of 75 mm or more (block before facing brick, the thickest of them), or else
@@ -59,6 +75,8 @@
 
 import type { FileOpeningType, HouseFile } from '../house/house-file';
 import { toTwbHouse } from '../house/house-jsonld';
+import { loadHouse } from '../house/load';
+import { watertightReport, watertightSummary, type WatertightReport } from '../house/watertight';
 import {
     DETAILED_OPENING_KINDS,
     FLOOR_STRUCTURE_LABELS,
@@ -69,8 +87,15 @@ import {
     type FloorStructure,
     type RoofStructure,
 } from './catalogue';
-import type { PartitionKind } from '../surfacekit/model';
+import {
+    outerOutline,
+    outlineDifference,
+    outlineUnion,
+    type PartitionKind,
+    type PlanRegion,
+} from '../surfacekit/model';
 import { isEnum, type StepEntity } from './step';
+import { MIN_HOLE_MM2, storeyPlate, type StoreyPlate } from './storey-plate';
 import { apply, applyDir, IfcModel, scale, type IfcLayer, type Vec3 } from './ifc-model';
 import { isTimber, matchMaterial, type LayerRole } from './ifc-materials';
 
@@ -82,6 +107,15 @@ interface P2 {
 export interface IfcImportOptions {
     /** The project's name; left out, the IFC project's or building's. */
     name?: string;
+    /**
+     * How much the import mends what the model leaves open. `'none'`: the facade as its walls'
+     * lines close round, nothing more. `'clean'`: that, with the facade's lines that only split
+     * one wall run on into one, and the partitions and separations written twice once.
+     * `'watertight'` (the default): that, with each storey on its plate (`storeyPlate`) and the
+     * facade fitted onto it, its gaps filled with walls, and the result checked
+     * (`IfcImportReport.watertight`). See `docs/ifc-import.md`.
+     */
+    repair?: 'none' | 'clean' | 'watertight';
 }
 
 /** Elements of one kind left out for one reason. */
@@ -155,6 +189,11 @@ export interface IfcImportReport {
      * glass in curtain walls is counted from. Not in the house file.
      */
     curtainGlass: CurtainGlass[];
+    /**
+     * Whether the house the import wrote closes (`watertightReport`): its leaks, its rooms that
+     * do not close, its openings in no face. Left out with `repair: 'none'`.
+     */
+    watertight?: WatertightReport;
 }
 
 /** A hole in the roof a window fills (`IfcImportReport.roofOpenings`). */
@@ -212,6 +251,14 @@ const MIN_PIECE_MM = 300;
 /** A point this close to a line is on it. */
 const ON_POINT_MM = 1;
 
+/**
+ * Why an opening nothing fills is left out where it meets the hole a door or window fills in
+ * another wall: that hole carried on through the end of the wall it meets at a corner, or through
+ * a wall standing over the one it is in, which Revit writes as an opening of its own. Written as
+ * a window or a door, it would be one that is not there.
+ */
+const CORNER_CUT_SKIPPED =
+    'an opening nothing fills, where the hole of a door or window in a wall it meets or overlaps carries on into this one: that hole, not an opening of its own.';
 /** Why a window in the roof is left out of the house file; its hole is in `roofOpenings`. */
 const ROOF_WINDOW_SKIPPED =
     "a window in the roof: the house file's simple shape has no openings in a roof; the hole it fills is in the report's roofOpenings.";
@@ -224,10 +271,37 @@ export function isIfcFileName(name: string): boolean {
     return /\.ifc$/i.test(name);
 }
 
-/** Reads an IFC file into a house file. Throws only on a file that is not IFC at all. */
+/**
+ * Reads an IFC file into a house file. Throws only on a file that is not IFC at all. With any
+ * `repair` but `'none'`, the house is opened as a tool opens it and checked (`watertightReport`,
+ * `IfcImportReport.watertight`); a roof that cannot be made over its outline is made flat.
+ */
 export function ifcToHouse(text: string, options: IfcImportOptions = {}): IfcImport {
-    return new Importer(IfcModel.read(text), options).run();
+    const result = new Importer(IfcModel.read(text), options).run();
+    if ((options.repair ?? 'watertight') === 'none') return result;
+    // The IFC's positions are measured: its partitions stay where it has them.
+    let loaded = loadHouse(result.house, { snapToModule: false });
+    const roofFailed = (p: string) =>
+        /^(roof(\[\d+\])?|the roof over "[^"]*"( \(\d+\))?): /.test(p);
+    const failed = loaded.problems.filter(roofFailed);
+    if (failed.length > 0 && isRecord(result.house['roof'])) {
+        const { ridge: _ridge, highSide: _high, ...roof } = result.house['roof'];
+        result.house['roof'] = { ...roof, type: 'flat', pitchDeg: 0 };
+        const change: ImportChange = {
+            id: 'roof/capped',
+            title: 'The roof made flat',
+            detail: `The roof could not be made over the outline (${failed.join(' ')}): it is made flat at the eaves, so the house is closed at its top.`,
+        };
+        result.report.changes.push(change);
+        result.report.warnings.push(change.detail);
+        loaded = loadHouse(result.house, { snapToModule: false });
+    }
+    result.report.watertight = watertightReport(loaded);
+    return result;
 }
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+    typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /** The report as lines of text: for the house file's notes, a status line, the CLI. */
 export function ifcImportSummary(r: IfcImportReport): string[] {
@@ -261,6 +335,7 @@ export function ifcImportSummary(r: IfcImportReport): string[] {
         lines.push(`Materials guessed: ${r.guessedMaterials.join('; ')}.`);
     }
     for (const w of r.warnings) lines.push(w);
+    if (r.watertight) lines.push(watertightSummary(r.watertight)[0]!);
     for (const s of r.skipped) {
         const names =
             s.names.length > 0
@@ -328,7 +403,14 @@ export interface CurtainGlass {
     panes: number;
 }
 
-type WallRole = 'exterior' | 'partition' | 'foundation' | 'parapet' | 'short' | 'lining';
+type WallRole =
+    | 'exterior'
+    | 'partition'
+    | 'foundation'
+    | 'parapet'
+    | 'short'
+    | 'lining'
+    | 'outside';
 
 interface LivingStorey {
     name: string;
@@ -438,6 +520,15 @@ class Importer {
         }
         const standing = walls.filter((w) => !role.has(w) && w.zHi - w.zLo >= MIN_WALL_MM);
         const onGround = standing.filter((w) => w.zLo < base + 400);
+        // Storey by storey: where the storeys' facades close round outlines of their own (a
+        // lower wing, a setback, a basement under part of the house), each stands on its own.
+        const standsOn = (st: { elev: number }) =>
+            standing.filter((w) => w.zLo <= st.elev + 400 && w.zHi >= st.elev + STOREY_WALL_MM);
+        // Each storey's outline is the outside of all its walls' lines, joined where they meet:
+        // what the facade is, whatever the IFC says is external.
+        const ownLoops = living.map((st) => outerLoop(standsOn(st)));
+        const ownStepped = outlinesDiffer(ownLoops);
+        const repair = this.options.repair ?? 'watertight';
         const flagged = onGround.filter((w) => w.isExternal === true);
         let loop = flagged.length >= 3 ? findLoop(flagged) : null;
         if (!loop) loop = findLoop(onGround);
@@ -468,18 +559,20 @@ class Importer {
                 outlineStorey = k;
             }
         });
-        if (outlineStorey > 0) {
-            const m2 = (a: number) => `${Math.round(a / 1e6).toLocaleString('en')} m²`;
-            this.change(
-                'outline/storey',
-                `The outline read on ${living[outlineStorey]!.name}`,
-                `The outline is read on ${living[outlineStorey]!.name}, whose facade closes round ${m2(loopArea(loop))}${roomPoints.length > 0 ? ` and ${roomsIn(loop)} of the ${roomPoints.length} rooms` : ''}; ` +
-                    (lowestArea > 0
-                        ? `the lowest floor's (${living[0]!.name}) closes round ${m2(lowestArea)}${roomPoints.length > 0 ? ` and ${lowestRooms}` : ''}. `
-                        : `the lowest floor's (${living[0]!.name}) closes round nothing. `) +
-                    'The house file runs every exterior wall from the lowest floor, so the walls under it are built as partitions.'
-            );
-        }
+        // Reported once it is known that the storeys share the outline.
+        const m2Of = (a: number) => `${Math.round(a / 1e6).toLocaleString('en')} m²`;
+        const outlineStoreyChange: [string, string, string] | null =
+            outlineStorey === 0
+                ? null
+                : [
+                      'outline/storey',
+                      `The outline read on ${living[outlineStorey]!.name}`,
+                      `The outline is read on ${living[outlineStorey]!.name}, whose facade closes round ${m2Of(loopArea(loop))}${roomPoints.length > 0 ? ` and ${roomsIn(loop)} of the ${roomPoints.length} rooms` : ''}; ` +
+                          (lowestArea > 0
+                              ? `the lowest floor's (${living[0]!.name}) closes round ${m2Of(lowestArea)}${roomPoints.length > 0 ? ` and ${lowestRooms}` : ''}. `
+                              : `the lowest floor's (${living[0]!.name}) closes round nothing. `) +
+                          'The house file runs every exterior wall from the lowest floor, so the walls under it are built as partitions.',
+                  ];
         // A party wall on the outline (one dwelling of a pair) stands on the middle of its own
         // dwelling's leaf; its corners are found again from that line.
         if (loop) {
@@ -487,7 +580,98 @@ class Importer {
             const moved = loop.walls.filter((w) => isPartyWall(w) && onRoomLeaf(w, ring));
             if (moved.length > 0) loop = findLoop(loop.walls) ?? loop;
         }
-        if (!loop) {
+        // Watertight: each storey on its plate (`storeyPlate`), its facade fitted onto it —
+        // unless every storey's plate is the one outline the facade already closes round.
+        /** Whether a wall stands over most of storey `k`'s height, as a partition's storeys are. */
+        const spansStorey = (w: Wall, k: number): boolean => {
+            const lo = living[k]!.elev;
+            const hi = living[k + 1]?.elev ?? lo + 3000;
+            return Math.min(w.zHi, hi) - Math.max(w.zLo, lo) >= Math.min(1500, 0.6 * (hi - lo));
+        };
+        const plated =
+            repair === 'watertight'
+                ? this.platedStoreys(
+                      living,
+                      standsOn,
+                      (k) => standing.filter((w) => spansStorey(w, k)),
+                      ownLoops,
+                      spaces,
+                      base
+                  )
+                : null;
+        const fitted =
+            plated &&
+            !(
+                !ownStepped &&
+                loop &&
+                plated.every(
+                    (st) =>
+                        st.blocks.length === 1 &&
+                        st.blocks[0]!.courts.length === 0 &&
+                        sameOutline(st.blocks[0]!.ring, loop!.corners.map((c) => c.at))
+                )
+            )
+                ? plated
+                : null;
+        const stepped = fitted !== null || ownStepped;
+        if (!stepped && outlineStoreyChange) this.change(...outlineStoreyChange);
+        /** Each storey's own loop, where the walls are written storey by storey. */
+        const storeyLoops: NonNullable<typeof loop>[] = [];
+        /** Each storey's courtyards: rings of facade inside its outline, round no room. */
+        const courtLoops: NonNullable<typeof loop>[][] = living.map(() => []);
+        if (fitted) {
+            this.reportPlates(living, fitted);
+        } else if (stepped) {
+            ownLoops.forEach((own, k) => {
+                // A storey whose facade does not close stands on the nearest one's below it, or above.
+                const near =
+                    own ??
+                    [...ownLoops.slice(0, k)].reverse().find((l) => l) ??
+                    ownLoops.slice(k + 1).find((l) => l)!;
+                let found = near;
+                const ring = found.corners.map((c) => c.at);
+                if (found.walls.some((w) => isPartyWall(w) && onRoomLeaf(w, ring)))
+                    found = findLoop(found.walls) ?? found;
+                storeyLoops.push(found);
+            });
+            living.forEach((st, k) => {
+                const ring = storeyLoops[k]!.corners.map((c) => c.at);
+                const rooms = spaceBoxes
+                    .filter(({ box }) => box && Math.abs(box.min.z - st.elev) <= 400)
+                    .map(({ box }) => ({ x: (box!.min.x + box!.max.x) / 2, y: (box!.min.y + box!.max.y) / 2 }));
+                courtLoops[k] = courtyardsIn(standsOn(st), storeyLoops[k]!.walls, ring, rooms);
+            });
+            const courts = courtLoops.flat().length;
+            if (courts > 0) {
+                this.change(
+                    'outline/courtyards',
+                    `${courts} courtyard${courts === 1 ? '' : 's'} left open`,
+                    `${courts} ring${courts === 1 ? '' : 's'} of facade round no room inside the outline ${courts === 1 ? 'is a courtyard' : 'are courtyards'}: ` +
+                        'its walls are written as exterior walls, and the floors and roofs are open over it.'
+                );
+            }
+            const m2 = (a: number) => `${Math.round(a / 1e6).toLocaleString('en')} m²`;
+            const each = living
+                .map((st, k) => `${st.name} ${m2(loopArea(storeyLoops[k]!))}`)
+                .join(', ');
+            this.change(
+                'outline/storeys',
+                'Each storey on an outline of its own',
+                `The storeys' facades close round outlines of their own (${each}): each storey's exterior walls are written on that storey, ` +
+                    'and what of a storey the one above does not stand on is roofed flat at its top.'
+            );
+            const lost = ownLoops
+                .map((l, k) => (l ? null : living[k]!.name))
+                .filter((n): n is string => n !== null);
+            if (lost.length > 0) {
+                this.change(
+                    'outline/storeys/borrowed',
+                    `${lost.join(', ')} on the outline of the storey nearest ${lost.length === 1 ? 'it' : 'them'}`,
+                    `The facade of ${lost.join(', ')} does not close: ${lost.length === 1 ? 'it stands' : 'they stand'} on the outline of the nearest storey that does.`
+                );
+            }
+        }
+        if (!loop && !stepped) {
             this.change(
                 'outline',
                 'Every wall on the lowest floor written as an exterior wall',
@@ -495,24 +679,75 @@ class Importer {
             );
         }
         const loopWalls = loop?.walls ?? onGround.filter((w) => w.isExternal !== false);
-        const loopLines: { a: P2; b: P2; walls: Wall[] }[] = loop
-            ? loop.walls.map((w, i) => ({
-                  a: loop!.corners[i]!.at,
-                  b: loop!.corners[(i + 1) % loop!.corners.length]!.at,
-                  walls: [w],
-              }))
-            : loopWalls.map((w) => ({ a: w.a, b: w.b, walls: [w] }));
-        for (const w of loopWalls) role.set(w, 'exterior');
-        // A wall of an upper storey on one of those lines is the same exterior wall, higher up.
+        const allBands = living.map((_, i) => i);
+        const linesOf = (l: NonNullable<typeof loop>, band: number[], court = false): LoopLine[] =>
+            l.walls.map((w, i) => ({
+                a: l.corners[i]!.at,
+                b: l.corners[(i + 1) % l.corners.length]!.at,
+                walls: [w],
+                band,
+                ring: l.corners.map((c) => c.at),
+                court,
+            }));
+        const loopLines: LoopLine[] = fitted
+            ? fitted.flatMap((st, k) =>
+                  st.blocks.flatMap((b) => [
+                      ...fittedLines(b, [k], false),
+                      ...b.courts.flatMap((c) => fittedLines(c, [k], true)),
+                  ])
+              )
+            : stepped
+            ? storeyLoops.flatMap((l, k) => [
+                  ...linesOf(l, [k]),
+                  ...courtLoops[k]!.flatMap((c) => linesOf(c, [k], true)),
+              ])
+            : loop
+              ? linesOf(loop, allBands)
+              : loopWalls.map((w) => ({ a: w.a, b: w.b, walls: [w], band: allBands, ring: [], court: false }));
+        for (const l of loopLines) for (const w of l.walls) role.set(w, 'exterior');
+        // A wall of an upper storey on one of those lines is the same exterior wall, higher up;
+        // storey by storey, a wall of the storey on one of its lines.
         for (const w of standing) {
-            if (role.has(w)) continue;
-            const line = loopLines.find((l) => onSameLine(w, l.a, l.b));
-            if (line) {
+            if (!stepped && role.has(w)) continue;
+            const on = (l: LoopLine) =>
+                !l.walls.includes(w) &&
+                (fitted
+                    ? (onSameLine(w, l.a, l.b) || alongSide(w, l)) && !runsInto(w, l.ring)
+                    : onSameLine(w, l.a, l.b)) &&
+                (!stepped ||
+                    (w.zLo <= living[l.band[0]!]!.elev + 400 &&
+                        w.zHi >= living[l.band[0]!]!.elev + STOREY_WALL_MM) ||
+                    // Fitted, one along most of the storey's height: a ribbon of glass over a
+                    // parapet the model leaves out.
+                    (!!fitted && spansStorey(w, l.band[0]!)));
+            for (const line of stepped ? loopLines.filter(on) : loopLines.filter(on).slice(0, 1)) {
                 role.set(w, 'exterior');
                 line.walls.push(w);
             }
         }
+        if (repair !== 'none') {
+            const before = loopLines.length;
+            runOnLines(loopLines);
+            if (loopLines.length < before) {
+                this.change(
+                    'clean/lines',
+                    `${before - loopLines.length} facade line${before - loopLines.length === 1 ? '' : 's'} run on into the next`,
+                    `${before - loopLines.length} line${before - loopLines.length === 1 ? '' : 's'} of the facade in line with the next and alike in everything but ${before - loopLines.length === 1 ? 'its' : 'their'} extent ` +
+                        '(build-up, party or not, storey) run on into one: one wall, not a wall split for nothing.'
+                );
+            }
+        }
         const exterior = walls.filter((w) => role.get(w) === 'exterior');
+        const gaps = fitted ? loopLines.filter((l) => l.walls.length === 0) : [];
+        if (gaps.length > 0) {
+            const metres = gaps.reduce((sum, l) => sum + dist2(l.a, l.b), 0) / 1000;
+            this.change(
+                'facade/filled',
+                `${gaps.length} gap${gaps.length === 1 ? '' : 's'} in the facade filled`,
+                `${gaps.length} stretch${gaps.length === 1 ? '' : 'es'} of the storeys' plates' edges (${metres.toFixed(1)} m together) ${gaps.length === 1 ? 'has' : 'have'} no wall of the IFC along ${gaps.length === 1 ? 'it' : 'them'} ` +
+                    '(a facade or a curtain wall the model leaves out): each is written as an exterior wall of the house\'s own build-up, on the line of the plate\'s edge set out by half a wall.'
+            );
+        }
         // Exterior walls higher up, off the ground floor's outline, closing round a storey of
         // their own: a setback or an overhang. (A party wall says it is external too, but closes
         // round nothing.)
@@ -522,7 +757,7 @@ class Importer {
             );
             return findLoop(upper)?.walls ?? [];
         });
-        if (offOutline.length > 0 && loop) {
+        if (offOutline.length > 0 && loop && !stepped) {
             this.change(
                 'upper-walls',
                 `${offOutline.length} exterior wall${offOutline.length === 1 ? '' : 's'} of an upper storey built as partitions`,
@@ -530,15 +765,33 @@ class Importer {
                     'the house file runs every exterior wall from the lowest floor to the eaves, so they are written as partitions.'
             );
         }
-        const outline = loopLines.map((l) => l.a);
+        /** Each storey's outlines, storey by storey: its blocks', or its own loop's. */
+        const storeyRings: P2[][][] = fitted
+            ? fitted.map((st) => st.blocks.map((b) => b.ring))
+            : storeyLoops.map((l) => [l.corners.map((c) => c.at)]);
+        const largest = (rings: readonly P2[][]) =>
+            rings.reduce((m, r) => (Math.abs(signedArea(r)) > Math.abs(signedArea(m)) ? r : m));
+        const outline = stepped ? largest(storeyRings.flat()) : loopLines.map((l) => l.a);
+        /** The outline a wall of the facade is on — its storey's, or its courtyard's — and which. */
+        const outlineOf = (w: Wall): { ring: readonly P2[]; court: boolean } => {
+            const line = stepped ? loopLines.find((l) => l.walls.includes(w)) : undefined;
+            return line ? { ring: line.ring, court: line.court } : { ring: outline, court: false };
+        };
 
         // ---- The eave: where the exterior walls end, or the flat roof's underside if it is lower.
         const roofs = this.roofSlabs();
         const roofBox = box3(roofs.flatMap((r) => m.bodyPoints(r)));
         // Each facade's top is its highest wall; the eave is the lowest of those (a gable rises past it).
+        const topLines = stepped
+            ? loopLines.filter((l) => l.band[0] === living.length - 1)
+            : loopLines;
         const wallsTop =
-            loopLines.length > 0
-                ? Math.min(...loopLines.map((l) => Math.max(...l.walls.map((w) => w.zHi))))
+            topLines.some((l) => l.walls.length > 0)
+                ? Math.min(
+                      ...topLines
+                          .filter((l) => l.walls.length > 0)
+                          .map((l) => Math.max(...l.walls.map((w) => w.zHi)))
+                  )
                 : base + 2400;
         const roofShape = this.roofShape(roofs);
         let eave = wallsTop;
@@ -564,7 +817,9 @@ class Importer {
                 `The facade or a roof stops at ${Math.round(eave - base)} mm, under the top storey (${topFloor.name}, at ${Math.round(topFloor.elev - base)} mm): ` +
                     `the house file has one eave over every storey, so it is put at ${Math.round(raised - base)} mm` +
                     (over.length > 0 ? ', under the lowest roof over the top storey' : ', the top of the highest wall') +
-                    ', and the roofs under it (terraces, canopies, lower wings) are left out.'
+                    (stepped
+                        ? '.'
+                        : ', and the roofs under it (terraces, canopies, lower wings) are left out.')
             );
             eave = raised;
         }
@@ -599,7 +854,55 @@ class Importer {
             }
         }
         const partitions = rest.filter((w) => !role.has(w));
+        /**
+         * Watertight, whether a wall stands on one of storey `k`'s blocks — inside it, or along
+         * its edge — and not out in a courtyard: a retaining wall round the site, a garden wall,
+         * does not.
+         */
+        const onPlate = (w: Wall, k: number): boolean => {
+            if (!fitted) return true;
+            const mid = mul2(add2(w.a, w.b), 0.5);
+            const reach = w.thickness + CORNER_REACH_MM;
+            const near = (r: readonly P2[]) =>
+                edges(r).some(([a, b]) => distToSegment(mid, a, b) <= reach);
+            return fitted[k]!.blocks.some(
+                (b) =>
+                    (insidePolygon(mid, b.ring) || near(b.ring)) &&
+                    !b.courts.some((c) => insidePolygon(mid, c.ring) && !near(c.ring))
+            );
+        };
+        /** The walls of the IFC on no storey's plate, on every storey they stand on. */
+        const offPlate = new Set(
+            partitions.filter((w) => {
+                const bands = this.bands(w, storeys);
+                return bands.length > 0 && !bands.some((k) => onPlate(w, k));
+            })
+        );
+        /**
+         * The storeys each partition stands on: a partition's own; storey by storey, a wall of
+         * the facade's where it is on none of that storey's lines (a block's facade, inside the
+         * wings round its foot).
+         */
+        const partitionBands = new Map<Wall, number[]>(
+            partitions
+                .filter((w) => !offPlate.has(w))
+                .map((w) => [w, this.bands(w, storeys).filter((k) => onPlate(w, k))])
+        );
+        if (stepped) {
+            for (const w of exterior) {
+                const bands = this.bands(w, storeys).filter(
+                    (k) =>
+                        !loopLines.some((l) => l.band[0] === k && l.walls.includes(w)) &&
+                        onPlate(w, k)
+                );
+                if (bands.length > 0) partitionBands.set(w, bands);
+            }
+        }
         for (const w of partitions) {
+            if (offPlate.has(w)) {
+                role.set(w, 'outside');
+                continue;
+            }
             role.set(w, 'partition');
             // A party wall stands on a leaf, as every wall stands on its core: the one with the
             // other on its back, where a partition's layers past its core lie.
@@ -615,6 +918,11 @@ class Importer {
                 this.skip(
                     w.e,
                     "a parapet over the roof: arch's flat-roof expression builds its own, of the exterior wall, 200 mm over the roofing."
+                );
+            if (r === 'outside')
+                this.skip(
+                    w.e,
+                    "a wall off the building's plate on every storey it stands on (a retaining wall round the site, a garden wall): not a wall of the house."
                 );
             if (r === 'short')
                 this.skip(
@@ -633,10 +941,15 @@ class Importer {
         }
 
         // ---- The origin: the south-west corner of the exterior walls' lines.
-        const planPts = outline.length > 0 ? outline : walls.flatMap((w) => [w.a, w.b]);
+        const planPts = stepped
+            ? loopLines.flatMap((l) => [l.a, l.b])
+            : outline.length > 0
+              ? outline
+              : walls.flatMap((w) => [w.a, w.b]);
         const ox = Math.min(...planPts.map((p) => p.x));
         const oy = Math.min(...planPts.map((p) => p.y));
         const T = (p: P2): [number, number] => [Math.round((p.x - ox) * 10) / 10, Math.round((p.y - oy) * 10) / 10];
+        const Tmm = (p: P2): [number, number] => [Math.round(p.x - ox), Math.round(p.y - oy)];
         const Z = (z: number): number => Math.round(z - base);
         const storeyName = (k: number): string | undefined =>
             storeys.length > 1 ? storeys[k]!.name : undefined;
@@ -644,11 +957,15 @@ class Importer {
         // ---- The exterior walls, each named by the way it faces.
         const area = signedArea(outline);
         const usedNames = new Map<string, number>();
+        /** Storey by storey, a wall's name starts with its storey's. */
+        const prefixOf = (l: LoopLine) =>
+            stepped ? `${slugOf(living[l.band[0]!]!.name)}-` : '';
         const wallLines = loopLines.map((l) => {
             const d = norm2(sub2(l.b, l.a));
             // Outward: to the right of a counter-clockwise outline.
-            const out = area >= 0 ? { x: d.y, y: -d.x } : { x: -d.y, y: d.x };
-            const facing = compass(out);
+            const sign = stepped ? signedArea(l.ring) * (l.court ? -1 : 1) : area;
+            const out = sign >= 0 ? { x: d.y, y: -d.x } : { x: -d.y, y: d.x };
+            const facing = `${prefixOf(l)}${l.void ? 'void-' : l.court ? 'court-' : ''}${compass(out)}`;
             const n = (usedNames.get(facing) ?? 0) + 1;
             usedNames.set(facing, n);
             return { ...l, id: n === 1 ? facing : `${facing}-${n}` };
@@ -660,16 +977,16 @@ class Importer {
 
         // ---- Partitions: one run per storey each stands on, its ends on the wall they meet.
         const allLines: PlanLine[] = [
-            ...loopLines.map((l) => ({ a: l.a, b: l.b, band: storeys.map((_, i) => i) })),
+            ...loopLines.map((l) => ({ a: l.a, b: l.b, band: l.band })),
             // A party wall stood on one leaf reaches as far as its other leaf and the linings on
             // it: a partition meeting it there ends on its line all the same.
-            ...partitions.map((w) => {
+            ...[...partitionBands].map(([w, band]) => {
                 const party = isPartyWall(w);
                 const reach = party ? mul2(w.dir, w.thickness) : { x: 0, y: 0 };
                 return {
                     a: sub2(w.a, reach),
                     b: add2(w.b, reach),
-                    band: this.bands(w, storeys),
+                    band,
                     w,
                     across: acrossOf(w, liningsOf.get(w) ?? []),
                     ...(party ? { reach: PARTITION_REACH_MM + w.thickness } : {}),
@@ -678,8 +995,7 @@ class Importer {
         ];
         /** Each partition's run on each storey it stands on, written once the rooms are parted. */
         const runs: (PlanLine & { w: Wall })[] = [];
-        for (const w of partitions) {
-            const bands = this.bands(w, storeys);
+        for (const [w, bands] of partitionBands) {
             if (bands.length === 0) {
                 this.skip(w.e, 'a partition that stands on no storey for most of its height.');
                 continue;
@@ -698,13 +1014,36 @@ class Importer {
         // ---- Openings.
         const openings: Record<string, unknown>[] = [];
         let doorSides = 0;
-        const hostLine = (w: Wall): { a: P2; b: P2 } | null => {
-            if (role.get(w) === 'exterior')
-                return wallLines.find((l) => l.walls.includes(w)) ?? null;
-            if (role.get(w) === 'partition') return { a: w.a, b: w.b };
+        /**
+         * The line an opening in `w` is placed on. Fitted, a wall of the facade may run along
+         * several lines (a curtain wall along a stepped facade): the one on the opening's storey
+         * nearest the opening (`pts`); on a storey where it is on no line, its partition's.
+         */
+        const hostLine = (w: Wall, pts?: readonly Vec3[]): { a: P2; b: P2 } | null => {
+            if (role.get(w) === 'exterior') {
+                const on = wallLines.filter((l) => l.walls.includes(w));
+                const box = fitted && pts && on.length > 1 ? box3(pts) : null;
+                if (!box) return on[0] ?? null;
+                const mid = { x: (box.min.x + box.max.x) / 2, y: (box.min.y + box.max.y) / 2 };
+                const k = bandOf((box.min.z + box.max.z) / 2);
+                const own = on.filter((l) => l.band.includes(k));
+                // On a storey where it is no line of the facade, the wall is a partition.
+                if (own.length === 0 && partitionBands.get(w)?.includes(k))
+                    return { a: w.a, b: w.b };
+                return (own.length > 0 ? own : on).reduce((m, l) =>
+                    distToSegment(mid, l.a, l.b) < distToSegment(mid, m.a, m.b) ? l : m
+                );
+            }
+            if (role.get(w) === 'partition') {
+                // Fitted, only on a storey it is built on: one off the plate below it is not.
+                const box = fitted && pts ? box3(pts) : null;
+                if (box && !partitionBands.get(w)?.includes(bandOf((box.min.z + box.max.z) / 2)))
+                    return null;
+                return { a: w.a, b: w.b };
+            }
             if (role.get(w) === 'lining') {
                 const lined = walls.find((v) => v !== w && isLining(w, v));
-                return lined ? hostLine(lined) : null;
+                return lined ? hostLine(lined, pts) : null;
             }
             return null;
         };
@@ -712,6 +1051,8 @@ class Importer {
         /** The windows in the roof, each with the points of the hole it fills. */
         const roofHoles: { e: StepEntity; pts: Vec3[] }[] = [];
         const filled = new Set<number>();
+        /** The holes the doors and windows fill, each with the wall it is in (`CORNER_CUT_SKIPPED`). */
+        const filledHoles: { host: number | null; box: Box3 }[] = [];
         /** The windows, kept back to be coupled where only a sliver of wall is between them. */
         const windows: CouplingWindow<Record<string, unknown>>[] = [];
         /** The windows made of curtain walls, with the panels each holds: measured once placed. */
@@ -721,6 +1062,8 @@ class Importer {
         for (const f of fillers) {
             const opening = m.openingFilledBy(f);
             if (opening) filled.add(opening.id);
+            const hole = opening ? box3(m.bodyPoints(opening)) : null;
+            if (opening && hole) filledHoles.push({ host: m.hostOf(opening)?.id ?? null, box: hole });
             const host = opening
                 ? m.hostOf(opening)
                 : (this.nearestWall(f, walls) ?? this.curtainCrossed(f, walls));
@@ -737,12 +1080,12 @@ class Importer {
                 this.skip(f, 'a window or door in something that is not a wall.');
                 continue;
             }
-            const line = hostLine(wall);
+            const pts = opening ? m.bodyPoints(opening) : m.bodyPoints(f);
+            const line = hostLine(wall, pts);
             if (!line) {
                 this.skip(f, `a window or door in a wall that is left out (${role.get(wall)}).`);
                 continue;
             }
-            const pts = opening ? m.bodyPoints(opening) : m.bodyPoints(f);
             const o = this.placeOpening(pts, line, bandOf, storeys);
             if (!o) {
                 this.skip(f, 'a window or door whose size could not be read.');
@@ -799,15 +1142,15 @@ class Importer {
         // A curtain wall set in a wall: a window in it, divided as its mullions and transoms are.
         let setInRead = 0;
         for (const [cw, host] of setIn) {
-            const line = hostLine(host);
-            if (!line) {
-                this.skip(cw.e, `a curtain wall set in a wall that is left out (${role.get(host)}).`);
-                continue;
-            }
             const pts = [
                 { x: cw.a.x, y: cw.a.y, z: cw.zLo },
                 { x: cw.b.x, y: cw.b.y, z: cw.zHi },
             ];
+            const line = hostLine(host, pts);
+            if (!line) {
+                this.skip(cw.e, `a curtain wall set in a wall that is left out (${role.get(host)}).`);
+                continue;
+            }
             const o = this.placeOpening(pts, line, bandOf, storeys);
             if (!o) {
                 this.skip(cw.e, 'a curtain wall whose size could not be read.');
@@ -894,14 +1237,24 @@ class Importer {
             if (!cw.curtain) continue;
             const line = hostLine(cw);
             if (!line) continue;
-            const d = norm2(sub2(line.b, line.a));
             const len = dist2(cw.a, cw.b);
-            const along = (t: number) => dot2(sub2(add2(cw.a, mul2(cw.dir, t)), line.a), d);
+            /** A point `t` along the wall, at height `z`, on the line its opening there is on. */
+            const onLine = (t: number, z: number): P2 => {
+                const p = add2(cw.a, mul2(cw.dir, t));
+                const own = hostLine(cw, [{ ...p, z }]) ?? line;
+                const e = norm2(sub2(own.b, own.a));
+                return add2(own.a, mul2(e, dot2(sub2(p, own.a), e)));
+            };
             const before = bays;
             storeys.forEach((st, k) => {
                 const z0 = Math.max(cw.zLo, st.elev);
                 const z1 = Math.min(cw.zHi, st.top - BAY_HEAD_MM);
                 if (z1 - z0 < MIN_WALL_MM) return;
+                // Fitted, only on a storey it is built on: not where it stands off the plate.
+                const built =
+                    wallLines.some((l) => l.walls.includes(cw) && l.band.includes(k)) ||
+                    !!partitionBands.get(cw)?.includes(k);
+                if (fitted && !built) return;
                 const posts = gridLines(
                     cw.curtain!.mullions
                         .filter((g) => Math.min(g.zHi, z1) - Math.max(g.zLo, z0) > (z1 - z0) / 2)
@@ -931,7 +1284,7 @@ class Importer {
                     );
                     const entry: Record<string, unknown> = {
                         kind: 'window',
-                        at: T(add2(line.a, mul2(d, along(mid)))),
+                        at: T(onLine(mid, (z0 + z1) / 2)),
                         widthMm: Math.round(hi - lo),
                         heightMm: Math.round(z1 - z0),
                         sillMm: Math.round(z0 - st.elev),
@@ -967,7 +1320,15 @@ class Importer {
             const host = m.hostOf(op);
             const wall = host ? walls.find((w) => w.e.id === host.id) : undefined;
             if (!wall) continue;
-            const line = hostLine(wall);
+            const box = box3(m.bodyPoints(op));
+            if (
+                box &&
+                filledHoles.some((h) => h.host !== wall.e.id && boxesMeet(box, h.box, ON_POINT_MM))
+            ) {
+                this.skip(op, CORNER_CUT_SKIPPED);
+                continue;
+            }
+            const line = hostLine(wall, m.bodyPoints(op));
             const o = line ? this.placeOpening(m.bodyPoints(op), line, bandOf, storeys) : null;
             if (!o) continue;
             const door = o.sill <= 50;
@@ -1000,7 +1361,39 @@ class Importer {
         };
         if (roofShape.ridge) roof['ridge'] = roofShape.ridge;
         if (roofShape.highSide) roof['highSide'] = roofShape.highSide;
-        const overhang = this.overhang(roofBox, outline, roofShape);
+        // Storey by storey, the roof over the top storey runs past the top storey's walls.
+        const overhang = stepped
+            ? this.overhang(
+                  box3(
+                      roofs
+                          .map((r) => m.bodyPoints(r))
+                          .filter((pts) => (box3(pts)?.min.z ?? -Infinity) >= topFloor.elev + STOREY_WALL_MM)
+                          .flat()
+                  ),
+                  largest(storeyRings[storeyRings.length - 1]!),
+                  roofShape
+              )
+            : this.overhang(roofBox, outline, roofShape);
+        if (stepped) roof['storey'] = topFloor.name;
+        // A void is roofed flat on the last storey it rises through: the one with no block over
+        // it, or a courtyard open to the sky.
+        const voidRoofs = (fitted ?? []).flatMap((st, k) =>
+            st.blocks
+                .flatMap((b) => b.courts)
+                .filter((c) => {
+                    if (!c.void) return false;
+                    const at = interiorPoint(c.ring);
+                    const over = fitted![k + 1]?.blocks.find((b) => insidePolygon(at, b.ring));
+                    const upper = over?.courts.find((u) => insidePolygon(at, u.ring));
+                    return !over || (!!upper && !upper.void);
+                })
+                .map((c) => ({
+                    type: 'flat',
+                    pitchDeg: 0,
+                    storey: living[k]!.name,
+                    outline: c.ring.map(Tmm),
+                }))
+        );
 
         // ---- Build-ups.
         const envelope: Record<string, unknown> = {};
@@ -1046,7 +1439,7 @@ class Importer {
         let insulated = false;
         if (extWall) {
             const exteriorLayers = (w: Wall) => {
-                const inside = this.insideOut(w, outline);
+                const inside = this.insideOut(w, outlineOf(w).ring, outlineOf(w).court);
                 return this.fileLayers(inside, inside.indexOf(w.layers[w.core]!), 'wall');
             };
             envelope['exteriorWall'] = { layers: exteriorLayers(extWall) };
@@ -1057,7 +1450,7 @@ class Importer {
                 extWall,
                 exteriorLayers
             );
-            const inside = this.insideOut(extWall, outline);
+            const inside = this.insideOut(extWall, outlineOf(extWall).ring, outlineOf(extWall).court);
             facade = facadeOf(inside);
             insulated = inside.some(
                 (l) => matchMaterial(l.material).role === 'insulation' && l.thickness >= 30
@@ -1082,7 +1475,7 @@ class Importer {
         for (const kind of PARTITION_KINDS) {
             const key = kindBuildUp(kind);
             const of = [
-                ...partitions.filter((w) => kindOf(w) === kind),
+                ...[...partitionBands.keys()].filter((w) => kindOf(w) === kind),
                 ...(kind === 'party' ? exteriorParty : []),
             ];
             const pick = longestBy(
@@ -1171,6 +1564,41 @@ class Importer {
             allLines.filter((l) => !l.w)
         );
         parts.push(...bridgeEnds([...runs, ...parts], allLines.filter((l) => !l.w)));
+        // Watertight, the openings stairs rise through, cut out of the floors they rise to.
+        const floorOpenings =
+            repair === 'watertight'
+                ? this.stairOpenings(
+                      storeys,
+                      (k) => (stepped ? storeyRings[k]! : [outline]),
+                      (k) =>
+                          [...runs, ...parts, ...loopLines]
+                              .filter((l) => l.band.includes(k))
+                              .map((l) => [l.a, l.b] as [P2, P2])
+                  )
+                : [];
+        if (floorOpenings.length > 0) {
+            // A separation along an opening's edge parted the room from the stair's void: the
+            // floor's edge does now.
+            const alongOpening = (l: PlanLine) =>
+                floorOpenings.some(
+                    (o) =>
+                        l.band.includes(o.k) &&
+                        edges(o.ring).some(
+                            ([a, b]) =>
+                                distToSegment(l.a, a, b) <= ON_LINE_MM &&
+                                distToSegment(l.b, a, b) <= ON_LINE_MM
+                        )
+                );
+            const kept = parts.filter((l) => !alongOpening(l));
+            parts.splice(0, parts.length, ...kept);
+            const m2 = floorOpenings.reduce((s, o) => s + Math.abs(signedArea(o.ring)), 0) / 1e6;
+            this.change(
+                'floor/openings',
+                `${floorOpenings.length} stair opening${floorOpenings.length === 1 ? '' : 's'} cut out of the floors`,
+                `${floorOpenings.length} opening${floorOpenings.length === 1 ? '' : 's'} in the floors a stair rises through (${m2.toFixed(1)} m² together), where the storey's floor slabs leave its plan open over the stair, ` +
+                    `${floorOpenings.length === 1 ? 'is' : 'are'} cut out of ${floorOpenings.length === 1 ? 'that floor' : 'those floors'}: the room under each rises into the storey there, double height over the opening only.`
+            );
+        }
         /**
          * The build-up type a stretch of `w` with `linings` against it is: its own layers, those
          * past each lining's inner face replaced by the lining's — what that stretch is built of.
@@ -1223,6 +1651,40 @@ class Importer {
             ...(storeyName(band[0]!) ? { storey: storeyName(band[0]!) } : {}),
             points: [T(a), T(b)],
         }));
+        if (repair !== 'none') {
+            // A run or a separation written twice, either way round, once: a separation on a
+            // partition's line too.
+            const key = (r: { storey?: string; points: [number, number][] }): string => {
+                const pts = r.points.map((p) => p.join(','));
+                const [x, y] = [pts.join(';'), [...pts].reverse().join(';')];
+                return `${r.storey ?? ''}|${x < y ? x : y}`;
+            };
+            const seen = new Set<string>();
+            type Run = { storey?: string; points: [number, number][] };
+            const once = <R extends Run>(rs: R[]): R[] =>
+                rs.filter((r) => {
+                    const k = key(r);
+                    if (seen.has(k)) return false;
+                    seen.add(k);
+                    return true;
+                });
+            const [runsBefore, partsBefore] = [interiorWalls.length, zoneSeparations.length];
+            interiorWalls.splice(0, interiorWalls.length, ...once(interiorWalls));
+            zoneSeparations.splice(0, zoneSeparations.length, ...once(zoneSeparations as Run[]));
+            const [runsDropped, partsDropped] = [
+                runsBefore - interiorWalls.length,
+                partsBefore - zoneSeparations.length,
+            ];
+            const dropped = runsDropped + partsDropped;
+            if (dropped > 0) {
+                this.change(
+                    'clean/repeats',
+                    `${dropped} partition run${dropped === 1 ? '' : 's'} and separation${dropped === 1 ? '' : 's'} written once`,
+                    `${runsDropped} partition run${runsDropped === 1 ? '' : 's'} and ${partsDropped} separation${partsDropped === 1 ? '' : 's'} ` +
+                        'the model has twice (a separation on a partition\'s line among them) are written once.'
+                );
+            }
+        }
         const fixtures = this.fixtures(walls, role, storeys, bandOf, T, storeyName);
         const linesOut = this.lines(base, ox, oy);
         this.skipTheRest();
@@ -1276,7 +1738,7 @@ class Importer {
             format: 'arch/1',
             name: this.options.name ?? this.projectName(),
             notes: ifcImportSummary(report).join('\n'),
-            ...(storeys.length > 1
+            ...(storeys.length > 1 || stepped
                 ? {
                       storeys: report.storeys.map((s) => ({
                           name: s.name,
@@ -1297,7 +1759,9 @@ class Importer {
                 const type = most ? typeOf.get(`${key}|${most.layerSetName}`) : undefined;
                 return {
                     id: l.id,
-                    points: [T(l.a), T(l.b)],
+                    ...(stepped ? { storey: living[l.band[0]!]!.name } : {}),
+                    // Fitted, every corner to the millimetre, shared by the two lines through it.
+                    points: fitted ? [Tmm(l.a), Tmm(l.b)] : [T(l.a), T(l.b)],
                     ...(party ? { partition: 'party' } : {}),
                     ...(type ? { buildUpType: type } : {}),
                 };
@@ -1306,11 +1770,19 @@ class Importer {
             ...(this.openingTypes.size > 0
                 ? { fenestrationTypes: [...this.openingTypes.values()] }
                 : {}),
-            roof,
+            roof: voidRoofs.length > 0 ? [roof, ...voidRoofs] : roof,
             roofOverhang: overhang,
             ...(interiorWalls.length > 0 ? { interiorWalls } : {}),
             ...(zones.length > 0 ? { zones } : {}),
             ...(zoneSeparations.length > 0 ? { zoneSeparations } : {}),
+            ...(floorOpenings.length > 0
+                ? {
+                      floorOpenings: floorOpenings.map((o) => ({
+                          storey: storeys[o.k]!.name,
+                          outline: o.ring.map(Tmm),
+                      })),
+                  }
+                : {}),
             ...(fixtures.length > 0 ? { fixtures } : {}),
             ...(linesOut.length > 0 ? { lines: linesOut } : {}),
             buildingUse: insulated ? 'dwelling' : 'shed-unheated',
@@ -2053,13 +2525,16 @@ class Importer {
     }
 
     /** The exterior wall's layers inside → outside: the side of the outline the first is on decides. */
-    private insideOut(w: Wall, outline: readonly P2[]): IfcLayer[] {
+    /** `w`'s layers from the room out: round `outline`, or into `court`'s ring, a courtyard's. */
+    private insideOut(w: Wall, outline: readonly P2[], court = false): IfcLayer[] {
         const firstY = w.offset + (w.sense * (w.layers[0]?.thickness ?? 0)) / 2;
         const side = Math.sign(firstY - w.lineY) || 1;
         const mid = mul2(add2(w.a, w.b), 0.5);
         const probe = add2(mid, mul2(w.normal, side * Math.max(w.thickness, 200)));
         const firstOutside =
-            outline.length >= 3 ? !insidePolygon(probe, outline) : facadeAtStart(w.layers);
+            outline.length >= 3
+                ? insidePolygon(probe, outline) === court
+                : facadeAtStart(w.layers);
         return firstOutside ? [...w.layers].reverse() : [...w.layers];
     }
 
@@ -2226,6 +2701,316 @@ class Importer {
             }
         }
         return found;
+    }
+
+    /**
+     * Each storey on its plate (`storeyPlate`): where its rooms are, closed over the walls
+     * standing on it — and inside its facade's loop too, where that closes round the rooms with
+     * little else in it (`LOOP_SLACK`: the stairs and halls no room was placed in) — each block's
+     * facade and courtyards fitted onto those walls (`fitRing`). A storey with no rooms stands on
+     * its own facade's loop, or else on its floor slabs: those not of the roof, a stair's landing
+     * or the foundation, their tops at its level (the lowest storey's under its finish). One with
+     * none of these stands on the nearest storey that has. Null when no storey has any.
+     */
+    private platedStoreys(
+        living: readonly { name: string; elev: number }[],
+        standsOn: (st: { elev: number }) => Wall[],
+        spanning: (k: number) => Wall[],
+        ownLoops: readonly ({ walls: Wall[]; corners: Corner[] } | null)[],
+        spaces: readonly StepEntity[],
+        base: number
+    ): PlatedStorey[] | null {
+        const m = this.m;
+        const read = (e: StepEntity) => ({ box: box3(m.bodyPoints(e)), ring: this.footprint(e) });
+        const usable = (x: ReturnType<typeof read>): x is { box: Box3; ring: P2[] } =>
+            !!x.box && !!x.ring && x.ring.length >= 3;
+        const slabs = m
+            .all('IFCSLAB')
+            .filter((e) => !['ROOF', 'LANDING', 'BASESLAB'].includes(m.enumOf(e, 8) ?? '') && !m.wholeOf(e))
+            .map(read)
+            .filter(usable);
+        const rooms = spaces.map(read).filter(usable);
+        const own = living.map((st, k): PlatedStorey | null => {
+            const on = rooms
+                .filter((r) => Math.abs(r.box.min.z - st.elev) <= 400)
+                .map((r) => r.ring);
+            const under = slabs
+                .filter(
+                    (x) =>
+                        Math.abs(x.box.max.z - st.elev) <= UPPER_FLOOR_REACH_MM ||
+                        (k === 0 && Math.abs(x.box.min.z - base) <= 60)
+                )
+                .map((x) => x.ring);
+            const loop = ownLoops[k];
+            const walls = standsOn(st);
+            // The facade's half thickness: its longest wall's.
+            const facade = longestBy(loop?.walls ?? walls, () => '');
+            const inset = (facade?.thickness ?? 300) / 2;
+            // Each wall's body in plan, between its faces: those over most of its height too.
+            const bodies = spanning(k).map((w) => {
+                const [f0, f1] = [w.offset, w.offset + w.sense * w.thickness];
+                return [
+                    add2(w.axisA, mul2(w.normal, f0)),
+                    add2(w.axisB, mul2(w.normal, f0)),
+                    add2(w.axisB, mul2(w.normal, f1)),
+                    add2(w.axisA, mul2(w.normal, f1)),
+                ];
+            });
+            const fit = (plate: StoreyPlate, source: PlateSource): PlatedStorey => ({
+                source,
+                blocks: plate.regions.map((r) => ({
+                    ...fitRing(r.ring, walls, 1, inset),
+                    courts: r.holes.map((h) => fitRing(h, walls, -1, inset)),
+                })),
+                filled: plate.filled,
+            });
+            if (on.length > 0) {
+                const plate = storeyPlate(on, [], bodies);
+                if (plate && plate.regions.length > 0) {
+                    // A facade that closes round the rooms with little else in it (the stairs
+                    // and halls no room was placed in) is the plate's edge where it runs.
+                    const ring = loop?.corners.map((c) => c.at);
+                    const net = (r: PlanRegion) =>
+                        Math.abs(signedArea(r.ring)) -
+                        r.holes.reduce((s, h) => s + Math.abs(signedArea(h)), 0);
+                    const rooms = plate.regions.reduce((s, r) => s + net(r), 0);
+                    const closes =
+                        ring &&
+                        Math.abs(signedArea(ring)) <= LOOP_SLACK * rooms &&
+                        plate.regions.every((r) =>
+                            r.ring.every((p) => insidePolygon(p, ring) || distToRing(p, ring) <= 1000)
+                        );
+                    const withLoop = closes ? storeyPlate([...on, ring], [], bodies) : null;
+                    if (!withLoop || withLoop.regions.length === 0) return fit(plate, 'rooms');
+                    // Out to the facade at the edge, but the rooms' courtyards and voids kept.
+                    const holes = plate.regions.flatMap((r) => r.holes);
+                    return fit(
+                        {
+                            ...withLoop,
+                            regions: withLoop.regions.map((r) => ({
+                                ring: r.ring,
+                                holes: [
+                                    ...r.holes,
+                                    ...holes.filter((h) => insidePolygon(interiorPoint(h), r.ring)),
+                                ],
+                            })),
+                        },
+                        'walls and rooms'
+                    );
+                }
+            }
+            if (loop) {
+                return {
+                    source: 'walls',
+                    blocks: [
+                        { ring: loop.corners.map((c) => c.at), sides: loop.walls, courts: [] },
+                    ],
+                    filled: [],
+                };
+            }
+            const plate = under.length > 0 ? storeyPlate([], under) : null;
+            return plate && plate.regions.length > 0 ? fit(plate, 'slabs') : null;
+        });
+        if (own.every((st) => st === null)) return null;
+        const plated = own.map((st, k) => {
+            if (st) return st;
+            const near =
+                [...own.slice(0, k)].reverse().find((x) => x) ?? own.slice(k + 1).find((x) => x)!;
+            return { ...near, source: 'borrowed' as const, filled: [] };
+        });
+        // Storey by storey up, each facade onto the one under it where it nearly stands on it.
+        for (let k = 1; k < plated.length; k++) {
+            const below = plated[k - 1]!.blocks.flatMap((b) => [b, ...b.courts]);
+            plated[k] = {
+                ...plated[k]!,
+                blocks: plated[k]!.blocks.map((b) => ({
+                    ...stackOn(b, below),
+                    courts: b.courts.map((c) => stackOn(c, below)),
+                })),
+            };
+        }
+        // A hole over rooms of the storey below, under a roof of the IFC of its own, is a room
+        // rising through the storey — on up to the roof — not a courtyard.
+        const roofs = this.roofSlabs()
+            .map((e) => ({ box: box3(m.bodyPoints(e)) }))
+            .filter((r): r is { box: Box3 } => !!r.box);
+        plated.forEach((st, k) => {
+            if (k === 0) return;
+            const elev = living[k]!.elev;
+            const below = rooms.filter((r) => Math.abs(r.box.min.z - living[k - 1]!.elev) <= 400);
+            for (const c of st.blocks.flatMap((b) => b.courts)) {
+                // Rooms of the storey under it under most of it: one rising through it, not a
+                // courtyard on a deck over a basement's core.
+                const roomUnder =
+                    coveredShare(c.ring, below.map((r) => r.ring)) >= VOID_ROOM_SHARE ||
+                    // Or a void under it: the room rises on, storey by storey, to the roof.
+                    plated[k - 1]!.blocks.some((b) =>
+                        b.courts.some((u) => u.void && insidePolygon(interiorPoint(c.ring), u.ring))
+                    );
+                // A roof of its own: one over the storey, half of it or more over the hole — not
+                // a converter's box over the whole block, courtyards and all.
+                const hole = box3(c.ring.map((p) => ({ ...p, z: 0 })))!;
+                const roofOver = roofs.some((r) => {
+                    if (r.box.min.z < elev + MIN_WALL_MM) return false;
+                    const w = Math.min(r.box.max.x, hole.max.x) - Math.max(r.box.min.x, hole.min.x);
+                    const d = Math.min(r.box.max.y, hole.max.y) - Math.max(r.box.min.y, hole.min.y);
+                    const area = (r.box.max.x - r.box.min.x) * (r.box.max.y - r.box.min.y);
+                    return w > 0 && d > 0 && w * d >= ROOF_OVER_SHARE * area;
+                });
+                if (roomUnder && roofOver) c.void = true;
+            }
+        });
+        return plated;
+    }
+
+    /**
+     * The openings in the floors the stairs rise through: on each storey over the lowest, inside
+     * the plan of each stair (`IfcStair`, or a flight of its own) that climbs to its floor, what
+     * its floor slabs — their tops at its level — leave uncovered, and what is cut out of those
+     * slabs (their openings). A sliver under `MIN_STAIR_OPENING_MM` across is the gap between a
+     * slab's edge and a wall's line, and goes; an opening's edge within `STAIR_REACH_MM` of the
+     * storey's own edge is taken out to it, so it is a notch in the floor, not a sliver of floor
+     * along the wall. Each by its storey and its ring.
+     */
+    private stairOpenings(
+        storeys: readonly LivingStorey[],
+        ringsOf: (k: number) => readonly P2[][],
+        linesOf: (k: number) => readonly [P2, P2][]
+    ): { k: number; ring: P2[] }[] {
+        const m = this.m;
+        const stairs = [
+            ...m.all('IFCSTAIR'),
+            ...m.all('IFCSTAIRFLIGHT').filter((f) => !m.wholeOf(f)),
+        ]
+            .map((e) => box3([...m.bodyPoints(e), ...m.partsOf(e).flatMap((p) => m.bodyPoints(p))]))
+            .filter((b): b is Box3 => !!b);
+        if (stairs.length === 0) return [];
+        const slabs = m
+            .all('IFCSLAB')
+            .filter((e) => !['ROOF', 'LANDING', 'BASESLAB'].includes(m.enumOf(e, 8) ?? ''))
+            .map((e) => ({ e, box: box3(m.bodyPoints(e)), ring: this.footprint(e) }))
+            .filter((x): x is { e: StepEntity; box: Box3; ring: P2[] } => !!x.box && !!x.ring);
+        const out: { k: number; ring: P2[] }[] = [];
+        storeys.forEach((st, k) => {
+            if (k === 0) return;
+            const own = slabs.filter((x) => Math.abs(x.box.max.z - st.elev) <= UPPER_FLOOR_REACH_MM);
+            if (own.length === 0) return;
+            const union = outlineUnion(own.map((x) => x.ring));
+            const cutOut = own.flatMap((x) =>
+                m.openingsIn(x.e).flatMap((o) => {
+                    const b = box3(m.bodyPoints(o));
+                    return b ? [boxRing(b)] : [];
+                })
+            );
+            const rings = ringsOf(k);
+            for (const stair of stairs) {
+                if (stair.min.z > st.elev - MIN_WALL_MM || stair.max.z < st.elev - STAIR_REACH_MM) continue;
+                const over = boxRing(stair);
+                const open = [
+                    ...union
+                        .reduce<PlanRegion[]>(
+                            (left, r) => left.flatMap((l) => outlineDifference(l.ring, r.ring)),
+                            [{ ring: over, holes: [] }]
+                        )
+                        .map((r) => r.ring),
+                    ...[...union.flatMap((r) => r.holes), ...cutOut].filter((h) =>
+                        insidePolygon(interiorPoint(h), over)
+                    ),
+                ].filter((r) => {
+                    const area = Math.abs(signedArea(r));
+                    const across = (2 * area) / edges(r).reduce((s, [a, b]) => s + dist2(a, b), 0);
+                    return area >= 0.5e6 && across >= MIN_STAIR_OPENING_MM / 2;
+                });
+                for (const r of open) {
+                    const ring = signedArea(r) < 0 ? [...r].reverse() : r;
+                    // In the storey's plan, its edges near the storey's own taken out to them.
+                    if (!rings.some((own) => insidePolygon(interiorPoint(ring), own))) continue;
+                    // Then onto the line of a wall or separation of the storey it runs along.
+                    const edged = toEdge(ring, rings.flatMap((r) => edges(r)), STAIR_REACH_MM);
+                    out.push({ k, ring: toEdge(edged, linesOf(k), STAIR_SNAP_MM) });
+                }
+            }
+        });
+        return out;
+    }
+
+    /** What the storeys' plates are, in the report: their sources, blocks, courtyards and fills. */
+    private reportPlates(
+        living: readonly { name: string }[],
+        plated: readonly PlatedStorey[]
+    ): void {
+        const m2 = (a: number) => `${Math.round(a / 1e6).toLocaleString('en')} m²`;
+        const area = (b: FittedBlock) =>
+            Math.abs(signedArea(b.ring)) -
+            b.courts.reduce((s, c) => s + Math.abs(signedArea(c.ring)), 0);
+        const each = plated
+            .map(
+                (st, k) =>
+                    `${living[k]!.name} ${m2(st.blocks.reduce((s, b) => s + area(b), 0))}` +
+                    `${st.blocks.length > 1 ? ` in ${st.blocks.length} blocks` : ''} (${st.source})`
+            )
+            .join(', ');
+        this.change(
+            'outline/plates',
+            'Each storey on its plate: where its rooms are',
+            `Each storey stands on its plate — where its rooms are, closed over the walls standing on it — ` +
+                `with its exterior walls fitted onto it (${each}); what of a storey the one above does not stand on is roofed flat at its top.`
+        );
+        const blocks = plated
+            .map((st, k) => (st.blocks.length > 1 ? `${living[k]!.name} (${st.blocks.length})` : null))
+            .filter((x): x is string => x !== null);
+        if (blocks.length > 0) {
+            this.change(
+                'outline/blocks',
+                `${blocks.length} storey${blocks.length === 1 ? '' : 's'} of several blocks`,
+                `${blocks.join(', ')} ${blocks.length === 1 ? 'stands' : 'stand'} in blocks apart from each other: each block has its own floor and roof.`
+            );
+        }
+        const courts = plated
+            .flatMap((st) => st.blocks)
+            .reduce((s, b) => s + b.courts.filter((c) => !c.void).length, 0);
+        const voids = plated
+            .map((st, k) => {
+                const n = st.blocks.reduce((s, b) => s + b.courts.filter((c) => c.void).length, 0);
+                return n > 0 ? `${living[k]!.name} (${n})` : null;
+            })
+            .filter((x): x is string => x !== null);
+        if (voids.length > 0) {
+            this.change(
+                'outline/voids',
+                `Rooms rising through ${voids.length} storey${voids.length === 1 ? '' : 's'}`,
+                `Holes in the plates of ${voids.join(', ')} over rooms of the storey below, under a roof of their own, are a hall rising through the storey ` +
+                    '(double height, or more): open in the floor, no roof under them, roofed flat at the top of the last storey they rise through — not courtyards.'
+            );
+        }
+        if (courts > 0) {
+            this.change(
+                'outline/courtyards',
+                `${courts} courtyard${courts === 1 ? '' : 's'} left open`,
+                `${courts} hole${courts === 1 ? '' : 's'} in the storeys' plates, round no room and ${MIN_HOLE_MM2 / 1e6} m² or more, ` +
+                    `${courts === 1 ? 'is a courtyard' : 'are courtyards'}: the walls round ${courts === 1 ? 'it' : 'them'} are written as exterior walls, and the floors and roofs are open over ${courts === 1 ? 'it' : 'them'}.`
+            );
+        }
+        const filled = plated.flatMap((st) => st.filled);
+        if (filled.length > 0) {
+            this.change(
+                'floor/filled',
+                `${filled.length} hole${filled.length === 1 ? '' : 's'} in the floors filled`,
+                `${filled.length} hole${filled.length === 1 ? '' : 's'} in the storeys' plates (${m2(filled.reduce((s, a) => s + a, 0))} together) ` +
+                    `${filled.length === 1 ? 'is' : 'are'} too small or too narrow for a courtyard — a shaft, a stair's void, a corridor no room was placed in — and filled: the floor runs on over ${filled.length === 1 ? 'it' : 'them'}.`
+            );
+        }
+        const lost = plated
+            .map((st, k) => (st.source === 'borrowed' ? living[k]!.name : null))
+            .filter((n): n is string => n !== null);
+        if (lost.length > 0) {
+            this.change(
+                'outline/storeys/borrowed',
+                `${lost.join(', ')} on the plate of the storey nearest ${lost.length === 1 ? 'it' : 'them'}`,
+                `${lost.join(', ')} ${lost.length === 1 ? 'has' : 'have'} no rooms, slabs or facade of ${lost.length === 1 ? 'its' : 'their'} own to stand on: ` +
+                    `${lost.length === 1 ? 'it stands' : 'they stand'} on the plate of the nearest storey that has.`
+            );
+        }
     }
 
     /**
@@ -3117,6 +3902,521 @@ function sharedEdge(a: P2, b: P2, c: P2, d: P2): [P2, P2] | null {
  * separation's. `w` is the partition it is the line of; `reach` how far an end may be from it and
  * still meet it (`PARTITION_REACH_MM`, more for a party wall, whose faces and linings stand off its line).
  */
+/** A line of a facade: its corners, its walls, the storeys it stands on, and its outline. */
+interface LoopLine {
+    a: P2;
+    b: P2;
+    walls: Wall[];
+    band: number[];
+    ring: P2[];
+    /** A courtyard's: the facade faces into the ring. */
+    court: boolean;
+    /** A void's: a courtyard with a room rising through it (`FittedRing.void`). */
+    void?: boolean;
+}
+
+/**
+ * A storey's facade: the outside of its walls' lines, each run on past its ends by its thickness
+ * and `CORNER_REACH_MM` so that walls meeting at a corner or a T close, and on each side of that
+ * outline the wall that runs along most of it. Null when the lines close round nothing.
+ */
+function outerLoop(walls: readonly Wall[]): { walls: Wall[]; corners: Corner[] } | null {
+    if (walls.length < 3) return null;
+    const ring = outerOutline(
+        walls.map((w) => {
+            const r = w.thickness + CORNER_REACH_MM;
+            return [sub2(w.a, mul2(w.dir, r)), add2(w.b, mul2(w.dir, r))] as const;
+        })
+    );
+    if (!ring) return null;
+    const along = (w: Wall, a: P2, b: P2) => {
+        const d = norm2(sub2(b, a));
+        const t0 = dot2(sub2(w.a, a), d);
+        const t1 = dot2(sub2(w.b, a), d);
+        return Math.min(Math.max(t0, t1), dist2(a, b)) - Math.max(Math.min(t0, t1), 0);
+    };
+    const sides = ring.map((a, i) => {
+        const b = ring[(i + 1) % ring.length]!;
+        const on = walls.filter((w) => onSameLine(w, a, b));
+        if (on.length > 0) return on.reduce((m, w) => (along(w, a, b) > along(m, a, b) ? w : m));
+        // A side no wall runs along (a jog between two walls' ends): the wall nearest it.
+        const mid = mul2(add2(a, b), 0.5);
+        return walls.reduce((m, w) =>
+            distToSegment(mid, w.a, w.b) < distToSegment(mid, m.a, m.b) ? w : m
+        );
+    });
+    return { walls: sides, corners: ring.map((at) => ({ at })) };
+}
+
+/**
+ * A ring of a storey's facade fitted onto its plate: its corners, and the wall along each side
+ * — from corner `i` to `i + 1` — or null where no wall runs along it: a gap the house fills.
+ */
+interface FittedRing {
+    ring: P2[];
+    sides: (Wall | null)[];
+    /**
+     * A courtyard's: whether it is a void instead — a room of a storey below rising through
+     * this one, a roof over it — not open to the sky.
+     */
+    void?: boolean;
+}
+
+/** A block of a storey, fitted: its facade, and its courtyards'. */
+interface FittedBlock extends FittedRing {
+    courts: FittedRing[];
+}
+
+/** Where a storey's outline came from (`IfcImportReport.changes`, `outline/plates`). */
+type PlateSource = 'rooms' | 'walls and rooms' | 'walls' | 'slabs' | 'borrowed';
+
+/** A facade's loop is its plate's edge where it closes round at most this times its rooms. */
+const LOOP_SLACK = 1.15;
+
+/** A storey on its plate (`storeyPlate`): its blocks, and the holes in its floor filled. */
+interface PlatedStorey {
+    source: PlateSource;
+    blocks: FittedBlock[];
+    /** The holes filled, each by its area, mm². */
+    filled: number[];
+}
+
+/** A wall within this angle of a plate's edge runs along it: sin 5°. */
+const FIT_SIN = 0.087;
+/** How much further into the plate than its thickness a wall's line may stand of its edge, mm. */
+const FIT_INSIDE_MM = 250;
+/** How much of an edge a wall must run along to be its wall, mm, or half of a shorter edge. */
+const FIT_OVERLAP_MM = 1500;
+/** How far a fitted corner may move from the plate's, mm; farther, the two lines are in line. */
+const FIT_REACH_MM = 2000;
+
+/** A fitted ring's sides as the facade's lines, on the storeys of `band`. */
+function fittedLines(f: FittedRing, band: number[], court: boolean): LoopLine[] {
+    return f.ring.map((a, i) => ({
+        a,
+        b: f.ring[(i + 1) % f.ring.length]!,
+        walls: f.sides[i] ? [f.sides[i]!] : [],
+        band,
+        ring: f.ring,
+        court,
+        ...(f.void ? { void: true } : {}),
+    }));
+}
+
+/**
+ * A plate's ring with the facade fitted onto it: each edge takes the wall that runs along most
+ * of it, parallel, on the side away from the plate (`away` 1: to the right of the ring, as round
+ * a block's outline; -1: to the left, into a courtyard) by up to the wall's thickness and
+ * `CORNER_REACH_MM`, or into the plate by up to its thickness — a plate stops at a room's edge or
+ * at a wall's face, and the wall's line is the middle of its core —
+ * and is moved onto that wall's line. An edge with no wall along it stays where it is, moved
+ * away from the plate by `inset` (half a facade's thickness). Each corner is where two
+ * neighbouring lines cross; between two lines in line, or nearly, the step from one to the
+ * other is a side of its own, with no wall. A ring the fitting would turn inside out is kept
+ * as the plate has it, each edge with the wall found for it.
+ */
+function fitRing(
+    ring: readonly P2[],
+    walls: readonly Wall[],
+    away: 1 | -1,
+    inset: number
+): FittedRing {
+    const n = ring.length;
+    const lines = ring.map((p, i) => {
+        const q = ring[(i + 1) % n]!;
+        const len = dist2(p, q);
+        const d = norm2(sub2(q, p));
+        const out = away === 1 ? { x: d.y, y: -d.x } : { x: -d.y, y: d.x };
+        const found = walls
+            .filter((w) => Math.abs(w.dir.x * d.y - w.dir.y * d.x) <= FIT_SIN)
+            .map((w) => {
+                const off = dot2(sub2(w.a, p), out);
+                const [t0, t1] = [dot2(sub2(w.a, p), d), dot2(sub2(w.b, p), d)];
+                const overlap = Math.min(Math.max(t0, t1), len) - Math.max(Math.min(t0, t1), 0);
+                return { w, off, overlap };
+            })
+            .filter(
+                ({ w, off, overlap }) =>
+                    off >= -w.thickness - FIT_INSIDE_MM &&
+                    off <= w.thickness + CORNER_REACH_MM &&
+                    overlap >= Math.min(0.5 * len, FIT_OVERLAP_MM) &&
+                    !runsInto(w, ring)
+            );
+        // The one along most of it; of those along nearly as much, the nearest.
+        const most = Math.max(0, ...found.map((f) => f.overlap));
+        const pick = found
+            .filter((f) => f.overlap >= 0.9 * most)
+            .sort((x, y) => Math.abs(x.off) - Math.abs(y.off))[0];
+        if (!pick) return { o: add2(p, mul2(out, inset)), d, w: null as Wall | null };
+        const w = pick.w;
+        return { o: w.a, d: dot2(w.dir, d) >= 0 ? w.dir : mul2(w.dir, -1), w: w as Wall | null };
+    });
+    return ringOnLines(ring, lines);
+}
+
+/** A line in plan through `o` along the unit `d`, and the wall it is the line of, if any. */
+interface SideLine {
+    o: P2;
+    d: P2;
+    w: Wall | null;
+}
+
+/**
+ * The ring whose sides lie on `lines`, one per side of `ring` (side `i` from corner `i` to
+ * `i + 1`): each corner where the lines of the two sides through it cross; where those two are
+ * in line, or nearly, the corner onto each, and the step between them a side with no wall —
+ * or, under `MIN_STEP_MM`, one corner on the first. A
+ * ring the lines would turn inside out, or change in area by a fifth, stays as it is.
+ */
+function ringOnLines(ring: readonly P2[], lines: readonly SideLine[]): FittedRing {
+    const n = ring.length;
+    const onto = (v: P2, l: SideLine) => add2(l.o, mul2(l.d, dot2(sub2(v, l.o), l.d)));
+    const corners: P2[] = [];
+    const sides: (Wall | null)[] = [];
+    lines.forEach((l, i) => {
+        const prev = lines[(i - 1 + n) % n]!;
+        const v = ring[i]!;
+        const cross = prev.d.x * l.d.y - prev.d.y * l.d.x;
+        let at: P2 | null = null;
+        if (Math.abs(cross) > FIT_SIN) {
+            const e = sub2(l.o, prev.o);
+            at = add2(prev.o, mul2(prev.d, (e.x * l.d.y - e.y * l.d.x) / cross));
+            if (dist2(at, v) > FIT_REACH_MM) at = null;
+        }
+        if (at) {
+            corners.push(at);
+            sides.push(l.w);
+            return;
+        }
+        const [a, b] = [onto(v, prev), onto(v, l)];
+        // Lines in line, or a step too small to build: one corner, on the line before.
+        if (dist2(a, b) <= MIN_STEP_MM) {
+            corners.push(a);
+            sides.push(l.w);
+        } else {
+            corners.push(a, b);
+            sides.push(null, l.w);
+        }
+    });
+    dropShortSides(corners, sides);
+    const area = signedArea(ring);
+    const fittedArea = signedArea(corners);
+    if (
+        Math.sign(fittedArea) !== Math.sign(area) ||
+        Math.abs(fittedArea) < 0.8 * Math.abs(area) ||
+        Math.abs(fittedArea) > 1.25 * Math.abs(area) ||
+        selfCrossing(corners)
+    ) {
+        return { ring: ring.slice(), sides: lines.map((l) => l.w) };
+    }
+    return { ring: corners, sides };
+}
+
+/** A stair's opening narrower than this across is a slab's gap along a wall, not one, mm. */
+const MIN_STAIR_OPENING_MM = 600;
+/**
+ * How near a storey's edge a stair opening's edge is taken out to it, and how far under a floor
+ * a stair may stop and still rise to it, mm.
+ */
+const STAIR_REACH_MM = 600;
+
+/** A box's plan, counter-clockwise. */
+function boxRing(b: Box3): P2[] {
+    return [
+        { x: b.min.x, y: b.min.y },
+        { x: b.max.x, y: b.min.y },
+        { x: b.max.x, y: b.max.y },
+        { x: b.min.x, y: b.max.y },
+    ];
+}
+
+/** How near a wall's or a separation's line a stair opening's edge is put on it, mm. */
+const STAIR_SNAP_MM = 100;
+
+/**
+ * A ring with each edge that runs, parallel, within `reach` of one of `lines` and along it moved
+ * onto that line, its corners where the moved lines cross.
+ */
+function toEdge(ring: readonly P2[], along: readonly [P2, P2][], reach: number): P2[] {
+    const lines = ring.map((a, i): SideLine => {
+        const b = ring[(i + 1) % ring.length]!;
+        const d = norm2(sub2(b, a));
+        const onto = along
+            .filter(([p, q]) => dist2(p, q) > ON_POINT_MM)
+            .find(([p, q]) => {
+                const e = norm2(sub2(q, p));
+                if (Math.abs(e.x * d.y - e.y * d.x) > FIT_SIN) return false;
+                // Off its line at either end (a slab's edge a few millimetres askew), within reach.
+                const across = { x: -e.y, y: e.x };
+                const off = [a, b].map((x) => Math.abs(dot2(sub2(x, p), across)));
+                const [t0, t1] = [dot2(sub2(p, a), d), dot2(sub2(q, a), d)];
+                const overlap = Math.min(Math.max(t0, t1), dist2(a, b)) - Math.max(Math.min(t0, t1), 0);
+                return Math.max(...off) > ON_POINT_MM && Math.max(...off) <= reach && overlap > 0;
+            });
+        if (!onto) return { o: a, d, w: null };
+        const e = norm2(sub2(onto[1], onto[0]));
+        return { o: onto[0], d: dot2(e, d) >= 0 ? e : mul2(e, -1), w: null };
+    });
+    return ringOnLines(ring, lines).ring;
+}
+
+/** How much of a hole in a plate the rooms of the storey under it must stand under, for a void. */
+const VOID_ROOM_SHARE = 0.5;
+
+/** How much of a ring the rings `over` cover, sampled on a 20 × 20 grid. */
+function coveredShare(ring: readonly P2[], over: readonly (readonly P2[])[]): number {
+    const box = box3(ring.map((p) => ({ ...p, z: 0 })))!;
+    let inside = 0;
+    let covered = 0;
+    for (let i = 0; i < 20; i++) {
+        for (let j = 0; j < 20; j++) {
+            const p = {
+                x: box.min.x + ((i + 0.5) / 20) * (box.max.x - box.min.x),
+                y: box.min.y + ((j + 0.5) / 20) * (box.max.y - box.min.y),
+            };
+            if (!insidePolygon(p, ring)) continue;
+            inside++;
+            if (over.some((r) => insidePolygon(p, r))) covered++;
+        }
+    }
+    return inside > 0 ? covered / inside : 0;
+}
+
+/** How much of a roof must lie over a hole in a plate to be that hole's roof (a void's). */
+const ROOF_OVER_SHARE = 0.5;
+
+/** A side of a fitted ring shorter than this is too short to build: its neighbours meet, mm. */
+const MIN_SIDE_MM = 200;
+
+/**
+ * Each side shorter than `MIN_SIDE_MM` taken out of a fitted ring, in place: its two neighbours
+ * run on to where their lines cross, or, in line, meet at its middle — a corner the grid
+ * chamfered, a step of a few millimetres between two walls.
+ */
+function dropShortSides(corners: P2[], sides: (Wall | null)[]): void {
+    for (let guard = 0; corners.length > 3 && guard < 1000; guard++) {
+        const n = corners.length;
+        let i = corners.findIndex((p, k) => dist2(p, corners[(k + 1) % n]!) < MIN_SIDE_MM);
+        if (i < 0) return;
+        // The last side closes the ring: turn the ring a corner round first.
+        if (i === n - 1) {
+            corners.push(corners.shift()!);
+            sides.push(sides.shift()!);
+            i = n - 2;
+        }
+        const [p0, p1, p2, p3] = [-1, 0, 1, 2].map((k) => corners[(i + k + n) % n]!);
+        const [u, v] = [norm2(sub2(p1!, p0!)), norm2(sub2(p3!, p2!))];
+        const cross = u.x * v.y - u.y * v.x;
+        let at = mul2(add2(p1!, p2!), 0.5);
+        if (Math.abs(cross) > FIT_SIN) {
+            const e = sub2(p2!, p0!);
+            const meet = add2(p0!, mul2(u, (e.x * v.y - e.y * v.x) / cross));
+            if (dist2(meet, at) <= FIT_REACH_MM) at = meet;
+        }
+        corners[i] = at;
+        corners.splice(i + 1, 1);
+        sides.splice(i, 1);
+    }
+}
+
+/** Two lines of a facade in line closer than this are one: no step is built between them, mm. */
+const MIN_STEP_MM = 50;
+
+/** How far apart two storeys' facade lines may be and still stand one on the other, mm. */
+const STACK_MM = 300;
+
+/**
+ * A fitted ring of an upper storey with each side that stands, or nearly, on a side of the
+ * storey under it (`below`: in line within `STACK_MM`, along half the shorter of the two) moved
+ * onto that side's line: the two storeys' walls one over the other, their corners where their
+ * lines are.
+ */
+function stackOn(f: FittedRing, below: readonly FittedRing[]): FittedRing {
+    const n = f.ring.length;
+    const lower = below.flatMap((r) =>
+        r.ring.map((a, i) => ({ a, b: r.ring[(i + 1) % r.ring.length]! }))
+    );
+    let moved = false;
+    const lines = f.ring.map((a, i): SideLine => {
+        const b = f.ring[(i + 1) % n]!;
+        const len = dist2(a, b);
+        const d = len > 0 ? norm2(sub2(b, a)) : { x: 1, y: 0 };
+        const own = { o: a, d, w: f.sides[i] ?? null };
+        if (len < MIN_JOG_STACK_MM) return own;
+        const nrm = { x: -d.y, y: d.x };
+        const under = lower.find((l) => {
+            const ld = norm2(sub2(l.b, l.a));
+            if (Math.abs(ld.x * d.y - ld.y * d.x) > FIT_SIN) return false;
+            const off = dot2(sub2(l.a, a), nrm);
+            if (Math.abs(off) > STACK_MM || Math.abs(off) <= 0.5) return false;
+            const [t0, t1] = [dot2(sub2(l.a, a), d), dot2(sub2(l.b, a), d)];
+            const overlap = Math.min(Math.max(t0, t1), len) - Math.max(Math.min(t0, t1), 0);
+            const lowerLen = dist2(l.a, l.b);
+            return overlap >= 0.5 * Math.min(len, lowerLen) && lowerLen >= MIN_JOG_STACK_MM;
+        });
+        if (!under) return own;
+        moved = true;
+        const ld = norm2(sub2(under.b, under.a));
+        return { o: under.a, d: dot2(ld, d) >= 0 ? ld : mul2(ld, -1), w: own.w };
+    });
+    return moved ? ringOnLines(f.ring, lines) : f;
+}
+
+/**
+ * Each line of the facade run on into the next where the two are in line and alike in all but
+ * their extent — the same ring, storeys and build-up, party or not — in place: one wall, not a
+ * wall split for nothing (`repair: 'clean'`).
+ */
+function runOnLines(lines: LoopLine[]): void {
+    const kind = (l: LoopLine) => {
+        const party = l.walls.some((w) => isPartyWall(w));
+        const most = longestBy(
+            l.walls.filter((w) => w.layers.length > 0 && isPartyWall(w) === party),
+            (w) => w.layerSetName
+        );
+        return `${party}|${l.walls.length === 0 ? '' : (most?.layerSetName ?? '-')}|${l.band.join(',')}|${l.court}`;
+    };
+    for (let i = 0; i < lines.length; ) {
+        const l = lines[i]!;
+        // One ring: the same corners, each line of a loop holding its own list of them.
+        const sameRing = (m: LoopLine) =>
+            m.ring.length === l.ring.length && m.ring.every((p, k) => p === l.ring[k]);
+        const j = lines.findIndex(
+            (m) => m !== l && sameRing(m) && dist2(m.a, l.b) <= ON_POINT_MM && kind(m) === kind(l)
+        );
+        const next = j >= 0 ? lines[j]! : null;
+        const [d, e] = next ? [norm2(sub2(l.b, l.a)), norm2(sub2(next.b, next.a))] : [null, null];
+        if (!next || !d || !e || Math.abs(d.x * e.y - d.y * e.x) > 1e-3 || dot2(d, e) < 0) {
+            i++;
+            continue;
+        }
+        lines[i] = { ...l, b: next.b, walls: unique([...l.walls, ...next.walls]) };
+        lines.splice(j, 1);
+        if (j < i) i--;
+    }
+}
+
+/**
+ * Whether a wall runs off a ring, into the plate or away from it: its middle farther from the
+ * ring than its thickness and `CORNER_REACH_MM` — a partition meeting the facade in line with a
+ * step of it, not a wall of the facade.
+ */
+function runsInto(w: Wall, ring: readonly P2[]): boolean {
+    return distToRing(mul2(add2(w.a, w.b), 0.5), ring) > w.thickness + CORNER_REACH_MM;
+}
+
+/** A side shorter than this is a step, not one to stand on the storey below, mm. */
+const MIN_JOG_STACK_MM = 300;
+
+/**
+ * Whether `w` runs along the facade's line `l`, beside it: parallel, within its thickness and
+ * `CORNER_REACH_MM` of it, along half its own length or the line's — a leaf of the facade, a
+ * lining, the wall behind a curtain wall, a curtain wall along several lines.
+ */
+function alongSide(w: Wall, l: LoopLine): boolean {
+    const d = norm2(sub2(l.b, l.a));
+    if (Math.abs(w.dir.x * d.y - w.dir.y * d.x) > FIT_SIN) return false;
+    const n = { x: -d.y, y: d.x };
+    const reach = w.thickness + CORNER_REACH_MM;
+    if ([w.a, w.b].some((p) => Math.abs(dot2(sub2(p, l.a), n)) > reach)) return false;
+    const len = dist2(l.a, l.b);
+    const [t0, t1] = [dot2(sub2(w.a, l.a), d), dot2(sub2(w.b, l.a), d)];
+    const overlap = Math.min(Math.max(t0, t1), len) - Math.max(Math.min(t0, t1), 0);
+    return overlap >= 0.5 * Math.min(dist2(w.a, w.b), len);
+}
+
+/** How far a point is from a ring's edges, mm. */
+function distToRing(p: P2, ring: readonly P2[]): number {
+    return Math.min(...edges(ring).map(([a, b]) => distToSegment(p, a, b)));
+}
+
+/** Whether two of a ring's edges that are not neighbours cross or touch. */
+function selfCrossing(ring: readonly P2[]): boolean {
+    const n = ring.length;
+    const cross = (o: P2, a: P2, b: P2) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+    for (let i = 0; i < n; i++) {
+        const [a, b] = [ring[i]!, ring[(i + 1) % n]!];
+        for (let j = i + 2; j < n; j++) {
+            if (i === 0 && j === n - 1) continue;
+            const [c, d] = [ring[j]!, ring[(j + 1) % n]!];
+            const [d1, d2] = [cross(c, d, a), cross(c, d, b)];
+            const [d3, d4] = [cross(a, b, c), cross(a, b, d)];
+            if (d1 * d2 < 0 && d3 * d4 < 0) return true;
+        }
+    }
+    return false;
+}
+
+/** A courtyard smaller than this is a shaft, not a courtyard, mm². */
+const MIN_COURT_MM2 = 10e6;
+
+/**
+ * The courtyards inside a storey's outline: rings of its facade — walls the IFC says are
+ * external, or walls of glass — that close round no room.
+ */
+function courtyardsIn(
+    on: readonly Wall[],
+    outer: readonly Wall[],
+    ring: readonly P2[],
+    rooms: readonly P2[]
+): { walls: Wall[]; corners: Corner[] }[] {
+    let left = on.filter(
+        (w) =>
+            !outer.includes(w) &&
+            (w.isExternal === true || (!!w.curtain && w.isExternal !== false)) &&
+            insidePolygon(mul2(add2(w.a, w.b), 0.5), ring)
+    );
+    const out: { walls: Wall[]; corners: Corner[] }[] = [];
+    for (let guard = 0; guard < 20 && left.length >= 3; guard++) {
+        const l = findLoop(left);
+        if (!l) break;
+        const corners = l.corners.map((c) => c.at);
+        if (
+            Math.abs(signedArea(corners)) >= MIN_COURT_MM2 &&
+            !rooms.some((p) => insidePolygon(p, corners))
+        ) {
+            out.push(l);
+        }
+        left = left.filter((w) => !l.walls.includes(w));
+    }
+    return out;
+}
+
+/** Outlines that differ by no more than this share of the larger's area are one outline. */
+const SAME_OUTLINE = 0.02;
+
+/** Whether the storeys' facades close round outlines of their own: two of them differ. */
+function outlinesDiffer(loops: readonly ({ corners: Corner[] } | null)[]): boolean {
+    const rings = loops
+        .filter((l): l is { corners: Corner[] } => l !== null)
+        .map((l) => l.corners.map((c) => c.at));
+    return rings.length > 1 && rings.slice(1).some((r) => !sameOutline(rings[0]!, r));
+}
+
+function sameOutline(a: readonly P2[], b: readonly P2[]): boolean {
+    const areaOf = (r: PlanRegion) =>
+        Math.abs(signedArea(r.ring)) - r.holes.reduce((s, h) => s + Math.abs(signedArea(h)), 0);
+    const apart = [...outlineDifference(a, b), ...outlineDifference(b, a)].reduce(
+        (s, r) => s + areaOf(r),
+        0
+    );
+    return apart <= SAME_OUTLINE * Math.max(Math.abs(signedArea(a)), Math.abs(signedArea(b)));
+}
+
+/** An id-safe form of a storey's name. */
+function slugOf(name: string): string {
+    return (
+        name
+            .toLowerCase()
+            .replace(/æ/g, 'ae')
+            .replace(/ø/g, 'oe')
+            .replace(/å/g, 'aa')
+            .normalize('NFKD')
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '') || 'storey'
+    );
+}
+
 interface PlanLine {
     a: P2;
     b: P2;
@@ -3341,6 +4641,18 @@ function box3(pts: readonly Vec3[]): Box3 | null {
         max.z = Math.max(max.z, p.z);
     }
     return { min, max };
+}
+
+/** Whether boxes `a` and `b` overlap, or touch within `tol` mm. */
+function boxesMeet(a: Box3, b: Box3, tol: number): boolean {
+    return (
+        a.min.x <= b.max.x + tol &&
+        b.min.x <= a.max.x + tol &&
+        a.min.y <= b.max.y + tol &&
+        b.min.y <= a.max.y + tol &&
+        a.min.z <= b.max.z + tol &&
+        b.min.z <= a.max.z + tol
+    );
 }
 
 function add2(a: P2, b: P2): P2 {

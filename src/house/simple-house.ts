@@ -1,18 +1,21 @@
 /**
- * The simple shape of a house file: walls as plan lines, a wall height, windows and doors by
- * their centre, and a roof by its type and pitch — expanded here into the ordinary `surfaces`
- * before `house-file.ts` reads them, so everything past the parser sees the same faces a file
- * written corner by corner would have given it.
+ * The simple shape of a house file: walls as plan lines and a height, windows and doors by their
+ * centre, and a roof by its height, pitch and type — saturated here into the ordinary `surfaces`
+ * of the detailed shape before `house-file.ts` reads them, so everything past the parser sees the
+ * same faces a file written corner by corner would have given it.
  *
- * It exists for whoever reads a drawing: a language model reading a plan is asked for this shape, not for faces, because the numbers in it are the ones a plan and a section
- * print — where the walls run, how high they are, where a window sits and how big it is, what the
- * roof is and how steep. Every corner that has to be *worked out* — the gable's apex, the valley
+ * It is the shape for whoever reads a drawing: a language model reading a plan is asked for this
+ * shape, not for faces, because the numbers in it are the ones a plan and a section print — where
+ * the walls run, how high they are, where a window sits and how big it is, what the roof is, how
+ * high and how steep. Every corner that has to be *worked out* — the gable's apex, the valley
  * where an L's two roofs meet, the top of a wall under a sloping roof, a window's four corners on
- * its wall — is worked out here instead, exactly, by `@surfacekit/model`'s `generateRoof`.
+ * its wall, a storey's floor, the part of a storey's roof the storey above leaves open — is worked
+ * out here instead, exactly, by `@surfacekit/model`'s `generateRoof`. Modelling software works on
+ * the detailed shape this gives (`house-file.ts`); `saturateHouse` writes it out.
  *
  * ```json
  * {
- *     "@context": "https://w3id.org/twb/context/2.jsonld",
+ *     "@context": "https://w3id.org/twb/context/3.jsonld",
  *     "format": "twb/1",
  *     "type": "Blueprint",
  *     "wallHeightMm": 2400,
@@ -44,15 +47,37 @@
  *   how many leaves it has, `"leaves": "double"` or `"one-and-a-half"`, which the face's
  *   `openingSwings` checks; left out, one. Any opening may name the window or door type it is
  *   an instance of, `"typeId": "window-2"` (`fenestrationTypes`); left out, its kind's default.
- * - `roof`: `{ type, pitchDeg, ridge?, highSide?, cover?, outline?, eaveMm? }` over the outline,
- *   or a list of them, each over its own `outline`, for a house whose parts have different roofs.
- *   By default the roof runs on over a shallow recess in one side (`cover`); the walls round the
- *   recess then stand under the roof, and rise to it.
+ * - `roof`: `{ type, pitchDeg, eaveMm?, storey?, ridge?, highSide?, cover?, outline? }` — its
+ *   type, its slope and its height (`eaveMm`, where it leaves the walls; the walls' height when
+ *   left out) — over the outline, or a list of them, each over its own `outline`, for a house
+ *   whose parts have different roofs. By default the roof runs on over a shallow recess in one
+ *   side (`cover`); the walls round the recess then stand under the roof, and rise to it.
+ * - `floorOpenings`: `[{ storey, outline }]`, each a ring cut out of that storey's floor with no
+ *   walls round it — a stair's opening, a gallery's edge: the room under it rises into the storey
+ *   there, double height over the opening only. A hole where it lies inside the floor, a notch
+ *   where it reaches the floor's edge.
+ *
+ * **Storey by storey.** A house whose storeys do not all stand on one outline — a lower wing, a
+ * setback, a basement under part of it, a courtyard, blocks apart — names each wall's `storey`
+ * (`expandStoreyByStorey`). A wall naming none then stands on the lowest. Each storey stands on
+ * the blocks its own walls trace (`planBlocks`): each group of walls that meet, traced round its
+ * outside, a block with its own floor, from the storey's floor to its top — the next storey's
+ * floor, or its own `heightMm` on the top one. A ring of walls standing inside a block, apart from
+ * the walls it is traced along, is a courtyard: open to the sky, cut out of the block's floor and
+ * roof. A courtyard a roof of the storey covers (one naming it, its `outline` the courtyard's),
+ * or one the storey above closes or rises on through, is a void instead: a room of the storey
+ * below rising through it — double, triple height, up to the roof — open in the floor, and with
+ * no roof under it. A roof naming a `storey` covers it — the block its `outline` lies in, or every block where
+ * it gives none — its eave at the storey's top unless it says, open over the courtyards where it
+ * is flat; one naming none covers the top storey; a storey no roof covers is roofed flat at its
+ * top, over what of each block the storey above leaves open (`outlineDifference`), the floors of
+ * that storey's courtyards among it. An opening is in a wall of its own storey.
  *
  * Input only, like `interiorWalls`: Save writes the faces this makes, not this.
  */
 
-import type { Point3Mm, Vec2Mm } from '../surfacekit/core';
+import { pointInPolygon2, type Point3Mm, type Vec2Mm } from '../surfacekit/core';
+import { SIMPLE_SHAPE_TERMS } from './house-jsonld';
 import type { PartitionKind } from '../surfacekit/model';
 import {
     DEFAULT_WALL_HEIGHT_MM,
@@ -63,8 +88,11 @@ import {
     ROOF_TYPES,
     generateRoof,
     outerOutline,
+    outlineDifference,
+    planBlocks,
     roofProfile,
     type OpeningKind,
+    type PlanRegion,
     type PlanSegment,
     type RidgeAxis,
     type RoofCover,
@@ -87,6 +115,8 @@ export interface SimpleFace {
     openingSwings?: ({ leaves: string } | null)[];
     /** Per opening, the window or door type it is an instance of, or null for its kind's default. */
     openingTypes?: (string | null)[];
+    /** Rings cut out of it: the part of a storey's roof the storey over it stands on. */
+    holes?: [number, number, number][][];
     kind?: 'roof';
     roofGroup?: string;
     /** A wall's kind where it is not an exterior wall: `"party"` (`FileSurface.partition`). */
@@ -130,6 +160,23 @@ export function isSimpleHouse(json: Record<string, unknown>): boolean {
     return json['walls'] !== undefined || json['roof'] !== undefined;
 }
 
+/**
+ * TWB's two shapes of a house file. **Simple**: walls as plan lines with a height, the roof by its
+ * height, pitch and type, openings by their centre and size, partitions as plan lines — what a
+ * language model reads off a drawing. **Detailed**: every face as its corners — what a modeller
+ * opens, edits and saves. A simple file is saturated into a detailed one on opening
+ * (`saturateHouse`).
+ */
+export type HouseShape = 'simple' | 'detailed';
+
+/**
+ * Which shape a house file (`arch/1` or `twb/1`, parsed) is written in: simple when it has any of
+ * the simple shape's keys (`SIMPLE_SHAPE_TERMS`), which are saturated before it is detailed.
+ */
+export function houseShapeOf(json: Record<string, unknown>): HouseShape {
+    return SIMPLE_SHAPE_TERMS.some((k) => json[k] !== undefined) ? 'simple' : 'detailed';
+}
+
 interface WallLine {
     id: string;
     a: Vec2Mm;
@@ -138,6 +185,8 @@ interface WallLine {
     partition: PartitionKind | null;
     /** The build-up type its faces are dressed in, as the file says it — checked with the faces. */
     buildUpType: string | null;
+    /** The storey it stands on, by name, or null where the file gives none. */
+    storey: string | null;
 }
 
 /** One segment of an `interiorWalls` run, and the storey the run starts on. */
@@ -155,6 +204,24 @@ interface RoofPart {
     cover: RoofCover | null;
     outline: Vec2Mm[] | null;
     eaveMm: number | null;
+    /** The storey it covers, by name; null for the top one. */
+    storey: string | null;
+}
+
+/** A storey as the simple shape reads it: its name, its floor's elevation and its height. */
+interface Level {
+    name: string;
+    elevationMm: number;
+    /** Null where the file gives none. */
+    heightMm: number | null;
+}
+
+/** A face of a wall, and the heights an opening in it may take. */
+interface WallFace {
+    line: WallLine;
+    lo: number;
+    hi: number;
+    face: SimpleFace;
 }
 
 /** A point of a wall's top: how far along the wall, and how high. */
@@ -172,6 +239,22 @@ export function expandSimpleHouse(json: Record<string, unknown>, errors: string[
     const base = levels[0]?.elevationMm ?? 0;
     const eave = base + wallHeight;
     const parts = readRoof(json['roof'], errors);
+    const cuts = readFloorOpenings(json['floorOpenings'], levels, errors);
+    // Walls that name their storeys: each storey stands on its own outline.
+    if (lines.some((l) => l.storey !== null)) {
+        const stepped = expandStoreyByStorey(lines, levels, parts, eave, cuts, errors);
+        const interiorOpenings = placeOpenings(
+            json,
+            stepped.lines,
+            partitions,
+            levels,
+            base,
+            stepped.wallFaces,
+            true,
+            errors
+        );
+        return { faces: stepped.faces, interiorOpenings };
+    }
 
     const segments: PlanSegment[] = lines.map((w) => [w.a, w.b]);
     const outline = segments.length > 0 ? outerOutline(segments) : null;
@@ -190,10 +273,11 @@ export function expandSimpleHouse(json: Record<string, unknown>, errors: string[
                 );
                 continue;
             }
-            faces.push({
-                id: `floor-${slug(level.name)}`,
-                points: floorRing.map((p) => [p.x, p.y, level.elevationMm]),
-            });
+            const own = cuts.filter((c) => c.storey === level.name).map((c) => c.outline);
+            const corners = lines.flatMap((l) => [l.a, l.b]);
+            faces.push(
+                ...floorFaces(`floor-${slug(level.name)}`, floorRing, [], own, level.elevationMm, corners)
+            );
         }
     }
 
@@ -241,7 +325,7 @@ export function expandSimpleHouse(json: Record<string, unknown>, errors: string[
 
     // The walls, each up to the roof over it, one face per storey.
     const roofSurfaces = roofFaces.map((ring, i) => asSurface(`r${i}`, ring));
-    const wallFaces: { line: WallLine; lo: number; hi: number; face: SimpleFace }[] = [];
+    const wallFaces: WallFace[] = [];
     const tops: Point3Mm[] = [];
     for (const line of lines) {
         const top = wallTop(line, roofFaces, roofSurfaces, eave, base);
@@ -280,7 +364,265 @@ export function expandSimpleHouse(json: Record<string, unknown>, errors: string[
         face.points = withCorners(face.points.map(fromFile), tops).map(toFile);
     }
 
-    // The openings, each on its wall — an exterior one, or a partition.
+    const interiorOpenings = placeOpenings(
+        json,
+        lines,
+        partitions,
+        levels,
+        base,
+        wallFaces,
+        false,
+        errors
+    );
+    return { faces, interiorOpenings };
+}
+
+/**
+ * The faces of a house whose walls name their storeys: each storey stands on the outline its
+ * own walls trace, from its floor to its top — the next storey's floor, or its own height on the
+ * top one. Each storey has its floor on that outline. Over it, the roofs that name it (the top
+ * storey's also those that name none), each over its own outline or the storey's, its eave at
+ * the storey's top unless it says; a storey no roof names is roofed flat at its top, over what
+ * of it the storey above does not stand on. A wall that names no storey stands on the lowest.
+ */
+function expandStoreyByStorey(
+    lines: readonly WallLine[],
+    levels: readonly Level[],
+    parts: readonly RoofPart[],
+    eave: number,
+    cuts: readonly FloorOpening[],
+    errors: string[]
+): { faces: SimpleFace[]; wallFaces: WallFace[]; lines: WallLine[] } {
+    if (levels.length === 0) {
+        errors.push('"walls" name storeys, but the file has no "storeys".');
+        return { faces: [], wallFaces: [], lines: [] };
+    }
+    const known = new Set(levels.map((l) => l.name));
+    const placed = lines.filter((l) => {
+        if (l.storey === null || known.has(l.storey)) return true;
+        errors.push(`wall "${l.id}" stands on storey ${JSON.stringify(l.storey)}, which the file does not have.`);
+        return false;
+    });
+    for (const part of parts) {
+        if (part.storey !== null && !known.has(part.storey))
+            errors.push(`a roof covers storey ${JSON.stringify(part.storey)}, which the file does not have.`);
+    }
+    const storeyOf = (l: WallLine) => l.storey ?? levels[0]!.name;
+    const topOf = (k: number): number => {
+        const level = levels[k]!;
+        if (level.heightMm !== null) return level.elevationMm + level.heightMm;
+        const next = levels[k + 1];
+        if (next) return next.elevationMm;
+        return eave > level.elevationMm ? eave : level.elevationMm + DEFAULT_WALL_HEIGHT_MM;
+    };
+    const storeys = levels.map((level, k) => {
+        const own = placed.filter((l) => storeyOf(l) === level.name);
+        const segments: PlanSegment[] = own.map((w) => [w.a, w.b]);
+        // Each group of walls standing on its own is a block, a ring of them inside one a
+        // courtyard of it: open to the sky.
+        const blocks = segments.length > 0 ? planBlocks(segments) : [];
+        if (own.length > 0 && blocks.length === 0) {
+            errors.push(`the walls of storey "${level.name}" do not close: its outline could not be traced.`);
+        }
+        return { level, k, own, blocks, top: topOf(k) };
+    });
+    const built = storeys.filter((s) => s.blocks.length > 0);
+    const highest = built[built.length - 1];
+    type Built = (typeof built)[number];
+    const roofsOf = (st: Built) =>
+        parts.filter((p) => p.storey === st.level.name || (p.storey === null && st === highest));
+    const aboveOf = (st: Built) =>
+        built.find((u) => u.k > st.k && Math.abs(u.level.elevationMm - st.top) <= ON_MM);
+    // A courtyard a roof covers, or the storey above closes or rises on through, is a void: a
+    // room of the storey below rising through this one, to the roof — not open to the sky.
+    // Worked out from the top storey down, each on the one above it.
+    const voids = new Map<Built, Set<Vec2Mm[]>>();
+    for (const st of [...built].reverse()) {
+        const above = aboveOf(st);
+        const roofed = roofsOf(st).filter((p) => p.outline);
+        const found = new Set<Vec2Mm[]>();
+        for (const c of st.blocks.flatMap((b) => b.courts)) {
+            const at = pointInside(c);
+            const over = above?.blocks.find((b) => pointInPolygon2(at, b.outline));
+            const upper = over?.courts.find((u) => pointInPolygon2(at, u));
+            const isVoid =
+                roofed.some((p) => pointInPolygon2(pointInside(p.outline!), c)) ||
+                (!!over && (!upper || voids.get(above!)!.has(upper)));
+            if (isVoid) found.add(c);
+        }
+        voids.set(st, found);
+    }
+
+    const faces: SimpleFace[] = [];
+    const wallFaces: WallFace[] = [];
+    for (const st of built) {
+        const { level, k, top, blocks } = st;
+        const name = slug(level.name);
+        const at3 = (ring: readonly Vec2Mm[], z: number): [number, number, number][] =>
+            ring.map((p) => [Math.round(p.x), Math.round(p.y), z]);
+        /** The second and later of a storey's blocks number what they hold. */
+        const nth = (b: number) => (b > 0 ? `-${b + 1}` : '');
+        blocks.forEach((block, b) => {
+            const id = `${k === 0 ? 'floor' : `floor-${name}`}${nth(b)}`;
+            // The storey's floor openings in this block, cut out of its floor.
+            const own = cuts
+                .filter((c) => c.storey === level.name)
+                .map((c) => c.outline)
+                .filter((c) => pointInPolygon2(pointInside(c), block.outline));
+            if (own.length === 0) {
+                faces.push({
+                    id,
+                    points: at3(block.floorRing, level.elevationMm),
+                    ...(block.courts.length > 0
+                        ? { holes: block.courts.map((c) => at3(c, level.elevationMm)) }
+                        : {}),
+                });
+                return;
+            }
+            faces.push(...floorFaces(id, block.floorRing, block.courts, own, level.elevationMm, []));
+        });
+        // The roofs over the storey: those that name it, and on the top one those that name none;
+        // each over the block its outline lies in, or over every block where it gives none.
+        const own = roofsOf(st);
+        const ownVoids = voids.get(st)!;
+        // A roof over a void roofs that void; the others roof the storey's blocks.
+        const overVoid = (p: RoofPart) =>
+            !!p.outline && [...ownVoids].some((c) => pointInPolygon2(pointInside(p.outline!), c));
+        const roofFaces: Point3Mm[][] = [];
+        own.forEach((part, n) => {
+            const where = `the roof over "${level.name}"${own.length > 1 ? ` (${n + 1})` : ''}`;
+            const under = part.outline
+                ? [blocks.find((bl) => pointInPolygon2(ringCentre(part.outline!), bl.outline)) ?? blocks[0]!]
+                : blocks;
+            under.forEach((block, b) => {
+                const result = generateRoof(part.outline ?? block.outline, {
+                    type: part.type,
+                    pitchDeg: part.pitchDeg,
+                    eaveMm: part.eaveMm ?? top,
+                    ridge: part.ridge,
+                    highSide: part.highSide,
+                    cover: part.cover,
+                });
+                if (!result.ok) {
+                    errors.push(`${where}: ${result.error}`);
+                    return;
+                }
+                const group = `roof-${name}-${n + 1}${nth(b)}`;
+                result.roof.planes.forEach((ring, m) => {
+                    roofFaces.push(ring);
+                    // A flat roof is open over the block's courtyards, not over its voids.
+                    const open =
+                        part.type === 'flat'
+                            ? block.courts.filter(
+                                  (c) =>
+                                      !ownVoids.has(c) &&
+                                      c.every((p) => pointInPolygon2(p, ring))
+                              )
+                            : [];
+                    faces.push({
+                        id: `${group}-${m + 1}`,
+                        points: ring.map(toFile),
+                        ...(open.length > 0 ? { holes: open.map((c) => at3(c, ring[0]!.z)) } : {}),
+                        roofGroup: group,
+                        ...(part.type === 'flat' ? { kind: 'roof' as const } : {}),
+                    });
+                });
+                result.roof.steps.forEach((ring, m) => {
+                    faces.push({ id: `${group}-step-${m + 1}`, points: ring.map(toFile) });
+                });
+            });
+        });
+        // No roof named: flat at its top, over what of each block the storey above leaves open,
+        // its courtyards' floors among it.
+        if (own.every(overVoid)) {
+            const above = aboveOf(st);
+            const aboveVoids = above ? voids.get(above)! : new Set<Vec2Mm[]>();
+            const regions = blocks.flatMap((block) => [
+                ...(above?.blocks ?? [])
+                    .reduce<PlanRegion[]>(
+                        (left, cut) => left.flatMap((r) => regionMinus(r, cut.outline)),
+                        [{ ring: block.outline, holes: [] }]
+                    )
+                    .map((region) => ({ region, courts: block.courts })),
+                // Under a courtyard of the storey above: its floor, open to the sky — less this
+                // storey's own courtyards there. Under a void, nothing: the room rises on.
+                ...(above?.blocks ?? [])
+                    .flatMap((b) => b.courts)
+                    .filter((c) => !aboveVoids.has(c))
+                    .filter((c) => c.every((p) => pointInPolygon2(p, block.outline)))
+                    .flatMap((c) =>
+                        block.courts.reduce<PlanRegion[]>(
+                            (left, own) => left.flatMap((r) => regionMinus(r, own)),
+                            [{ ring: c, holes: [] }]
+                        )
+                    )
+                    .map((region) => ({ region, courts: [] as Vec2Mm[][] })),
+            ]);
+            regions.forEach(({ region, courts }, n) => {
+                const id = `roof-${name}${regions.length > 1 ? `-${n + 1}` : ''}`;
+                const flat = (ring: readonly Vec2Mm[]) => at3(ring, top);
+                // The courtyards in it are open to the sky.
+                const holes = [
+                    ...region.holes,
+                    ...courts.filter((c) => c.every((p) => pointInPolygon2(p, region.ring))),
+                ];
+                faces.push({
+                    id,
+                    points: flat(region.ring),
+                    ...(holes.length > 0 ? { holes: holes.map(flat) } : {}),
+                    roofGroup: id,
+                    kind: 'roof',
+                });
+            });
+        }
+        // The walls, from the floor to the roof over them.
+        const roofSurfaces = roofFaces.map((ring, i) => asSurface(`r${i}`, ring));
+        for (const line of st.own) {
+            const runs = runsAbove(wallTop(line, roofFaces, roofSurfaces, top, level.elevationMm), level.elevationMm);
+            runs.forEach((run, r) => {
+                const ring = [
+                    at(line, { t: run[0]!.t, z: level.elevationMm }),
+                    at(line, { t: run[run.length - 1]!.t, z: level.elevationMm }),
+                    ...run
+                        .slice()
+                        .reverse()
+                        .map((pt) => at(line, pt)),
+                ];
+                const face: SimpleFace = {
+                    id: `${line.id}${runs.length > 1 ? `-${r + 1}` : ''}`,
+                    points: dedupe(ring).map(toFile),
+                    ...(line.partition ? { partition: line.partition } : {}),
+                    ...(line.buildUpType ? { buildUpType: line.buildUpType } : {}),
+                };
+                if (face.points.length >= 3)
+                    wallFaces.push({ line, lo: level.elevationMm, hi: Infinity, face });
+            });
+        }
+    }
+    // Every corner of a wall goes into the floors and roofs its edges run along, so they share it.
+    const corners = wallFaces.flatMap((w) => w.face.points.map(fromFile));
+    for (const face of faces) {
+        face.points = withCorners(face.points.map(fromFile), corners).map(toFile);
+    }
+    faces.push(...wallFaces.map((w) => w.face));
+    return { faces, wallFaces, lines: placed };
+}
+
+/**
+ * The openings, each on its wall — an exterior one, or a partition: cut into the faces of
+ * `wallFaces` it lands on, or returned to be cut into a partition once it is built. `stepped`:
+ * the walls stand storey by storey, so an opening is in a wall of its own storey.
+ */
+function placeOpenings(
+    json: Record<string, unknown>,
+    lines: readonly WallLine[],
+    partitions: readonly PartitionLine[],
+    levels: readonly Level[],
+    base: number,
+    wallFaces: readonly WallFace[],
+    stepped: boolean,
+    errors: string[]
+): InteriorOpening[] {
     const interiorOpenings: InteriorOpening[] = [];
     readOpenings(json['openings'], errors).forEach((o, i) => {
         const where = `openings[${i}]`;
@@ -293,7 +635,12 @@ export function expandSimpleHouse(json: Record<string, unknown>, errors: string[
         }
         let best: WallLine | null = null;
         let bestOff = Infinity;
-        for (const line of lines) {
+        // Storey by storey, an opening is in a wall of its own storey.
+        const storeyOf = (l: WallLine) => l.storey ?? levels[0]?.name ?? null;
+        const own = stepped
+            ? lines.filter((l) => storeyOf(l) === (o.storey ?? levels[0]?.name ?? null))
+            : lines;
+        for (const line of own) {
             const off = distanceToSegment(o.at, line.a, line.b);
             if (off < bestOff) {
                 best = line;
@@ -306,9 +653,10 @@ export function expandSimpleHouse(json: Record<string, unknown>, errors: string[
             return !from || !level || from.elevationMm <= level.elevationMm;
         };
         let partition: PartitionLine | null = null;
+        // An exterior wall's line keeps an opening a partition's runs along as near: one under it.
         for (const p of partitions.filter(reaches)) {
             const off = distanceToSegment(o.at, p.a, p.b);
-            if (off < bestOff) {
+            if (off < bestOff - ON_MM) {
                 partition = p;
                 bestOff = off;
             }
@@ -401,7 +749,7 @@ export function expandSimpleHouse(json: Record<string, unknown>, errors: string[
         }
     });
 
-    return { faces, interiorOpenings };
+    return interiorOpenings;
 }
 
 /**
@@ -614,6 +962,84 @@ function withCorners(ring: readonly Point3Mm[], extra: readonly Point3Mm[]): Poi
     return out;
 }
 
+/** An opening in a storey's floor with no walls round it: a stair's, a gallery's edge. */
+interface FloorOpening {
+    storey: string;
+    outline: Vec2Mm[];
+}
+
+/**
+ * A storey's floor faces: its ring, with its courtyards and its floor openings cut out of it — a
+ * hole where an opening lies strictly inside, a notch where it reaches the edge, pieces where it
+ * cuts the floor through (`id`, `id-piece-2`, …). Every one of `corners` on a ring's straight
+ * run is a corner of it too, so the floor shares it with the wall standing there.
+ */
+function floorFaces(
+    id: string,
+    ring: readonly Vec2Mm[],
+    courts: readonly Vec2Mm[][],
+    cuts: readonly Vec2Mm[][],
+    z: number,
+    corners: readonly Vec2Mm[]
+): SimpleFace[] {
+    const regions = cuts.reduce<PlanRegion[]>(
+        (left, cut) => left.flatMap((r) => regionMinus(r, cut)),
+        [{ ring: [...ring], holes: courts.map((c) => [...c]) }]
+    );
+    const extra = corners.map((p) => ({ x: p.x, y: p.y, z }));
+    const at3 = (r: readonly Vec2Mm[]) =>
+        withCorners(
+            r.map((p) => ({ x: Math.round(p.x), y: Math.round(p.y), z })),
+            extra
+        ).map(toFile);
+    return regions.map((r, n) => ({
+        id: n === 0 ? id : `${id}-piece-${n + 1}`,
+        points: at3(r.ring),
+        ...(r.holes.length > 0 ? { holes: r.holes.map(at3) } : {}),
+    }));
+}
+
+/**
+ * What of `region` lies outside `cut`: its own holes kept in the part they lie in, `cut` a hole
+ * of its own where it lies strictly inside.
+ */
+function regionMinus(region: PlanRegion, cut: readonly Vec2Mm[]): PlanRegion[] {
+    return outlineDifference(region.ring, cut).map((r) => ({
+        ring: r.ring,
+        holes: [
+            ...r.holes,
+            ...region.holes.filter((h) => h.every((p) => pointInPolygon2(p, r.ring))),
+        ],
+    }));
+}
+
+/** A point inside a ring: the middle of its corners where that is in it, else beside an edge. */
+function pointInside(ring: readonly Vec2Mm[]): Vec2Mm {
+    const mid = ringCentre(ring);
+    if (pointInPolygon2(mid, ring)) return mid;
+    for (let i = 0; i < ring.length; i++) {
+        const [p, q] = [ring[i]!, ring[(i + 1) % ring.length]!];
+        const len = Math.hypot(q.x - p.x, q.y - p.y);
+        if (len < 1) continue;
+        for (const side of [1, -1]) {
+            const at = {
+                x: (p.x + q.x) / 2 - ((q.y - p.y) / len) * 50 * side,
+                y: (p.y + q.y) / 2 + ((q.x - p.x) / len) * 50 * side,
+            };
+            if (pointInPolygon2(at, ring)) return at;
+        }
+    }
+    return mid;
+}
+
+/** The middle of a ring's corners. */
+function ringCentre(ring: readonly Vec2Mm[]): Vec2Mm {
+    return {
+        x: ring.reduce((s, p) => s + p.x, 0) / ring.length,
+        y: ring.reduce((s, p) => s + p.y, 0) / ring.length,
+    };
+}
+
 function dedupe(ring: readonly Point3Mm[]): Point3Mm[] {
     const out: Point3Mm[] = [];
     for (const p of ring) {
@@ -754,6 +1180,10 @@ function readWalls(raw: unknown, errors: string[]): WallLine[] {
             errors.push(
                 `${where}.buildUpType must be a build-up type's id — its kind's own is used.`
             );
+        const rawStorey = isRecord(entry) ? entry['storey'] : undefined;
+        const storey = typeof rawStorey === 'string' && rawStorey ? rawStorey : null;
+        if (rawStorey !== undefined && storey === null)
+            errors.push(`${where}.storey must be a storey's name — the lowest storey is used.`);
         for (let k = 0; k + 1 < points.length; k++) {
             const a = points[k]!;
             const b = points[k + 1]!;
@@ -764,14 +1194,43 @@ function readWalls(raw: unknown, errors: string[]): WallLine[] {
                 b,
                 partition,
                 buildUpType,
+                storey,
             });
         }
     });
     return lines;
 }
 
-/** Just the storeys' names and elevations, lowest first — the parser reads the rest. */
-function readLevels(raw: unknown): { name: string; elevationMm: number }[] {
+/** The file's `floorOpenings`, each on a storey over the lowest that the file has. */
+function readFloorOpenings(raw: unknown, levels: readonly Level[], errors: string[]): FloorOpening[] {
+    if (raw === undefined) return [];
+    if (!Array.isArray(raw)) {
+        errors.push('"floorOpenings" must be an array.');
+        return [];
+    }
+    return raw.flatMap((o, i) => {
+        const where = `floorOpenings[${i}]`;
+        if (!isRecord(o)) {
+            errors.push(`${where} must be an object.`);
+            return [];
+        }
+        const storey = o['storey'];
+        const k = levels.findIndex((l) => l.name === storey);
+        if (typeof storey !== 'string' || k < 0) {
+            errors.push(`${where}.storey must name a storey the file has.`);
+            return [];
+        }
+        if (k === 0) {
+            errors.push(`${where} is in the lowest storey's floor, which nothing is under.`);
+            return [];
+        }
+        const outline = readPlanPoints(o['outline'], 3, `${where}.outline`, errors);
+        return outline ? [{ storey, outline }] : [];
+    });
+}
+
+/** Just the storeys' names, elevations and heights, lowest first — the parser reads the rest. */
+function readLevels(raw: unknown): Level[] {
     if (!Array.isArray(raw)) return [];
     return raw
         .filter(isRecord)
@@ -779,6 +1238,10 @@ function readLevels(raw: unknown): { name: string; elevationMm: number }[] {
         .map((s) => ({
             name: s['name'] as string,
             elevationMm: Math.round(s['elevationMm'] as number),
+            heightMm:
+                isFiniteNumber(s['heightMm']) && s['heightMm'] > 0
+                    ? Math.round(s['heightMm'])
+                    : null,
         }))
         .sort((a, b) => a.elevationMm - b.elevationMm);
 }
@@ -828,6 +1291,10 @@ function readRoof(raw: unknown, errors: string[]): RoofPart[] {
                 ? null
                 : readPlanPoints(entry['outline'], 3, `${where}.outline`, errors);
         if (entry['outline'] !== undefined && !outline) return;
+        const storey = entry['storey'];
+        if (storey !== undefined && (typeof storey !== 'string' || !storey)) {
+            errors.push(`${where}.storey must be a storey's name — the top storey is used.`);
+        }
         parts.push({
             type: type as RoofType,
             pitchDeg: isFiniteNumber(pitch) ? pitch : 0,
@@ -836,6 +1303,7 @@ function readRoof(raw: unknown, errors: string[]): RoofPart[] {
             cover: ROOF_COVERS.includes(cover as RoofCover) ? (cover as RoofCover) : null,
             outline,
             eaveMm: isFiniteNumber(eave) ? Math.round(eave) : null,
+            storey: typeof storey === 'string' && storey ? storey : null,
         });
     });
     return parts;
