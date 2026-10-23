@@ -365,6 +365,7 @@ export const TWB_HOUSE_CONTEXT = {
     facade: 'twb:facadeCladding',
     roofCovering: 'twb:roofCovering',
     gutter: 'twb:gutterKind',
+    soffit: 'twb:soffitKind',
     openingFinish: 'arch:openingsExpression',
 } as const;
 

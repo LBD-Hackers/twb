@@ -59,6 +59,10 @@ twb:roofCovering a owl:DatatypeProperty ; rdfs:label "roof covering"@en ; rdfs:c
     rdfs:isDefinedBy <https://w3id.org/twb/profile> .
 twb:gutterKind a owl:DatatypeProperty ; rdfs:label "gutter kind"@en ; rdfs:comment "hung, concealed, at the facade's base, or a scupper."@en ; rdfs:range xsd:string ;
     rdfs:isDefinedBy <https://w3id.org/twb/profile> .
+twb:soffitKind a owl:DatatypeProperty ; rdfs:label "soffit kind"@en ;
+    rdfs:comment "What is under a roof's overhang: none (the rafters' tails open to view, also when left out) or open-boards (planed boards nailed under the rafters' tails with a ventilating gap between each, from the facade out to the fascia)."@en ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <https://w3id.org/twb/profile> .
 twb:facadeCladding a owl:DatatypeProperty ; rdfs:label "facade cladding"@en ;
     rdfs:comment "board-on-board, lap, board-and-batten or sheet (0.2.0)."@en ; rdfs:range xsd:string ;
     rdfs:isDefinedBy <https://w3id.org/twb/profile> .
