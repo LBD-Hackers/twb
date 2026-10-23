@@ -443,7 +443,15 @@ export interface HouseFile {
     constructionSystem?: string;
     floorStructure?: string;
     roofStructure?: string;
-    expression?: { id: string; facade?: string; roof?: string; gutter?: string; openings?: string };
+    expression?: {
+        id: string;
+        facade?: string;
+        roof?: string;
+        gutter?: string;
+        /** `none` (left out) or `open-boards` — under the overhang. */
+        soffit?: string;
+        openings?: string;
+    };
     roofLoad?: string;
     ifcScope?: string;
     nodeRules?: { edges: [string, string]; through: string }[];
